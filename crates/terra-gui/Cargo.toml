@@ -1,0 +1,15 @@
+[package]
+name = "terra-gui"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Custom wgpu immediate-mode UI for Terra (no egui)"
+
+[dependencies]
+wgpu = { workspace = true }
+bytemuck = { workspace = true }
+glam = { workspace = true }
+log = { workspace = true }
+fontdue = "0.9"
+lucide-icons = "0.575"
+serde = { workspace = true }

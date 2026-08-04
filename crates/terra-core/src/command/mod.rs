@@ -1,0 +1,451 @@
+//! Command-based undo/redo (params & stack ops, not texture snapshots).
+
+use crate::layer::{BlendMode, Layer, LayerGroup, LayerId, LayerKind, LayerStack, StackNode};
+use serde::{Deserialize, Serialize};
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub enum EditorCommand {
+    AddLayer {
+        layer: Layer,
+        index: usize,
+    },
+    RemoveLayer {
+        id: LayerId,
+        node: StackNode,
+        index: usize,
+    },
+    Reorder {
+        from: usize,
+        to: usize,
+    },
+    SetEnabled {
+        id: LayerId,
+        enabled: bool,
+        previous: bool,
+    },
+    SetOpacity {
+        id: LayerId,
+        opacity: f32,
+        previous: f32,
+    },
+    SetBlend {
+        id: LayerId,
+        blend: BlendMode,
+        previous: BlendMode,
+    },
+    SetKind {
+        id: LayerId,
+        kind: LayerKind,
+        previous: LayerKind,
+    },
+    Rename {
+        id: LayerId,
+        name: String,
+        previous: String,
+    },
+    Duplicate {
+        source: LayerId,
+        new_id: LayerId,
+    },
+    SetLocked {
+        id: LayerId,
+        locked: bool,
+        previous: bool,
+    },
+    SetSolo {
+        id: LayerId,
+        solo: bool,
+        previous: bool,
+    },
+    SetColorTag {
+        id: LayerId,
+        tag: u8,
+        previous: u8,
+    },
+    SetCached {
+        id: LayerId,
+        cached: bool,
+        previous: bool,
+    },
+    AddGroup {
+        name: String,
+        id: LayerId,
+        index: usize,
+    },
+    /// Records an artist action whose data cannot yet be restored by undo.
+    Annotate {
+        label: String,
+    },
+}
+
+pub struct CommandHistory {
+    undo_stack: Vec<EditorCommand>,
+    redo_stack: Vec<EditorCommand>,
+    snapshots: Vec<(String, usize)>,
+    last_coalesce_key: Option<(u64, &'static str)>,
+    pub limit: usize,
+}
+
+impl Default for CommandHistory {
+    fn default() -> Self {
+        Self::new(128)
+    }
+}
+
+impl CommandHistory {
+    pub fn new(limit: usize) -> Self {
+        Self {
+            undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
+            snapshots: Vec::new(),
+            last_coalesce_key: None,
+            limit,
+        }
+    }
+
+    pub fn push_executed(&mut self, cmd: EditorCommand) {
+        self.last_coalesce_key = None;
+        self.undo_stack.push(cmd);
+        if self.undo_stack.len() > self.limit {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+    }
+
+    /// Push a command that was already applied, replacing the preceding command
+    /// when it belongs to the same continuous control interaction.
+    pub fn push_coalesced(
+        &mut self,
+        cmd: EditorCommand,
+        coalesce_key: Option<(u64, &'static str)>,
+    ) {
+        if coalesce_key.is_some() && coalesce_key == self.last_coalesce_key {
+            if let Some(last) = self.undo_stack.last_mut() {
+                // Preserve the first command's `previous` value so one Undo
+                // restores the value from before the entire drag began.
+                match (last, cmd) {
+                    (
+                        EditorCommand::SetOpacity { opacity: prior, .. },
+                        EditorCommand::SetOpacity { opacity, .. },
+                    ) => *prior = opacity,
+                    (
+                        EditorCommand::SetKind { kind: prior, .. },
+                        EditorCommand::SetKind { kind, .. },
+                    ) => *prior = kind,
+                    (prior, replacement) => *prior = replacement,
+                }
+                self.redo_stack.clear();
+                return;
+            }
+        }
+        self.undo_stack.push(cmd);
+        if self.undo_stack.len() > self.limit {
+            self.undo_stack.remove(0);
+        }
+        self.redo_stack.clear();
+        self.last_coalesce_key = coalesce_key;
+    }
+
+    pub fn mark_snapshot(&mut self, name: impl Into<String>) {
+        self.snapshots.push((name.into(), self.undo_stack.len()));
+    }
+
+    pub fn snapshots(&self) -> &[(String, usize)] {
+        &self.snapshots
+    }
+
+    /// Undo labels ordered from oldest to newest.
+    pub fn undo_descriptions(&self) -> Vec<String> {
+        self.undo_stack
+            .iter()
+            .map(EditorCommand::describe)
+            .collect()
+    }
+
+    pub fn can_undo(&self) -> bool {
+        !self.undo_stack.is_empty()
+    }
+
+    pub fn can_redo(&self) -> bool {
+        !self.redo_stack.is_empty()
+    }
+
+    pub fn undo(&mut self, stack: &mut LayerStack) -> Option<LayerId> {
+        self.last_coalesce_key = None;
+        let cmd = self.undo_stack.pop()?;
+        let dirty = invert(&cmd, stack);
+        self.redo_stack.push(cmd);
+        dirty
+    }
+
+    pub fn redo(&mut self, stack: &mut LayerStack) -> Option<LayerId> {
+        self.last_coalesce_key = None;
+        let cmd = self.redo_stack.pop()?;
+        let dirty = apply(&cmd, stack);
+        self.undo_stack.push(cmd);
+        dirty
+    }
+}
+
+impl EditorCommand {
+    /// Concise, artist-facing description suitable for the History panel.
+    pub fn describe(&self) -> String {
+        match self {
+            Self::AddLayer { layer, .. } => format!("Added {}", layer.common.name),
+            Self::RemoveLayer { .. } => "Removed Layer".into(),
+            Self::Reorder { .. } => "Reordered Layers".into(),
+            Self::SetEnabled { enabled, .. } => if *enabled {
+                "Enabled Layer"
+            } else {
+                "Disabled Layer"
+            }
+            .into(),
+            Self::SetOpacity { .. } => "Changed Opacity".into(),
+            Self::SetBlend { .. } => "Changed Blend Mode".into(),
+            Self::SetKind { .. } => "Changed Layer Type".into(),
+            Self::Rename { name, .. } => format!("Renamed to {}", name),
+            Self::Duplicate { .. } => "Duplicated Layer".into(),
+            Self::SetLocked { locked, .. } => if *locked {
+                "Locked Layer"
+            } else {
+                "Unlocked Layer"
+            }
+            .into(),
+            Self::SetSolo { solo, .. } => if *solo {
+                "Soloed Layer"
+            } else {
+                "Unsoloed Layer"
+            }
+            .into(),
+            Self::SetColorTag { .. } => "Changed Color Tag".into(),
+            Self::SetCached { cached, .. } => if *cached {
+                "Cached Layer"
+            } else {
+                "Uncached Layer"
+            }
+            .into(),
+            Self::AddGroup { name, .. } => format!("Added Group {}", name),
+            Self::Annotate { label } => label.clone(),
+        }
+    }
+}
+
+pub fn apply(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
+    match cmd {
+        EditorCommand::AddLayer { layer, index } => {
+            let id = layer.id();
+            let idx = (*index).min(stack.nodes.len());
+            stack.nodes.insert(idx, StackNode::Layer(layer.clone()));
+            Some(id)
+        }
+        EditorCommand::RemoveLayer { id, .. } => {
+            stack.remove(*id);
+            stack.layer_ids().first().copied()
+        }
+        EditorCommand::Reorder { from, to } => {
+            stack.reorder(*from, *to);
+            None
+        }
+        EditorCommand::SetEnabled { id, enabled, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.enabled = *enabled;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetOpacity { id, opacity, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.opacity = *opacity;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetBlend { id, blend, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.blend = *blend;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetKind { id, kind, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.kind = kind.clone();
+            }
+            Some(*id)
+        }
+        EditorCommand::Rename { id, name, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.name = name.clone();
+            }
+            Some(*id)
+        }
+        EditorCommand::Duplicate { source, .. } => stack.duplicate(*source),
+        EditorCommand::SetLocked { id, locked, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.locked = *locked;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetSolo { id, solo, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.solo = *solo;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetColorTag { id, tag, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.color_tag = *tag;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetCached { id, cached, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.cached = *cached;
+            }
+            Some(*id)
+        }
+        EditorCommand::AddGroup { name, id, index } => {
+            let mut g = LayerGroup::new(name.clone());
+            g.id = *id;
+            let idx = (*index).min(stack.nodes.len());
+            stack.nodes.insert(idx, StackNode::Group(g));
+            Some(*id)
+        }
+        EditorCommand::Annotate { .. } => None,
+    }
+}
+
+fn invert(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
+    match cmd {
+        EditorCommand::AddLayer { layer, .. } => {
+            stack.remove(layer.id());
+            None
+        }
+        EditorCommand::RemoveLayer { node, index, .. } => {
+            let idx = (*index).min(stack.nodes.len());
+            stack.nodes.insert(idx, node.clone());
+            match node {
+                StackNode::Layer(l) => Some(l.id()),
+                StackNode::Group(g) => Some(g.id),
+            }
+        }
+        EditorCommand::Reorder { from, to } => {
+            stack.reorder(*to, *from);
+            None
+        }
+        EditorCommand::SetEnabled { id, previous, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.enabled = *previous;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetOpacity { id, previous, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.opacity = *previous;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetBlend { id, previous, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.blend = *previous;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetKind { id, previous, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.kind = previous.clone();
+            }
+            Some(*id)
+        }
+        EditorCommand::Rename { id, previous, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.name = previous.clone();
+            }
+            Some(*id)
+        }
+        EditorCommand::Duplicate { new_id, .. } => {
+            stack.remove(*new_id);
+            None
+        }
+        EditorCommand::SetLocked { id, previous, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.locked = *previous;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetSolo { id, previous, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.solo = *previous;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetColorTag { id, previous, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.color_tag = *previous;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetCached { id, previous, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.cached = *previous;
+            }
+            Some(*id)
+        }
+        EditorCommand::AddGroup { id, .. } => {
+            stack.remove(*id);
+            None
+        }
+        EditorCommand::Annotate { .. } => None,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::layer::FlatParams;
+
+    #[test]
+    fn undo_redo_opacity() {
+        let mut stack = LayerStack::new();
+        let layer = Layer::new("A", LayerKind::Flat(FlatParams { height: 1.0 }));
+        let id = layer.id();
+        stack.push(layer);
+        let mut hist = CommandHistory::new(32);
+        let cmd = EditorCommand::SetOpacity {
+            id,
+            opacity: 0.5,
+            previous: 1.0,
+        };
+        apply(&cmd, &mut stack);
+        hist.push_executed(cmd);
+        assert_eq!(stack.find(id).unwrap().common.opacity, 0.5);
+        hist.undo(&mut stack);
+        assert_eq!(stack.find(id).unwrap().common.opacity, 1.0);
+        hist.redo(&mut stack);
+        assert_eq!(stack.find(id).unwrap().common.opacity, 0.5);
+    }
+
+    #[test]
+    fn coalesced_opacity_undo_restores_drag_start() {
+        let mut stack = LayerStack::new();
+        let layer = Layer::new("A", LayerKind::Flat(FlatParams { height: 1.0 }));
+        let id = layer.id();
+        stack.push(layer);
+        let mut hist = CommandHistory::new(32);
+
+        let first = EditorCommand::SetOpacity {
+            id,
+            opacity: 0.8,
+            previous: 1.0,
+        };
+        apply(&first, &mut stack);
+        hist.push_coalesced(first, Some((1, "opacity")));
+        let second = EditorCommand::SetOpacity {
+            id,
+            opacity: 0.4,
+            previous: 0.8,
+        };
+        apply(&second, &mut stack);
+        hist.push_coalesced(second, Some((1, "opacity")));
+
+        hist.undo(&mut stack);
+        assert_eq!(stack.find(id).unwrap().common.opacity, 1.0);
+    }
+}

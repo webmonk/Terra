@@ -1,0 +1,174 @@
+//! Lucide icons baked into the UI font atlas.
+//!
+//! We rasterize a curated subset of [`lucide_icons::Icon`] via fontdue and pack
+//! them alongside ASCII text so the existing glyph shader path can draw them.
+
+use lucide_icons::Icon as LucideIcon;
+
+/// Curated Lucide icons used by Terra's editor chrome.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[repr(u16)]
+pub enum Icon {
+    Undo2,
+    Redo2,
+    Download,
+    Plus,
+    Copy,
+    Trash2,
+    Eye,
+    EyeOff,
+    Layers,
+    Settings2,
+    Sun,
+    Grid3x3,
+    Camera,
+    Mountain,
+    Box,
+    ChevronDown,
+    ChevronUp,
+    ChevronRight,
+    Check,
+    X,
+    Sparkles,
+    Folder,
+    FolderOpen,
+    Activity,
+    Save,
+    Pencil,
+    Blend,
+    ArrowUp,
+    ArrowDown,
+    SlidersHorizontal,
+    Paintbrush,
+    Image,
+    Droplets,
+    Waves,
+    CircleDot,
+    Library,
+    ScrollText,
+    Gauge,
+    Package,
+    Maximize2,
+    Move,
+    Lock,
+    Bookmark,
+    Ellipsis,
+    Search,
+    GripVertical,
+}
+
+pub const ICON_COUNT: usize = 46;
+
+impl Icon {
+    pub const ALL: [Icon; ICON_COUNT] = [
+        Icon::Undo2,
+        Icon::Redo2,
+        Icon::Download,
+        Icon::Plus,
+        Icon::Copy,
+        Icon::Trash2,
+        Icon::Eye,
+        Icon::EyeOff,
+        Icon::Layers,
+        Icon::Settings2,
+        Icon::Sun,
+        Icon::Grid3x3,
+        Icon::Camera,
+        Icon::Mountain,
+        Icon::Box,
+        Icon::ChevronDown,
+        Icon::ChevronUp,
+        Icon::ChevronRight,
+        Icon::Check,
+        Icon::X,
+        Icon::Sparkles,
+        Icon::Folder,
+        Icon::FolderOpen,
+        Icon::Activity,
+        Icon::Save,
+        Icon::Pencil,
+        Icon::Blend,
+        Icon::ArrowUp,
+        Icon::ArrowDown,
+        Icon::SlidersHorizontal,
+        Icon::Paintbrush,
+        Icon::Image,
+        Icon::Droplets,
+        Icon::Waves,
+        Icon::CircleDot,
+        Icon::Library,
+        Icon::ScrollText,
+        Icon::Gauge,
+        Icon::Package,
+        Icon::Maximize2,
+        Icon::Move,
+        Icon::Lock,
+        Icon::Bookmark,
+        Icon::Ellipsis,
+        Icon::Search,
+        Icon::GripVertical,
+    ];
+
+    #[inline]
+    pub fn index(self) -> usize {
+        self as usize
+    }
+
+    pub(crate) fn lucide(self) -> LucideIcon {
+        match self {
+            Icon::Undo2 => LucideIcon::Undo2,
+            Icon::Redo2 => LucideIcon::Redo2,
+            Icon::Download => LucideIcon::Download,
+            Icon::Plus => LucideIcon::Plus,
+            Icon::Copy => LucideIcon::Copy,
+            Icon::Trash2 => LucideIcon::Trash2,
+            Icon::Eye => LucideIcon::Eye,
+            Icon::EyeOff => LucideIcon::EyeOff,
+            Icon::Layers => LucideIcon::Layers,
+            Icon::Settings2 => LucideIcon::Settings2,
+            Icon::Sun => LucideIcon::Sun,
+            Icon::Grid3x3 => LucideIcon::Grid3x3,
+            Icon::Camera => LucideIcon::Camera,
+            Icon::Mountain => LucideIcon::Mountain,
+            Icon::Box => LucideIcon::Box,
+            Icon::ChevronDown => LucideIcon::ChevronDown,
+            Icon::ChevronUp => LucideIcon::ChevronUp,
+            Icon::ChevronRight => LucideIcon::ChevronRight,
+            Icon::Check => LucideIcon::Check,
+            Icon::X => LucideIcon::X,
+            Icon::Sparkles => LucideIcon::Sparkles,
+            Icon::Folder => LucideIcon::Folder,
+            Icon::FolderOpen => LucideIcon::FolderOpen,
+            Icon::Activity => LucideIcon::Activity,
+            Icon::Save => LucideIcon::Save,
+            Icon::Pencil => LucideIcon::Pencil,
+            Icon::Blend => LucideIcon::Blend,
+            Icon::ArrowUp => LucideIcon::ArrowUp,
+            Icon::ArrowDown => LucideIcon::ArrowDown,
+            Icon::SlidersHorizontal => LucideIcon::SlidersHorizontal,
+            Icon::Paintbrush => LucideIcon::Paintbrush,
+            Icon::Image => LucideIcon::Image,
+            Icon::Droplets => LucideIcon::Droplets,
+            Icon::Waves => LucideIcon::Waves,
+            Icon::CircleDot => LucideIcon::CircleDot,
+            Icon::Library => LucideIcon::Library,
+            Icon::ScrollText => LucideIcon::ScrollText,
+            Icon::Gauge => LucideIcon::Gauge,
+            Icon::Package => LucideIcon::Package,
+            Icon::Maximize2 => LucideIcon::Maximize2,
+            Icon::Move => LucideIcon::Move,
+            Icon::Lock => LucideIcon::Lock,
+            Icon::Bookmark => LucideIcon::Bookmark,
+            Icon::Ellipsis => LucideIcon::Ellipsis,
+            Icon::Search => LucideIcon::Search,
+            Icon::GripVertical => LucideIcon::GripVertical,
+        }
+    }
+
+    pub fn ch(self) -> char {
+        char::from(self.lucide())
+    }
+}
+
+/// Default logical icon size (matches toolbar / chip density).
+pub const ICON_PX: f32 = 16.0;

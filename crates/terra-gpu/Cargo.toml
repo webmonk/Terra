@@ -1,0 +1,16 @@
+[package]
+name = "terra-gpu"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "GPU compute pipelines for terrain simulation (WGSL)"
+
+[dependencies]
+terra-core = { workspace = true }
+wgpu = { workspace = true }
+bytemuck = { workspace = true }
+glam = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+profiling = { workspace = true }
+pollster = { workspace = true }

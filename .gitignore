@@ -1,0 +1,8 @@
+/target/
+**/*.rs.bk
+Cargo.lock
+terra_project.json
+terra_export/
+.idea/
+.vscode/
+*.pdb

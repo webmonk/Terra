@@ -1,0 +1,27 @@
+[package]
+name = "terra-app"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "Terra terrain editor application"
+
+[[bin]]
+name = "terra"
+path = "src/main.rs"
+
+[dependencies]
+terra-core = { workspace = true }
+terra-gpu = { workspace = true }
+terra-render = { workspace = true }
+terra-gui = { workspace = true }
+terra-ui = { workspace = true }
+terra-io = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+glam = { workspace = true }
+pollster = { workspace = true }
+env_logger = { workspace = true }
+log = { workspace = true }
+profiling = { workspace = true }
+serde_json = { workspace = true }
+rfd = { workspace = true }

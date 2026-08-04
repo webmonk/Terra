@@ -1,0 +1,16 @@
+[package]
+name = "terra-render"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+description = "wgpu terrain viewport rendering"
+
+[dependencies]
+terra-core = { workspace = true }
+wgpu = { workspace = true }
+winit = { workspace = true }
+glam = { workspace = true }
+bytemuck = { workspace = true }
+thiserror = { workspace = true }
+log = { workspace = true }
+profiling = { workspace = true }
