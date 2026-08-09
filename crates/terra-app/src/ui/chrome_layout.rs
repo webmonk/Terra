@@ -16,6 +16,10 @@ pub const VIEWPORT_TOOLBAR_H: f32 = 36.0;
 pub const VIEWPORT_TOOL_MODE_BAR_H: f32 = 56.0;
 
 pub const LAYER_ROW_H: f32 = 46.0;
+/// Compact layer row when the right rail is narrow.
+pub const LAYER_ROW_H_COMPACT: f32 = 36.0;
+/// Thumbnail size inside a layer row.
+pub const LAYER_THUMB_SZ: f32 = 28.0;
 
 /// Bottom-left scale bar length (logical px).
 pub const SCALE_BAR_W: f32 = 48.0;

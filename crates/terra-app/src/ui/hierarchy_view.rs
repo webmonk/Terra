@@ -6,8 +6,11 @@
 use terra_core::document::TerrainDocument;
 use terra_core::domain::{classify_in_context, DomainRole};
 use terra_core::layer::{
-    BiomeSection, GroupKind, LayerId, LayerKind, StackCategory, StackNode,
+    BiomeSection, BuildStatus, GroupKind, Layer, LayerGroup, LayerId, LayerKind,
+    StackCategory, StackNode,
 };
+use terra_core::biome_definition::BiomeLibrary;
+use terra_core::domain::classify_layer_kind;
 use terra_gui::Icon;
 
 use crate::ui::workspace::{workspace_definition, WorkspaceId};
@@ -163,6 +166,81 @@ pub fn advanced_placement_id(biome_id: LayerId) -> LayerId {
 
 pub fn mask_stack_row_id(biome_id: LayerId) -> LayerId {
     LayerId::from_u128(MASK_STACK_BASE ^ (biome_id.0.as_u128() & 0xFFFF_FFFF_FFFF_FFFF))
+}
+
+
+/// Biome summary line: coverage · enabled · priority · health.
+pub fn biome_summary_meta(
+    g: &LayerGroup,
+    library: &BiomeLibrary,
+    active: Option<LayerId>,
+) -> String {
+    let def = library.by_group(g.id);
+    let priority = def.map(|d| d.placement.priority).unwrap_or(0);
+    let coverage = if g.masks.is_empty() {
+        "Coverage —"
+    } else {
+        "Coverage rules"
+    };
+    let enabled = if g.enabled { "On" } else { "Off" };
+    let mut parts = vec![
+        coverage.to_string(),
+        enabled.to_string(),
+        format!("P{priority}"),
+    ];
+    if active == Some(g.id) {
+        parts.push("Active".into());
+    }
+    if def.map(|d| d.placement.rules.is_none()).unwrap_or(true) && g.masks.is_empty() {
+        parts.push("Warning".into());
+    }
+    parts.join(" · ")
+}
+
+/// Simulation build badge for hierarchy rows.
+pub fn sim_status_label(status: BuildStatus, enabled: bool) -> &'static str {
+    if !enabled {
+        return "Frozen";
+    }
+    match status {
+        BuildStatus::Ready => "Ready",
+        BuildStatus::Pending | BuildStatus::Idle | BuildStatus::Outdated => "Outdated",
+        BuildStatus::Computing => "Running",
+        BuildStatus::Error => "Failed",
+    }
+}
+
+pub fn is_simulation_kind(kind: &LayerKind) -> bool {
+    matches!(classify_layer_kind(kind), DomainRole::SimulationLayer)
+}
+
+pub fn layer_build_status(layer: &Layer) -> BuildStatus {
+    if !layer.common.enabled {
+        return BuildStatus::Idle;
+    }
+    if layer.common.cached {
+        BuildStatus::Ready
+    } else {
+        BuildStatus::Pending
+    }
+}
+
+pub fn layer_build_status_with_outdated(layer: &Layer, outdated: &[LayerId]) -> BuildStatus {
+    if outdated.contains(&layer.id()) {
+        return BuildStatus::Outdated;
+    }
+    layer_build_status(layer)
+}
+
+/// Compact meta line for a simulation scenario row.
+pub fn simulation_scenario_meta(scenario: &terra_core::simulation_scenario::SimulationScenario) -> String {
+    let passes = scenario.enabled_passes().count();
+    format!(
+        "{} · {} pass{}",
+        if scenario.enabled { "On" } else { "Off" },
+        passes,
+        if passes == 1 { "" } else { "es" }
+    )
 }
 
 /// Whether a presentation row should be de-emphasized for the active workspace.
