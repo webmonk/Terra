@@ -4,8 +4,70 @@ mod region;
 
 pub use region::{bounds_from_tiles, rects_from_tiles, SampleRect};
 
-use crate::heightfield::{HeightTile, Heightfield, TileId};
+use crate::heightfield::{HeightTile, Heightfield, HeightfieldMetrics, TileId};
+use crate::layer::LayerKind;
 use std::collections::HashSet;
+
+/// How a process dirty region should expand for incremental recomputation.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum DirtyClass {
+    /// Local stencil (blur / single-pass thermal) — pad by stencil radius only.
+    Local,
+    /// Multi-iteration neighbourhood ops — expand by tile radius from iters.
+    Expanding,
+    /// Drainage / SPE / amplify — basin-coupled; prefer full field or large expand.
+    BasinDependent,
+}
+
+/// Classify a layer kind for dirty-region / cache expansion policy.
+pub fn dirty_class_for(kind: &LayerKind) -> DirtyClass {
+    match kind {
+        LayerKind::Blur(_)
+        | LayerKind::Coastal(_)
+        | LayerKind::EffectFilter(_)
+        | LayerKind::Path(_)
+        | LayerKind::PolygonHeight(_)
+        | LayerKind::Terrace(_)
+        | LayerKind::Plateau(_) => DirtyClass::Local,
+        LayerKind::ThermalErosion(_)
+        | LayerKind::HydraulicErosion(_)
+        | LayerKind::DebrisFlow(_)
+        | LayerKind::SandSimulation(_)
+        | LayerKind::FluidSimulation(_) => DirtyClass::Expanding,
+        LayerKind::StreamPowerErosion(_)
+        | LayerKind::MultiScaleAmplify(_)
+        | LayerKind::RiverCarve(_)
+        | LayerKind::RiverNetwork(_) => DirtyClass::BasinDependent,
+        _ => DirtyClass::Local,
+    }
+}
+
+/// Recommended halo (ghost) width for a neighbourhood process.
+///
+/// `stencil_radius` is the single-pass read radius (thermal/hydraulic ≈ 1).
+/// When iterating without per-iter halo refresh, use
+/// `halo ≥ stencil_radius * iters_per_batch`. Prefer refreshing between batches
+/// with the default halo (2) rather than silently widening forever.
+pub fn recommended_halo(stencil_radius: u32, iters_per_batch: u32) -> u32 {
+    let need = stencil_radius.saturating_mul(iters_per_batch.max(1));
+    need.max(crate::heightfield::DEFAULT_HALO).min(16)
+}
+
+/// Tile Chebyshev expand radius for a dirty class (not sample halo).
+pub fn expand_radius_for(class: DirtyClass, stencil: u32, iterations: u32) -> u32 {
+    match class {
+        DirtyClass::Local => stencil.max(1).saturating_sub(1).max(1),
+        DirtyClass::Expanding => {
+            // Grow ~1 tile per ~8 iters (halo refresh between batches assumed).
+            let batches = (iterations.max(1) + 7) / 8;
+            batches.max(1).min(4)
+        }
+        DirtyClass::BasinDependent => {
+            // Conservative: expand several rings; callers may still mark_all.
+            ((iterations.max(1) + 3) / 4).max(2).min(8)
+        }
+    }
+}
 
 /// Process tiles with neighbor halo refresh between passes.
 pub struct TileScheduler {
@@ -75,6 +137,27 @@ impl TileScheduler {
         self.dirty = set.into_iter().collect();
     }
 
+    /// Expand using [`dirty_class_for`] policy; basin-dependent may mark all tiles.
+    pub fn expand_for_process(
+        &mut self,
+        hf: &Heightfield,
+        class: DirtyClass,
+        stencil: u32,
+        iterations: u32,
+    ) {
+        match class {
+            DirtyClass::BasinDependent
+                if iterations > 4 || hf.metrics.tiles_x() * hf.metrics.tiles_z() <= 16 =>
+            {
+                self.mark_all(hf);
+            }
+            _ => {
+                let r = expand_radius_for(class, stencil, iterations);
+                self.expand(hf, r);
+            }
+        }
+    }
+
     /// Incremental ghost exchange for dirty tiles; returns max seam error on dirty edges.
     pub fn sync_dirty(&self, hf: &mut Heightfield) -> f32 {
         hf.refresh_halos_for(&self.dirty);
@@ -100,6 +183,11 @@ impl Default for TileScheduler {
     fn default() -> Self {
         Self::new()
     }
+}
+
+/// Suggest metrics halo for multi-iter neighbourhood work (does not rebuild tiles).
+pub fn suggest_halo(metrics: &HeightfieldMetrics, stencil: u32, iters_per_batch: u32) -> u32 {
+    recommended_halo(stencil, iters_per_batch).max(metrics.halo)
 }
 
 /// Max |halo − neighbor interior| across shared tile edges (0 after `refresh_halos`).
@@ -194,6 +282,46 @@ where
     dirty.sync_dirty(hf);
 }
 
+/// Multi-pass tile stencil with halo refresh between batches to limit seam risk.
+///
+/// Each batch runs `iters_per_batch` passes using the current halo, then
+/// `sync_dirty` refreshes ghosts. Prefer this over widening halo unboundedly.
+pub fn map_tiles_batched<F>(
+    hf: &mut Heightfield,
+    total_iters: u32,
+    iters_per_batch: u32,
+    mut f: F,
+) -> f32
+where
+    F: FnMut(&HeightTile, u32, u32, f32, u32) -> f32,
+{
+    let batch = iters_per_batch.max(1);
+    let mut max_seam = 0.0f32;
+    let mut iter = 0u32;
+    while iter < total_iters {
+        let end = (iter + batch).min(total_iters);
+        for pass in iter..end {
+            let snapshot = hf.clone();
+            for tile in snapshot.tiles() {
+                for lz in 0..tile.interior_height {
+                    for lx in 0..tile.interior_width {
+                        let v = tile.get_interior(lx, lz);
+                        let nv = f(tile, lx, lz, v, pass);
+                        if let Some(t) = hf.tile_mut(tile.id) {
+                            t.set_interior(lx, lz, nv);
+                        }
+                    }
+                }
+            }
+        }
+        let mut dirty = TileScheduler::new();
+        dirty.mark_all(hf);
+        max_seam = max_seam.max(dirty.sync_dirty(hf));
+        iter = end;
+    }
+    max_seam
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -285,5 +413,80 @@ mod tests {
         sched.mark_tile(TileId { tx: 2, tz: 2 });
         sched.expand(&hf, 1);
         assert_eq!(sched.dirty.len(), 9);
+    }
+
+    #[test]
+    fn batched_blur_keeps_seams_low() {
+        let metrics = HeightfieldMetrics {
+            width: 64,
+            height: 64,
+            world_size_x: 64.0,
+            world_size_z: 64.0,
+            tile_size: 32,
+            halo: 2,
+        };
+        let mut hf = Heightfield::zeros(metrics);
+        for j in 0..64 {
+            for i in 0..64 {
+                hf.set(i, j, ((i * 3 + j * 5) % 40) as f32);
+            }
+        }
+        hf.refresh_halos();
+        let seam = map_tiles_batched(&mut hf, 6, 2, |tile, lx, lz, _, _| {
+            let mut sum = 0.0;
+            let mut c = 0.0;
+            for dj in -1..=1 {
+                for di in -1..=1 {
+                    sum += tile.get_with_halo(lx as i32 + di, lz as i32 + dj);
+                    c += 1.0;
+                }
+            }
+            sum / c
+        });
+        assert!(seam < 1e-2, "batched seam {seam}");
+        assert!(measure_seams(&hf) < 1e-2);
+    }
+
+    #[test]
+    fn recommended_halo_scales_with_batch() {
+        assert!(recommended_halo(1, 8) >= 8);
+        assert_eq!(recommended_halo(1, 1), crate::heightfield::DEFAULT_HALO);
+    }
+
+    #[test]
+    fn dirty_class_basin_for_amplify() {
+        assert_eq!(
+            dirty_class_for(&LayerKind::MultiScaleAmplify(Default::default())),
+            DirtyClass::BasinDependent
+        );
+        assert_eq!(
+            dirty_class_for(&LayerKind::ThermalErosion(Default::default())),
+            DirtyClass::Expanding
+        );
+    }
+
+    /// Smoke: dirty tile snapshot can feed a viewport overlay (tx/tz list + bounds).
+    #[test]
+    fn dirty_tiles_snapshot_for_overlay() {
+        let metrics = HeightfieldMetrics {
+            width: 64,
+            height: 64,
+            world_size_x: 64.0,
+            world_size_z: 64.0,
+            tile_size: 16,
+            halo: 2,
+        };
+        let mut sched = TileScheduler::new();
+        sched.mark_tile(TileId { tx: 1, tz: 2 });
+        sched.mark_tile(TileId { tx: 2, tz: 2 });
+        let ids: Vec<(u32, u32)> = sched.dirty.iter().map(|t| (t.tx, t.tz)).collect();
+        assert_eq!(ids.len(), 2);
+        assert!(ids.contains(&(1, 2)));
+        assert!(ids.contains(&(2, 2)));
+        let bounds = sched.dirty_bounds(&metrics, 1).expect("dirty bounds");
+        assert!(!bounds.is_empty());
+        // Overlay grid dimensions match metrics tiling.
+        assert_eq!(metrics.tiles_x(), 4);
+        assert_eq!(metrics.tiles_z(), 4);
     }
 }

@@ -33,8 +33,7 @@ pub fn scrollbar_y(
     );
     // Never clamp with min > max — short panels (e.g. menus) can have track < 22px.
     let min_thumb = 22.0_f32.min(track.height());
-    let thumb_h = (track.height() * (view_h / content_h))
-        .clamp(min_thumb, track.height());
+    let thumb_h = (track.height() * (view_h / content_h)).clamp(min_thumb, track.height());
     let travel = (track.height() - thumb_h).max(0.0);
     let t = if max_scroll > 0.0 {
         *scroll_y / max_scroll
@@ -51,10 +50,15 @@ pub fn scrollbar_y(
     let thumb_id = id.child("thumb");
     let track_id = id.child("track");
 
-    // Continue thumb drag.
+    // Continue thumb drag only while the primary button stays down.
     if let Some(drag) = ui.state.scroll_drag {
         if drag.id == id && drag.vertical {
-            if let Some((_, py)) = ui.input.pointer {
+            if !ui.input.primary_down {
+                ui.state.scroll_drag = None;
+                if ui.state.is_active(thumb_id) {
+                    ui.state.active = None;
+                }
+            } else if let Some((_, py)) = ui.input.pointer {
                 let delta = py - drag.start_pointer;
                 *scroll_y =
                     (drag.start_scroll + delta * drag.scroll_per_pixel).clamp(0.0, max_scroll);
@@ -65,9 +69,9 @@ pub fn scrollbar_y(
                     track.width(),
                     thumb_h,
                 );
+                ui.state.set_hot(thumb_id);
+                ui.state.active = Some(thumb_id);
             }
-            ui.state.set_hot(thumb_id);
-            ui.state.active = Some(thumb_id);
         }
     }
 
@@ -176,7 +180,12 @@ pub fn scrollbar_x(
 
     if let Some(drag) = ui.state.scroll_drag {
         if drag.id == id && !drag.vertical {
-            if let Some((px, _)) = ui.input.pointer {
+            if !ui.input.primary_down {
+                ui.state.scroll_drag = None;
+                if ui.state.is_active(thumb_id) {
+                    ui.state.active = None;
+                }
+            } else if let Some((px, _)) = ui.input.pointer {
                 let delta = px - drag.start_pointer;
                 *scroll_x =
                     (drag.start_scroll + delta * drag.scroll_per_pixel).clamp(0.0, max_scroll);
@@ -187,9 +196,9 @@ pub fn scrollbar_x(
                     thumb_w,
                     track.height(),
                 );
+                ui.state.set_hot(thumb_id);
+                ui.state.active = Some(thumb_id);
             }
-            ui.state.set_hot(thumb_id);
-            ui.state.active = Some(thumb_id);
         }
     }
 

@@ -125,7 +125,7 @@ pub fn jump_flood_distance(seeds: &MaskField) -> MaskField {
         let prev = nearest.clone();
         for j in 0..h as i32 {
             for i in 0..w as i32 {
-                let mut best = prev[(j as usize * w + i as usize)];
+                let mut best = prev[j as usize * w + i as usize];
                 let mut best_d = dist2(i, j, best);
                 for dj in [-step, 0, step] {
                     for di in [-step, 0, step] {
@@ -134,7 +134,7 @@ pub fn jump_flood_distance(seeds: &MaskField) -> MaskField {
                         if ni < 0 || nj < 0 || ni >= w as i32 || nj >= h as i32 {
                             continue;
                         }
-                        let cand = prev[(nj as usize * w + ni as usize)];
+                        let cand = prev[nj as usize * w + ni as usize];
                         let d = dist2(i, j, cand);
                         if d < best_d {
                             best_d = d;

@@ -15,7 +15,9 @@ use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 
 const MAGIC: &[u8; 4] = b"TCS1";
-const VERSION: u32 = 1;
+// Bump whenever terrain processors change in a way that makes baked outputs stale.
+// Version 2 invalidates checkpoints produced by the pre-fidelity procedural generators.
+const VERSION: u32 = 2;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DiskMeta {
@@ -118,6 +120,12 @@ impl DiskSmartCache {
                 write_f32_blob(&self.aux_path(id, name), field.data())?;
             }
         }
+        if let Some(strata) = &output.strata {
+            let path = self.stem(id).with_extension("strata.json");
+            let json =
+                serde_json::to_vec_pretty(strata).map_err(|e| EvalError::Io(e.to_string()))?;
+            fs::write(path, json).map_err(|e| EvalError::Io(e.to_string()))?;
+        }
         Ok(())
     }
 
@@ -172,13 +180,24 @@ impl DiskSmartCache {
             generation: meta.generation,
             dirty: false,
             aux,
+            strata: {
+                let path = self.stem(id).with_extension("strata.json");
+                if path.exists() {
+                    fs::read(&path)
+                        .ok()
+                        .and_then(|b| serde_json::from_slice(&b).ok())
+                } else {
+                    None
+                }
+            },
         }))
     }
 }
 
 fn write_f32_blob(path: &Path, data: &[f32]) -> Result<(), EvalError> {
     let mut file = File::create(path).map_err(|e| EvalError::Io(e.to_string()))?;
-    file.write_all(MAGIC).map_err(|e| EvalError::Io(e.to_string()))?;
+    file.write_all(MAGIC)
+        .map_err(|e| EvalError::Io(e.to_string()))?;
     file.write_all(&(data.len() as u32).to_le_bytes())
         .map_err(|e| EvalError::Io(e.to_string()))?;
     for v in data {
@@ -218,10 +237,8 @@ mod tests {
 
     #[test]
     fn spill_and_reload_roundtrip() {
-        let dir = std::env::temp_dir().join(format!(
-            "terra_smart_cache_test_{}",
-            uuid::Uuid::new_v4()
-        ));
+        let dir =
+            std::env::temp_dir().join(format!("terra_smart_cache_test_{}", uuid::Uuid::new_v4()));
         let cache = DiskSmartCache::new(&dir);
         let metrics = HeightfieldMetrics::new(8, 8, 80.0, 80.0);
         let mut height = Heightfield::zeros(metrics);
@@ -237,6 +254,7 @@ mod tests {
             generation: 7,
             dirty: false,
             aux,
+            strata: None,
         };
         cache.spill(id, &output).unwrap();
         let loaded = cache.load(id, metrics).unwrap().expect("disk hit");

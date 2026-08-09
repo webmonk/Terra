@@ -12,7 +12,11 @@ pub enum EditorCommand {
     RemoveLayer {
         id: LayerId,
         node: StackNode,
+        /// Sibling index within `parent` (root when `parent` is `None`).
         index: usize,
+        /// Parent group when the node lived nested in the WC tree.
+        #[serde(default)]
+        parent: Option<LayerId>,
     },
     Reorder {
         from: usize,
@@ -75,6 +79,13 @@ pub enum EditorCommand {
     /// Records an artist action whose data cannot yet be restored by undo.
     Annotate {
         label: String,
+    },
+    /// Develop Apply Where / local placement (undo restores prior placement + masks).
+    SetOperationPlacement {
+        id: LayerId,
+        placement: crate::operation_placement::OperationPlacement,
+        previous: crate::operation_placement::OperationPlacement,
+        previous_masks: crate::mask::Distribution,
     },
 }
 
@@ -170,6 +181,11 @@ impl CommandHistory {
         !self.redo_stack.is_empty()
     }
 
+    /// Cheap change fingerprint for UI cache invalidation.
+    pub fn ui_fingerprint(&self) -> (usize, usize) {
+        (self.undo_stack.len(), self.redo_stack.len())
+    }
+
     pub fn undo(&mut self, stack: &mut LayerStack) -> Option<LayerId> {
         self.last_coalesce_key = None;
         let cmd = self.undo_stack.pop()?;
@@ -226,6 +242,7 @@ impl EditorCommand {
             .into(),
             Self::AddGroup { name, .. } => format!("Added Group {}", name),
             Self::Annotate { label } => label.clone(),
+            Self::SetOperationPlacement { .. } => "Changed Apply Where".into(),
         }
     }
 }
@@ -249,18 +266,24 @@ pub fn apply(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
         EditorCommand::SetEnabled { id, enabled, .. } => {
             if let Some(l) = stack.find_mut(*id) {
                 l.common.enabled = *enabled;
+            } else if let Some(g) = stack.find_group_mut(*id) {
+                g.enabled = *enabled;
             }
             Some(*id)
         }
         EditorCommand::SetOpacity { id, opacity, .. } => {
             if let Some(l) = stack.find_mut(*id) {
                 l.common.opacity = *opacity;
+            } else if let Some(g) = stack.find_group_mut(*id) {
+                g.opacity = *opacity;
             }
             Some(*id)
         }
         EditorCommand::SetBlend { id, blend, .. } => {
             if let Some(l) = stack.find_mut(*id) {
                 l.common.blend = *blend;
+            } else if let Some(g) = stack.find_group_mut(*id) {
+                g.blend = *blend;
             }
             Some(*id)
         }
@@ -273,6 +296,15 @@ pub fn apply(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
         EditorCommand::Rename { id, name, .. } => {
             if let Some(l) = stack.find_mut(*id) {
                 l.common.name = name.clone();
+            } else if let Some(g) = stack.find_group_mut(*id) {
+                // Structural folders/sections keep fixed labels.
+                if !matches!(
+                    g.group_kind,
+                    crate::layer::GroupKind::BiomeSection(_)
+                        | crate::layer::GroupKind::CategoryFolder
+                ) {
+                    g.name = name.clone();
+                }
             }
             Some(*id)
         }
@@ -309,6 +341,13 @@ pub fn apply(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
             Some(*id)
         }
         EditorCommand::Annotate { .. } => None,
+        EditorCommand::SetOperationPlacement { id, placement, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.operation_placement = placement.clone();
+                l.sync_operation_placement_masks();
+            }
+            Some(*id)
+        }
     }
 }
 
@@ -318,9 +357,26 @@ fn invert(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
             stack.remove(layer.id());
             None
         }
-        EditorCommand::RemoveLayer { node, index, .. } => {
-            let idx = (*index).min(stack.nodes.len());
-            stack.nodes.insert(idx, node.clone());
+        EditorCommand::RemoveLayer {
+            node,
+            index,
+            parent,
+            ..
+        } => {
+            let idx = *index;
+            if let Some(pid) = parent {
+                if let Some(group) = stack.find_group_mut(*pid) {
+                    let idx = idx.min(group.children.len());
+                    group.children.insert(idx, node.clone());
+                } else {
+                    // Parent gone — restore at root.
+                    let idx = idx.min(stack.nodes.len());
+                    stack.nodes.insert(idx, node.clone());
+                }
+            } else {
+                let idx = idx.min(stack.nodes.len());
+                stack.nodes.insert(idx, node.clone());
+            }
             match node {
                 StackNode::Layer(l) => Some(l.id()),
                 StackNode::Group(g) => Some(g.id),
@@ -333,18 +389,24 @@ fn invert(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
         EditorCommand::SetEnabled { id, previous, .. } => {
             if let Some(l) = stack.find_mut(*id) {
                 l.common.enabled = *previous;
+            } else if let Some(g) = stack.find_group_mut(*id) {
+                g.enabled = *previous;
             }
             Some(*id)
         }
         EditorCommand::SetOpacity { id, previous, .. } => {
             if let Some(l) = stack.find_mut(*id) {
                 l.common.opacity = *previous;
+            } else if let Some(g) = stack.find_group_mut(*id) {
+                g.opacity = *previous;
             }
             Some(*id)
         }
         EditorCommand::SetBlend { id, previous, .. } => {
             if let Some(l) = stack.find_mut(*id) {
                 l.common.blend = *previous;
+            } else if let Some(g) = stack.find_group_mut(*id) {
+                g.blend = *previous;
             }
             Some(*id)
         }
@@ -357,6 +419,14 @@ fn invert(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
         EditorCommand::Rename { id, previous, .. } => {
             if let Some(l) = stack.find_mut(*id) {
                 l.common.name = previous.clone();
+            } else if let Some(g) = stack.find_group_mut(*id) {
+                if !matches!(
+                    g.group_kind,
+                    crate::layer::GroupKind::BiomeSection(_)
+                        | crate::layer::GroupKind::CategoryFolder
+                ) {
+                    g.name = previous.clone();
+                }
             }
             Some(*id)
         }
@@ -393,6 +463,18 @@ fn invert(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
             None
         }
         EditorCommand::Annotate { .. } => None,
+        EditorCommand::SetOperationPlacement {
+            id,
+            previous,
+            previous_masks,
+            ..
+        } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.operation_placement = previous.clone();
+                l.common.masks = previous_masks.clone();
+            }
+            Some(*id)
+        }
     }
 }
 

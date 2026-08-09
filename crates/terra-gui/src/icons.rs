@@ -49,15 +49,28 @@ pub enum Icon {
     Gauge,
     Package,
     Maximize2,
+    Minimize2,
+    Minus,
     Move,
     Lock,
     Bookmark,
     Ellipsis,
     Search,
     GripVertical,
+    Play,
+    Menu,
+    ArrowRight,
+    Calendar,
+    List,
+    History,
+    FolderSearch,
+    RotateCcw,
+    MousePointer,
+    Hand,
+    RotateCw,
 }
 
-pub const ICON_COUNT: usize = 46;
+pub const ICON_COUNT: usize = 59;
 
 impl Icon {
     pub const ALL: [Icon; ICON_COUNT] = [
@@ -101,12 +114,25 @@ impl Icon {
         Icon::Gauge,
         Icon::Package,
         Icon::Maximize2,
+        Icon::Minimize2,
+        Icon::Minus,
         Icon::Move,
         Icon::Lock,
         Icon::Bookmark,
         Icon::Ellipsis,
         Icon::Search,
         Icon::GripVertical,
+        Icon::Play,
+        Icon::Menu,
+        Icon::ArrowRight,
+        Icon::Calendar,
+        Icon::List,
+        Icon::History,
+        Icon::FolderSearch,
+        Icon::RotateCcw,
+        Icon::MousePointer,
+        Icon::Hand,
+        Icon::RotateCw,
     ];
 
     #[inline]
@@ -156,12 +182,25 @@ impl Icon {
             Icon::Gauge => LucideIcon::Gauge,
             Icon::Package => LucideIcon::Package,
             Icon::Maximize2 => LucideIcon::Maximize2,
+            Icon::Minimize2 => LucideIcon::Minimize2,
+            Icon::Minus => LucideIcon::Minus,
             Icon::Move => LucideIcon::Move,
             Icon::Lock => LucideIcon::Lock,
             Icon::Bookmark => LucideIcon::Bookmark,
             Icon::Ellipsis => LucideIcon::Ellipsis,
             Icon::Search => LucideIcon::Search,
             Icon::GripVertical => LucideIcon::GripVertical,
+            Icon::Play => LucideIcon::Play,
+            Icon::Menu => LucideIcon::Menu,
+            Icon::ArrowRight => LucideIcon::ArrowRight,
+            Icon::Calendar => LucideIcon::Calendar,
+            Icon::List => LucideIcon::List,
+            Icon::History => LucideIcon::History,
+            Icon::FolderSearch => LucideIcon::FolderSearch,
+            Icon::RotateCcw => LucideIcon::RotateCcw,
+            Icon::MousePointer => LucideIcon::MousePointer,
+            Icon::Hand => LucideIcon::Hand,
+            Icon::RotateCw => LucideIcon::RotateCw,
         }
     }
 

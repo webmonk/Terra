@@ -12,7 +12,11 @@ pub struct Layout {
 
 impl Layout {
     pub fn new(panel: Rect) -> Self {
-        let pad = PAD;
+        Self::with_pad(panel, PAD)
+    }
+
+    /// Layout with an explicit inset. Use `0.0` for full-bleed rows inside a chrome shell.
+    pub fn with_pad(panel: Rect, pad: f32) -> Self {
         Self {
             content: Rect::from_min_max(
                 panel.min_x + pad,

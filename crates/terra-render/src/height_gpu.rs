@@ -24,6 +24,8 @@ struct HeightSlot {
     /// Kept alive; sampled via `normal_view`.
     _normal: wgpu::Texture,
     normal_view: wgpu::TextureView,
+    /// Cached normal-pass bind group for this slot (rebuilt on resize).
+    normal_bind: Option<wgpu::BindGroup>,
     width: u32,
     height_px: u32,
 }
@@ -65,6 +67,7 @@ impl HeightSlot {
             normal_view: normal_tex.create_view(&wgpu::TextureViewDescriptor::default()),
             height: height_tex,
             _normal: normal_tex,
+            normal_bind: None,
             width,
             height_px: height,
         }
@@ -105,6 +108,40 @@ impl AuxMap {
     }
 }
 
+/// RGBA8 artist placement / biome colour overlay (filterable).
+struct RgbaAuxMap {
+    _texture: wgpu::Texture,
+    view: wgpu::TextureView,
+    width: u32,
+    height: u32,
+}
+
+impl RgbaAuxMap {
+    fn new(device: &wgpu::Device, width: u32, height: u32, label: &'static str) -> Self {
+        let texture = device.create_texture(&wgpu::TextureDescriptor {
+            label: Some(label),
+            size: wgpu::Extent3d {
+                width,
+                height,
+                depth_or_array_layers: 1,
+            },
+            mip_level_count: 1,
+            sample_count: 1,
+            dimension: wgpu::TextureDimension::D2,
+            format: wgpu::TextureFormat::Rgba8Unorm,
+            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::COPY_DST,
+            view_formats: &[],
+        });
+        let view = texture.create_view(&wgpu::TextureViewDescriptor::default());
+        Self {
+            _texture: texture,
+            view,
+            width,
+            height,
+        }
+    }
+}
+
 /// Double-buffered GPU height/normal pair. Display index is what the viewport samples.
 pub struct HeightGpu {
     slots: [HeightSlot; 2],
@@ -120,6 +157,18 @@ pub struct HeightGpu {
     materials: AuxMap,
     wetness: AuxMap,
     vegetation: AuxMap,
+    /// Drainage / SPE flow accumulation for lit channel tinting.
+    flow: AuxMap,
+    /// Phase H climate overlays uploaded as R32Float (CPU bake / hybrid).
+    temperature: AuxMap,
+    rainfall: AuxMap,
+    snow: AuxMap,
+    soil_moisture: AuxMap,
+    biomes: AuxMap,
+    /// Painted biome placement colours (RGBA8) for 3D tint overlay.
+    placement_tint: RgbaAuxMap,
+    /// External R32Float height view (GPU engine output) when sharing without copy.
+    shared_height_view: Option<wgpu::TextureView>,
 }
 
 impl HeightGpu {
@@ -196,6 +245,13 @@ impl HeightGpu {
         let materials = AuxMap::new(device, 1, 1, "materials-r32");
         let wetness = AuxMap::new(device, 1, 1, "wetness-r32");
         let vegetation = AuxMap::new(device, 1, 1, "vegetation-r32");
+        let flow = AuxMap::new(device, 1, 1, "flow-r32");
+        let temperature = AuxMap::new(device, 1, 1, "temperature-r32");
+        let rainfall = AuxMap::new(device, 1, 1, "rainfall-r32");
+        let snow = AuxMap::new(device, 1, 1, "snow-r32");
+        let soil_moisture = AuxMap::new(device, 1, 1, "soil-moisture-r32");
+        let biomes = AuxMap::new(device, 1, 1, "biomes-r32");
+        let placement_tint = RgbaAuxMap::new(device, 1, 1, "placement-tint-rgba8");
 
         Self {
             slots,
@@ -211,6 +267,14 @@ impl HeightGpu {
             materials,
             wetness,
             vegetation,
+            flow,
+            temperature,
+            rainfall,
+            snow,
+            soil_moisture,
+            biomes,
+            placement_tint,
+            shared_height_view: None,
         }
     }
 
@@ -243,13 +307,17 @@ impl HeightGpu {
         hf: &Heightfield,
         regions: Option<&[SampleRect]>,
     ) {
+        // CPU owns the viewport again — drop any borrowed GPU-engine view so
+        // display_height_view() samples the slot we are about to write.
+        // Without this, interactive filter stamps / async CPU results upload
+        // invisibly while the terrain keeps showing a stale shared texture.
+        self.shared_height_view = None;
         let w = hf.metrics.width;
         let h = hf.metrics.height;
         self.ensure_size(device, w, h);
         self.world_size = (hf.metrics.world_size_x, hf.metrics.world_size_z);
         self.height_range = hf.min_max();
 
-        let data = hf.to_dense();
         let slot = &self.slots[self.write];
 
         let full = SampleRect { x: 0, y: 0, w, h };
@@ -258,15 +326,26 @@ impl HeightGpu {
             _ => vec![full],
         };
 
+        // Prefer tiling samples over a full dense flatten when uploading partial rects.
+        let use_dense = rects.len() == 1 && rects[0].w == w && rects[0].h == h;
+        let dense = if use_dense { Some(hf.to_dense()) } else { None };
+
         for rect in &rects {
             if rect.is_empty() {
                 continue;
             }
-            // Pack rows tightly for write_texture (bytes_per_row = width * 4).
             let mut packed = Vec::with_capacity((rect.w * rect.h) as usize);
-            for row in rect.y..rect.y + rect.h {
-                let start = (row * w + rect.x) as usize;
-                packed.extend_from_slice(&data[start..start + rect.w as usize]);
+            if let Some(data) = dense.as_ref() {
+                for row in rect.y..rect.y + rect.h {
+                    let start = (row * w + rect.x) as usize;
+                    packed.extend_from_slice(&data[start..start + rect.w as usize]);
+                }
+            } else {
+                for row in rect.y..rect.y + rect.h {
+                    for col in rect.x..rect.x + rect.w {
+                        packed.push(hf.get(col, row));
+                    }
+                }
             }
             queue.write_texture(
                 wgpu::TexelCopyTextureInfo {
@@ -352,6 +431,7 @@ impl HeightGpu {
         dz: f32,
         region: Option<SampleRect>,
     ) {
+        self.shared_height_view = None;
         self.ensure_size(device, width, height);
         self.world_size = world_size;
         let (lo, hi) = if height_range.0 <= height_range.1 {
@@ -463,25 +543,33 @@ impl HeightGpu {
         };
         queue.write_buffer(&self.normal_uniform, 0, bytemuck::bytes_of(&uniforms));
 
-        let slot = &self.slots[self.write];
-        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
-            label: Some("normal-bg"),
-            layout: &self.normal_bgl,
-            entries: &[
-                wgpu::BindGroupEntry {
-                    binding: 0,
-                    resource: self.normal_uniform.as_entire_binding(),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&slot.height_view),
-                },
-                wgpu::BindGroupEntry {
-                    binding: 2,
-                    resource: wgpu::BindingResource::TextureView(&slot.normal_view),
-                },
-            ],
-        });
+        let write = self.write;
+        if self.slots[write].normal_bind.is_none() {
+            let slot = &self.slots[write];
+            self.slots[write].normal_bind =
+                Some(device.create_bind_group(&wgpu::BindGroupDescriptor {
+                    label: Some("normal-bg"),
+                    layout: &self.normal_bgl,
+                    entries: &[
+                        wgpu::BindGroupEntry {
+                            binding: 0,
+                            resource: self.normal_uniform.as_entire_binding(),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 1,
+                            resource: wgpu::BindingResource::TextureView(&slot.height_view),
+                        },
+                        wgpu::BindGroupEntry {
+                            binding: 2,
+                            resource: wgpu::BindingResource::TextureView(&slot.normal_view),
+                        },
+                    ],
+                }));
+        }
+        let bind = self.slots[write]
+            .normal_bind
+            .as_ref()
+            .expect("normal bind group");
 
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("normal-enc"),
@@ -492,15 +580,161 @@ impl HeightGpu {
                 timestamp_writes: None,
             });
             pass.set_pipeline(&self.normal_pipeline);
-            pass.set_bind_group(0, &bind, &[]);
+            pass.set_bind_group(0, bind, &[]);
             pass.dispatch_workgroups((region.w + 7) / 8, (region.h + 7) / 8, 1);
         }
         queue.submit(Some(encoder.finish()));
         std::mem::swap(&mut self.display, &mut self.write);
     }
 
+    /// Sample an external R32Float height texture in place; normals are computed locally.
+    pub fn present_shared_height(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        src_view: &wgpu::TextureView,
+        width: u32,
+        height: u32,
+        world_size: (f32, f32),
+        height_range: (f32, f32),
+        dx: f32,
+        dz: f32,
+    ) {
+        self.shared_height_view = Some(src_view.clone());
+        self.tex_size = (width, height);
+        self.world_size = world_size;
+        let (lo, hi) = if height_range.0 <= height_range.1 {
+            height_range
+        } else {
+            (height_range.1, height_range.0)
+        };
+        self.height_range = (lo, hi.max(lo + 1e-3));
+        self.ensure_size(device, width, height);
+        let region = SampleRect {
+            x: 0,
+            y: 0,
+            w: width,
+            h: height,
+        };
+        self.dispatch_normals_for_view(device, queue, src_view, width, height, dx, dz, region);
+    }
+
+    fn dispatch_normals_for_view(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        height_view: &wgpu::TextureView,
+        w: u32,
+        h: u32,
+        dx: f32,
+        dz: f32,
+        region: SampleRect,
+    ) {
+        let uniforms = NormalUniforms {
+            width: w,
+            height: h,
+            dx,
+            dz,
+            region_x: region.x,
+            region_y: region.y,
+            region_w: region.w.max(1),
+            region_h: region.h.max(1),
+        };
+        queue.write_buffer(&self.normal_uniform, 0, bytemuck::bytes_of(&uniforms));
+
+        let normal_out = &self.slots[self.display].normal_view;
+        let bind = device.create_bind_group(&wgpu::BindGroupDescriptor {
+            label: Some("normal-bg-shared"),
+            layout: &self.normal_bgl,
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.normal_uniform.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(height_view),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(normal_out),
+                },
+            ],
+        });
+
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("normal-enc-shared"),
+        });
+        {
+            let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
+                label: Some("normals-shared"),
+                timestamp_writes: None,
+            });
+            pass.set_pipeline(&self.normal_pipeline);
+            pass.set_bind_group(0, &bind, &[]);
+            pass.dispatch_workgroups((region.w + 7) / 8, (region.h + 7) / 8, 1);
+        }
+        queue.submit(Some(encoder.finish()));
+    }
+
     pub fn display_height_view(&self) -> &wgpu::TextureView {
-        &self.slots[self.display].height_view
+        if let Some(view) = &self.shared_height_view {
+            view
+        } else {
+            &self.slots[self.display].height_view
+        }
+    }
+
+    /// Drop any borrowed engine view and zero display heights (project switch).
+    pub fn reset_project_state(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        world_size: (f32, f32),
+    ) {
+        self.shared_height_view = None;
+        self.world_size = world_size;
+        self.height_range = (0.0, 1.0);
+        let w = self.tex_size.0.max(8);
+        let h = self.tex_size.1.max(8);
+        self.ensure_size(device, w, h);
+        let zeros = vec![0f32; (w as usize).saturating_mul(h as usize)];
+        for slot in &self.slots {
+            queue.write_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &slot.height,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                bytemuck::cast_slice(&zeros),
+                wgpu::TexelCopyBufferLayout {
+                    offset: 0,
+                    bytes_per_row: Some(w * 4),
+                    rows_per_image: Some(h),
+                },
+                wgpu::Extent3d {
+                    width: w,
+                    height: h,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
+        // Rebuild normals from the blank height so lighting does not keep old slopes.
+        self.compute_normals_region_and_swap(
+            device,
+            queue,
+            w,
+            h,
+            world_size.0 / w.max(1) as f32,
+            world_size.1 / h.max(1) as f32,
+            SampleRect {
+                x: 0,
+                y: 0,
+                w,
+                h,
+            },
+        );
     }
 
     pub fn display_normal_view(&self) -> &wgpu::TextureView {
@@ -521,6 +755,26 @@ impl HeightGpu {
         wetness: Option<&MaskField>,
         vegetation: Option<&MaskField>,
     ) {
+        self.upload_aux_maps_ex(
+            device, queue, materials, wetness, vegetation, None, None, None, None, None, None,
+        );
+    }
+
+    /// Upload materials/wetness/vegetation plus optional climate aux and flow (Phase H polish).
+    pub fn upload_aux_maps_ex(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        materials: Option<&MaskField>,
+        wetness: Option<&MaskField>,
+        vegetation: Option<&MaskField>,
+        temperature: Option<&MaskField>,
+        rainfall: Option<&MaskField>,
+        snow: Option<&MaskField>,
+        soil_moisture: Option<&MaskField>,
+        biomes: Option<&MaskField>,
+        flow: Option<&MaskField>,
+    ) {
         Self::upload_aux_map(
             device,
             queue,
@@ -536,6 +790,24 @@ impl HeightGpu {
             vegetation,
             "vegetation-r32",
         );
+        Self::upload_aux_map(device, queue, &mut self.flow, flow, "flow-r32");
+        Self::upload_aux_map(
+            device,
+            queue,
+            &mut self.temperature,
+            temperature,
+            "temperature-r32",
+        );
+        Self::upload_aux_map(device, queue, &mut self.rainfall, rainfall, "rainfall-r32");
+        Self::upload_aux_map(device, queue, &mut self.snow, snow, "snow-r32");
+        Self::upload_aux_map(
+            device,
+            queue,
+            &mut self.soil_moisture,
+            soil_moisture,
+            "soil-moisture-r32",
+        );
+        Self::upload_aux_map(device, queue, &mut self.biomes, biomes, "biomes-r32");
     }
 
     fn upload_aux_map(
@@ -583,5 +855,72 @@ impl HeightGpu {
 
     pub fn vegetation_view(&self) -> &wgpu::TextureView {
         &self.vegetation.view
+    }
+
+    pub fn flow_view(&self) -> &wgpu::TextureView {
+        &self.flow.view
+    }
+
+    pub fn temperature_view(&self) -> &wgpu::TextureView {
+        &self.temperature.view
+    }
+
+    pub fn rainfall_view(&self) -> &wgpu::TextureView {
+        &self.rainfall.view
+    }
+
+    pub fn snow_view(&self) -> &wgpu::TextureView {
+        &self.snow.view
+    }
+
+    pub fn soil_moisture_view(&self) -> &wgpu::TextureView {
+        &self.soil_moisture.view
+    }
+
+    pub fn biomes_view(&self) -> &wgpu::TextureView {
+        &self.biomes.view
+    }
+
+    pub fn placement_tint_view(&self) -> &wgpu::TextureView {
+        &self.placement_tint.view
+    }
+
+    /// Upload painted biome placement colours (RGBA8, row-major). Empty → 1×1 transparent.
+    pub fn upload_placement_tint(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        width: u32,
+        height: u32,
+        rgba: &[u8],
+    ) {
+        let (w, h, bytes): (u32, u32, Vec<u8>) =
+            if width == 0 || height == 0 || rgba.len() < (width * height * 4) as usize {
+                (1, 1, vec![0, 0, 0, 0])
+            } else {
+                (width, height, rgba.to_vec())
+            };
+        if self.placement_tint.width != w || self.placement_tint.height != h {
+            self.placement_tint = RgbaAuxMap::new(device, w, h, "placement-tint-rgba8");
+        }
+        queue.write_texture(
+            wgpu::TexelCopyTextureInfo {
+                texture: &self.placement_tint._texture,
+                mip_level: 0,
+                origin: wgpu::Origin3d::ZERO,
+                aspect: wgpu::TextureAspect::All,
+            },
+            &bytes,
+            wgpu::TexelCopyBufferLayout {
+                offset: 0,
+                bytes_per_row: Some(w * 4),
+                rows_per_image: Some(h),
+            },
+            wgpu::Extent3d {
+                width: w,
+                height: h,
+                depth_or_array_layers: 1,
+            },
+        );
     }
 }

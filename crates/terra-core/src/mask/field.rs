@@ -33,6 +33,15 @@ impl MaskField {
         Self::filled(metrics, 0.0)
     }
 
+    /// Build from raw samples without \[0,1\] clamping (debug / sim state).
+    pub fn from_raw(metrics: HeightfieldMetrics, data: &[f32]) -> Self {
+        assert_eq!(data.len(), (metrics.width * metrics.height) as usize);
+        Self {
+            metrics,
+            data: data.to_vec(),
+        }
+    }
+
     #[inline]
     fn idx(&self, i: u32, j: u32) -> usize {
         (j * self.metrics.width + i) as usize

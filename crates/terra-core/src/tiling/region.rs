@@ -1,9 +1,10 @@
 //! Sample-space rectangles for tiled dirty regions (Wave D).
 
 use crate::heightfield::{HeightfieldMetrics, TileId};
+use serde::{Deserialize, Serialize};
 
 /// Inclusive-exclusive sample rectangle `[x, x+w) × [y, y+h)`.
-#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct SampleRect {
     pub x: u32,
     pub y: u32,

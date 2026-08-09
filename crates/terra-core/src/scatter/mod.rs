@@ -132,6 +132,9 @@ mod tests {
             min_slope_deg: 0.0,
             max_slope_deg: 90.0,
             biome_id: None,
+            root_cohesion: 0.0,
+            coverage: Default::default(),
+            ..VegetationParams::default()
         };
         let pts = poisson_disk(&hf, &p);
         assert!(!pts.is_empty());

@@ -11,6 +11,8 @@ pub struct CachedOutput {
     pub generation: u64,
     pub dirty: bool,
     pub aux: HashMap<String, MaskField>,
+    /// Materials strata (not stored in the aux HashMap).
+    pub strata: Option<Vec<crate::layer::Stratum>>,
 }
 
 #[derive(Debug)]
@@ -134,6 +136,10 @@ impl LayerCache {
             Some(e) => e.dirty,
             None => true,
         }
+    }
+
+    pub fn get_mut(&mut self, id: LayerId) -> Option<&mut CachedOutput> {
+        self.entries.get_mut(&id)
     }
 
     pub fn len(&self) -> usize {

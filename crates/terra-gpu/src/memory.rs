@@ -1,5 +1,6 @@
 //! GPU/CPU memory budget controller.
 
+/// Tracks allocated / pooled GPU-side bytes against a soft ceiling.
 #[derive(Debug, Clone)]
 pub struct MemoryBudget {
     pub max_bytes: u64,
@@ -28,6 +29,11 @@ impl MemoryBudget {
 
     pub fn utilization(&self) -> f32 {
         self.used_bytes as f32 / self.max_bytes.max(1) as f32
+    }
+
+    /// Remaining headroom in bytes.
+    pub fn remaining(&self) -> u64 {
+        self.max_bytes.saturating_sub(self.used_bytes)
     }
 }
 

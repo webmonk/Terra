@@ -72,27 +72,33 @@ pub fn fbm(kind: FractalNoiseType, x: f32, z: f32, params: &NoiseParams) -> f32 
     remap(v, params.remap_min, params.remap_max, -1.0, 1.0) * params.amplitude
 }
 
+/// Normalized hybrid ridged multifractal in `[0, amplitude]`.
+///
+/// The octave envelope is normalized so adding detail cannot silently exceed
+/// the artist's amplitude and get flattened by downstream clamps.
 pub fn ridged_mf(kind: FractalNoiseType, x: f32, z: f32, params: &NoiseParams) -> f32 {
     let mut amp = 1.0;
     let mut freq = params.frequency;
     let mut sum = 0.0;
+    let mut norm = 0.0;
     let mut weight = 1.0;
     for o in 0..params.octaves.max(1) {
-        let mut n = sample_noise(
+        let n = sample_noise(
             kind,
             (x + params.offset_x) * freq,
             (z + params.offset_z) * freq,
             params.seed.wrapping_add(o as u64 * 9173),
         );
-        n = 1.0 - n.abs();
-        n *= n;
-        n *= weight;
-        weight = (n * 2.0).clamp(0.0, 1.0);
-        sum += n * amp;
+        let ridge = (1.0 - n.abs()).clamp(0.0, 1.0);
+        let signal = ridge * ridge * weight;
+        weight = (signal * 2.0).clamp(0.0, 1.0);
+        sum += signal * amp;
+        norm += amp;
         amp *= params.persistence;
         freq *= params.lacunarity;
     }
-    sum * params.amplitude
+    let normalized = if norm > 0.0 { sum / norm } else { 0.0 };
+    normalized.clamp(0.0, 1.0) * params.amplitude
 }
 
 pub fn domain_warp_fbm(
@@ -153,6 +159,28 @@ mod tests {
         };
         let v = fbm(FractalNoiseType::Perlin, 10.0, 20.0, &p);
         assert!(v.is_finite());
+    }
+
+    #[test]
+    fn ridged_multifractal_respects_amplitude_across_octaves() {
+        for octaves in [1, 3, 6, 9] {
+            let p = NoiseParams {
+                octaves,
+                frequency: 0.013,
+                amplitude: 240.0,
+                ..NoiseParams::default()
+            };
+            for z in 0..48 {
+                for x in 0..48 {
+                    let v = ridged_mf(FractalNoiseType::Perlin, x as f32, z as f32, &p);
+                    assert!(v >= 0.0, "ridged field must stay non-negative");
+                    assert!(
+                        v <= p.amplitude + 1e-4,
+                        "octaves={octaves} exceeded amplitude: {v}"
+                    );
+                }
+            }
+        }
     }
 
     #[test]

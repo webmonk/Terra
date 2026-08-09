@@ -18,7 +18,7 @@ pub fn perlin2(x: f32, z: f32, seed: u64) -> f32 {
     let nx0 = lerp(g00, g10, u);
     let nx1 = lerp(g01, g11, u);
     // Scale to approx [-1,1]
-    lerp(nx0, nx1, v) * 1.4142135
+    lerp(nx0, nx1, v) * std::f32::consts::SQRT_2
 }
 
 fn grad(h: u32, x: f32, z: f32) -> f32 {

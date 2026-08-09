@@ -12,5 +12,10 @@ winit = { workspace = true }
 glam = { workspace = true }
 bytemuck = { workspace = true }
 thiserror = { workspace = true }
+image = { workspace = true }
 log = { workspace = true }
 profiling = { workspace = true }
+
+[dev-dependencies]
+naga = { version = "24.0.0", features = ["wgsl-in"] }
+pollster = { workspace = true }

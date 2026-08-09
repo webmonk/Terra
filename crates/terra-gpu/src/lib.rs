@@ -1,19 +1,22 @@
 //! GPU compute for Terra (WGSL). CPU references in `terra-core` remain the test oracle.
+//!
+//! Interactive hard rules: GPU-resident heightfields, no UI-thread readback, no mesh rebuild,
+//! dirty-tile compute, incomplete GPU prefixes are never treated as finished Draft.
 
-pub mod buffer_pool;
+pub mod derivatives;
+pub mod effect_filter;
 pub mod engine;
-pub mod hydraulic;
+pub mod graph;
 pub mod memory;
 pub mod parity;
-pub mod thermal;
+pub mod tile_cache;
 
+pub use derivatives::{cpu_slope_oracle, run_derivative_gpu, GpuDerivativeMode};
 pub use engine::{layer_gpu_supported, GpuEvalResult, GpuTerrainEngine};
+pub use graph::{compile_gpu_graph, expand_dirty_rect, GpuComputeGraph, GpuPass, GpuPassKind};
+pub use tile_cache::{GpuPageTableEntry, GpuTileAtlas, GpuTileCacheError, GpuTileUpload};
 
-use bytemuck::{Pod, Zeroable};
-use std::sync::Mutex;
-use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
 use thiserror::Error;
-use wgpu::util::DeviceExt;
 
 #[derive(Debug, Error)]
 pub enum GpuError {
@@ -21,18 +24,45 @@ pub enum GpuError {
     Wgpu(String),
     #[error("no adapter")]
     NoAdapter,
+    /// Stack needs the CPU tree evaluator (scoped groups / unsupported layers).
+    #[error("cpu evaluation required")]
+    RequiresCpu,
 }
 
 pub struct GpuContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
-    pub buffers: Mutex<buffer_pool::BufferPool>,
+}
+
+fn preferred_backends() -> wgpu::Backends {
+    if let Ok(raw) = std::env::var("WGPU_BACKEND") {
+        let mut backends = wgpu::Backends::empty();
+        for part in raw.split([',', '|']).map(|p| p.trim().to_ascii_lowercase()) {
+            match part.as_str() {
+                "vulkan" | "vk" => backends |= wgpu::Backends::VULKAN,
+                "dx12" | "d3d12" => backends |= wgpu::Backends::DX12,
+                "metal" => backends |= wgpu::Backends::METAL,
+                "gl" | "gles" => backends |= wgpu::Backends::GL,
+                "primary" => return wgpu::Backends::PRIMARY,
+                "all" => return wgpu::Backends::all(),
+                _ => {}
+            }
+        }
+        if !backends.is_empty() {
+            return backends;
+        }
+    }
+    if cfg!(target_os = "windows") {
+        wgpu::Backends::DX12
+    } else {
+        wgpu::Backends::PRIMARY
+    }
 }
 
 impl GpuContext {
     pub fn new() -> Result<Self, GpuError> {
         let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            backends: wgpu::Backends::PRIMARY,
+            backends: preferred_backends(),
             ..Default::default()
         });
         let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
@@ -53,36 +83,8 @@ impl GpuContext {
         ))
         .map_err(|e| GpuError::Wgpu(e.to_string()))?;
 
-        Ok(Self {
-            buffers: Mutex::new(buffer_pool::BufferPool::new(device.clone())),
-            device,
-            queue,
-        })
+        Ok(Self { device, queue })
     }
-}
-
-#[repr(C)]
-#[derive(Clone, Copy, Pod, Zeroable)]
-pub struct SimUniforms {
-    pub width: u32,
-    pub height: u32,
-    pub dx: f32,
-    pub params0: f32,
-    pub params1: f32,
-    pub params2: f32,
-    pub params3: f32,
-    pub _pad: f32,
-}
-
-pub fn heightfield_to_buffer(device: &wgpu::Device, hf: &Heightfield) -> wgpu::Buffer {
-    let data = hf.to_dense();
-    device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("heightfield"),
-        contents: bytemuck::cast_slice(&data),
-        usage: wgpu::BufferUsages::STORAGE
-            | wgpu::BufferUsages::COPY_SRC
-            | wgpu::BufferUsages::COPY_DST,
-    })
 }
 
 pub fn readback_f32(
@@ -117,23 +119,4 @@ pub fn readback_f32(
     drop(data);
     staging.unmap();
     Ok(out)
-}
-
-pub fn metrics_uniforms(
-    metrics: HeightfieldMetrics,
-    p0: f32,
-    p1: f32,
-    p2: f32,
-    p3: f32,
-) -> SimUniforms {
-    SimUniforms {
-        width: metrics.width,
-        height: metrics.height,
-        dx: metrics.dx(),
-        params0: p0,
-        params1: p1,
-        params2: p2,
-        params3: p3,
-        _pad: 0.0,
-    }
 }

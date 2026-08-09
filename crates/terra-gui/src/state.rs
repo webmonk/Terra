@@ -45,6 +45,8 @@ pub struct GuiState {
     pub combo_pick: Option<(Id, usize)>,
     /// Previous frame's primary button (for edge detection).
     pub was_primary_down: bool,
+    /// Previous frame's secondary (right) button (for edge detection).
+    pub was_secondary_down: bool,
     /// Persisted floating-window top-left positions (logical px), keyed by window id.
     pub window_pos: HashMap<u64, (f32, f32)>,
     pub window_drag: Option<WindowDrag>,
@@ -67,6 +69,16 @@ impl GuiState {
     pub fn wants_pointer(&self) -> bool {
         self.hot.is_some()
             || self.active.is_some()
+            || self.open_combo.is_some()
+            || self.scroll_drag.is_some()
+            || self.splitter_drag.is_some()
+            || self.text_focus.is_some()
+    }
+
+    /// True while the user is actively capturing the pointer (drag, scroll,
+    /// combo, text) — excludes mere hover so background work can continue.
+    pub fn is_interacting(&self) -> bool {
+        self.active.is_some()
             || self.open_combo.is_some()
             || self.scroll_drag.is_some()
             || self.splitter_drag.is_some()

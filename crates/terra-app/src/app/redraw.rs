@@ -1,0 +1,544 @@
+﻿use std::time::Instant;
+
+use terra_core::eval::PreviewQuality;
+use terra_core::layer::LayerKind;
+use terra_gui::{GuiContext, GuiInput};
+use crate::ui::{
+    draw_discard_confirm, draw_editor_gui, draw_new_project_templates, draw_project_home,
+    DiscardConfirmChoice, NewProjectTemplateChoice,
+};
+use winit::event::MouseButton;
+
+use super::helpers::{
+    aux_maps_fingerprint, mask_field_fingerprint, vegetation_instance_params,
+};
+use super::{save_layout_prefs, AppScreen, PendingProjectAction, TerraApp};
+impl TerraApp {
+    pub(crate) fn redraw(&mut self) {
+        let frame_t0 = Instant::now();
+        let Some(window) = self.window.clone() else {
+            return;
+        };
+
+        // Coalesce fast brush motion: many stamps per frame, one Draft present.
+        // Mask paint updates overlay only â€” never force a height eval mid-stroke.
+        if self.pending_eval
+            && (self.sculpt_stroke_active
+                || (self.mouse_pressed == Some(MouseButton::Left)
+                    && self.viewport_paint_active()
+                    && self.ui_state.editor_tool != crate::ui::EditorTool::PaintMask))
+        {
+            self.flush_live_paint_preview();
+        }
+
+        self.refresh_viewport_rect();
+        self.refresh_2d_preview();
+        if self.should_show_mask_overlay() {
+            let target = self.ui_state.paint_mask.or(self.ui_state.selected_mask);
+            if self.mask_overlay_dirty || self.last_mask_overlay_id != target {
+                self.sync_mask_overlay_to_renderer();
+                self.last_mask_overlay_id = target;
+            }
+        } else {
+            if self.last_mask_overlay_id.take().is_some() {
+                self.placement_tint_dirty = true;
+            }
+            if self.placement_tint_dirty {
+                self.sync_placement_tint_to_renderer();
+            }
+        }
+
+        if self.needs_height_upload {
+            if let Some(hf) = self.last_height.clone() {
+                self.ensure_climate_for_lit();
+                let material_palette = self
+                    .session
+                    .document
+                    .stack
+                    .flatten_layers()
+                    .into_iter()
+                    .rev()
+                    .find_map(|layer| match &layer.kind {
+                        LayerKind::Materials(p) if layer.common.enabled => Some(p.clone()),
+                        _ => None,
+                    });
+                if let Some(r) = self.renderer.as_mut() {
+                    r.upload_heightfield(&hf);
+                    let ocean_level = if self.ui_state.viewport_overlays.water_level {
+                        self.session
+                            .document
+                            .stack
+                            .flatten_layers()
+                            .into_iter()
+                            .rev()
+                            .find_map(|layer| {
+                                if !layer.common.enabled {
+                                    None
+                                } else {
+                                    match &layer.kind {
+                                        LayerKind::Island(p) => Some(p.sea_level),
+                                        LayerKind::Coastal(p) => Some(p.sea_level),
+                                        _ => None,
+                                    }
+                                }
+                            })
+                    } else {
+                        None
+                    };
+                    let aux_fp = aux_maps_fingerprint(&self.scheduler.last_aux);
+                    if aux_fp != self.aux_upload_fp {
+                        r.upload_aux_maps_ex(
+                            self.scheduler.last_aux.get("materials"),
+                            self.scheduler.last_aux.get("wetness"),
+                            self.scheduler.last_aux.get("vegetation"),
+                            self.scheduler.last_aux.get("temperature"),
+                            self.scheduler.last_aux.get("rainfall"),
+                            self.scheduler.last_aux.get("snow"),
+                            self.scheduler.last_aux.get("soil_moisture"),
+                            self.scheduler.last_aux.get("biomes"),
+                            self.scheduler.last_aux.get("flow_accumulation"),
+                        );
+                        self.aux_upload_fp = aux_fp;
+                    }
+                    r.upload_material_palette(material_palette.as_ref());
+                    r.set_ocean_level(ocean_level);
+                    self.placement_tint_dirty = true;
+                    let (veg_scale_min, veg_scale_max, veg_yaw) =
+                        vegetation_instance_params(&self.session.document);
+                    let veg_fp = self
+                        .scheduler
+                        .last_aux
+                        .get("vegetation")
+                        .map(mask_field_fingerprint)
+                        .unwrap_or(0)
+                        ^ ((hf.metrics.width as u64) << 32)
+                        ^ hf.metrics.height as u64
+                        ^ (veg_scale_min.to_bits() as u64)
+                        ^ ((veg_scale_max.to_bits() as u64) << 17)
+                        ^ (veg_yaw.to_bits() as u64).rotate_left(7);
+                    if veg_fp != self.veg_upload_fp {
+                        r.sync_vegetation_instances(
+                            &hf,
+                            self.scheduler.last_aux.get("vegetation"),
+                            veg_scale_min,
+                            veg_scale_max,
+                            veg_yaw,
+                        );
+                        self.veg_upload_fp = veg_fp;
+                    }
+                    // Phase J: dual-height overhang / cave roof proxy from aux maps.
+                    let overhang_fp = self
+                        .scheduler
+                        .last_aux
+                        .get("overhang_ceiling")
+                        .map(mask_field_fingerprint)
+                        .unwrap_or(0)
+                        ^ self
+                            .scheduler
+                            .last_aux
+                            .get("overhang_mask")
+                            .map(mask_field_fingerprint)
+                            .unwrap_or(0)
+                            .rotate_left(13);
+                    if overhang_fp != self.overhang_upload_fp {
+                        let overhang_mesh = match (
+                            self.scheduler.last_aux.get("overhang_ceiling"),
+                            self.scheduler.last_aux.get("overhang_mask"),
+                        ) {
+                            (Some(ceiling), Some(mask)) => {
+                                let mesh = terra_core::volumetric::build_overhang_mesh(
+                                    &hf, ceiling, mask, 0.12,
+                                );
+                                if mesh.is_empty() {
+                                    None
+                                } else {
+                                    Some(mesh)
+                                }
+                            }
+                            _ => None,
+                        };
+                        r.sync_overhang_mesh(overhang_mesh.as_ref());
+                        self.overhang_upload_fp = overhang_fp;
+                    }
+                    self.ui_state.profile.upload_us = r.last_upload_us;
+                }
+                self.needs_height_upload = false;
+            }
+        }
+
+        let pointer = self.cursor_logical();
+        let primary_down = self.mouse_pressed == Some(MouseButton::Left);
+        let secondary_down = self.mouse_pressed == Some(MouseButton::Right);
+        let scroll_delta = std::mem::take(&mut self.gui_scroll_delta);
+        let text = std::mem::take(&mut self.gui_text);
+        let backspace_pressed = std::mem::take(&mut self.gui_backspace);
+        let escape_pressed = std::mem::take(&mut self.gui_escape);
+        let enter_pressed = std::mem::take(&mut self.gui_enter);
+        let pixels_per_point = window.scale_factor() as f32;
+
+        // Brush ring tracks the cursor on the height surface while sculpt/mask tools are armed.
+        self.update_brush_gizmo();
+
+        let ui_out = {
+            let Some(renderer) = self.renderer.as_mut() else {
+                return;
+            };
+            let Some(gui_renderer) = self.gui_renderer.as_mut() else {
+                return;
+            };
+
+            // Terrain pass â€” always draws last-good GPU textures (never waits on eval).
+            let render_t0 = Instant::now();
+            {
+                let (light_dir, exposure, clear) = if self.screen == AppScreen::Home {
+                    ([-0.35, -0.90, -0.20, 1.00], 1.0, [0.071, 0.082, 0.102])
+                } else {
+                    self.ui_state.lighting_preset.params()
+                };
+                renderer.lighting.light_dir = light_dir;
+                renderer.lighting.exposure = exposure;
+                renderer.lighting.clear = clear;
+                renderer.set_progressive_enabled(
+                    self.screen == AppScreen::Editor
+                        && self.ui_state.lighting_preset.is_progressive(),
+                );
+                let shading = if self.ui_state.is_mask_view() {
+                    terra_render::ViewportShadingMode::Lit
+                } else {
+                    match self.ui_state.preview_mode {
+                        crate::ui::Preview2dMode::Height => terra_render::ViewportShadingMode::Height,
+                        crate::ui::Preview2dMode::Slope => terra_render::ViewportShadingMode::Slope,
+                        crate::ui::Preview2dMode::Flow => terra_render::ViewportShadingMode::Flow,
+                        _ => terra_render::ViewportShadingMode::Lit,
+                    }
+                };
+                let ov = &self.ui_state.viewport_overlays;
+                renderer.set_display_aids(terra_render::ViewportDisplayAids {
+                    wireframe: ov.wireframe,
+                    grid: ov.grid,
+                    world_bounds: ov.world_bounds,
+                    contours: ov.contours,
+                    shading,
+                });
+                renderer.update_visible_tile_plan(&self.terrain_runtime.pyramid);
+            }
+            let frame = match renderer.render_terrain() {
+                Ok(f) => f,
+                Err(e) => {
+                    log::warn!("render: {e}");
+                    return;
+                }
+            };
+            self.ui_state.profile.render_us = render_t0.elapsed().as_micros() as u64;
+            self.ui_state.profile.terrain_grid_size = renderer.last_grid_resolution;
+            self.ui_state.profile.update_visible_tiles(
+                renderer.last_tile_plan_exact,
+                renderer.last_tile_plan_fallback,
+                renderer.last_tile_plan_missing,
+            );
+            self.ui_state.progressive_samples = renderer.progressive_samples();
+            self.ui_state.camera_xz = (
+                (renderer.camera.target.x / renderer.heights.world_size.0.max(1.0)).clamp(0.0, 1.0),
+                (renderer.camera.target.z / renderer.heights.world_size.1.max(1.0)).clamp(0.0, 1.0),
+            );
+            self.ui_state.camera_yaw = renderer.camera.yaw;
+            self.ui_state.camera_pitch = renderer.camera.pitch;
+            let view = frame
+                .texture
+                .create_view(&wgpu::TextureViewDescriptor::default());
+
+            let screen_w = renderer.config.width as f32 / pixels_per_point;
+            let screen_h = renderer.config.height as f32 / pixels_per_point;
+
+            let ui_t0 = Instant::now();
+            let hist_fp = self.session.history.ui_fingerprint();
+            if hist_fp != self.ui_history_fp {
+                self.ui_history_fp = hist_fp;
+                self.ui_state.history_descriptions = self.session.history.undo_descriptions();
+            }
+            let outdated_fp = self.session.outdated_sim_layers.len();
+            if outdated_fp != self.ui_outdated_fp
+                || self.ui_state.outdated_layer_ids.len() != outdated_fp
+            {
+                self.ui_outdated_fp = outdated_fp;
+                self.ui_state.outdated_layer_ids = self.session.outdated_sim_layers.clone();
+            }
+            // Soft incomplete-project diagnostics (empty is valid â€” explain, don't block).
+            let diag_fp = (self.session.document.stack.nodes.len() as u64)
+                ^ ((self.session.document.biome_library.definitions.len() as u64) << 16);
+            if diag_fp != self.ui_soft_diag_fp {
+                self.ui_soft_diag_fp = diag_fp;
+                let diags =
+                    terra_core::domain::incomplete_project_diagnostics(&self.session.document);
+                self.ui_state.soft_project_diag = diags.first().map(|d| d.message.clone());
+            }
+            self.gui_state.layout = self.ui_state.layout.clone();
+            if let Some(window) = self.window.as_ref() {
+                self.ui_state.window_maximized = window.is_maximized();
+            }
+            let mut gui = GuiContext::begin(
+                screen_w,
+                screen_h,
+                pixels_per_point,
+                GuiInput {
+                    pointer,
+                    primary_down,
+                    secondary_down,
+                    scroll_delta,
+                    text,
+                    backspace_pressed,
+                    escape_pressed,
+                    enter_pressed,
+                    ..Default::default()
+                },
+                &mut self.gui_state,
+            );
+            self.viewport_rect = gui.viewport_rect();
+
+            let mut home_actions = Vec::new();
+            let ui_out = if self.screen == AppScreen::Home {
+                let mut out = crate::ui::FrameUiOutput::default();
+                home_actions = draw_project_home(
+                    &mut gui,
+                    &mut self.project_home,
+                    &self.project_prefs,
+                    &mut out,
+                    self.ui_state.window_maximized,
+                );
+                out
+            } else {
+                draw_editor_gui(
+                    &mut gui,
+                    &mut self.session.document,
+                    &mut self.ui_state,
+                    &mut self.chrome_gui,
+                    &mut self.tools_gui,
+                    &mut self.layers_gui,
+                    &mut self.inspector_gui,
+                    &mut self.windows_gui,
+                    &mut self.dock_gui,
+                )
+            };
+
+            let discard_choice = if self.pending_project_action.is_some() {
+                draw_discard_confirm(&mut gui)
+            } else {
+                None
+            };
+
+            let template_choice =
+                if self.show_new_template_picker && self.pending_project_action.is_none() {
+                    draw_new_project_templates(
+                        &mut gui,
+                        &mut self.new_template_selected,
+                        &mut self.new_world_settings,
+                    )
+                } else {
+                    None
+                };
+
+            if self.ui_state.show_widget_lab && self.screen == AppScreen::Editor {
+                gui.widget_lab(&mut self.widget_lab);
+            }
+            gui.end();
+            self.gui_wants_pointer = gui.wants_pointer()
+                || (self.screen == AppScreen::Editor && self.ui_state.tool_drag.is_some())
+                || self.layers_gui.drag_from.is_some();
+            self.gui_interacting = gui.is_interacting()
+                || (self.screen == AppScreen::Editor && self.ui_state.tool_drag.is_some())
+                || self.layers_gui.drag_from.is_some();
+            self.ui_state.profile.ui_us = ui_t0.elapsed().as_micros() as u64;
+
+            gui_renderer.render(
+                &renderer.device,
+                &renderer.queue,
+                &view,
+                &mut gui,
+                renderer.config.width,
+                renderer.config.height,
+            );
+            frame.present();
+            (ui_out, home_actions, discard_choice, template_choice)
+        };
+
+        let (ui_out, home_actions, discard_choice, template_choice) = ui_out;
+
+        if let Some(window) = self.window.clone() {
+            self.ui_state.window_maximized = window.is_maximized();
+            use crate::ui::{UiCursor, WindowResizeEdge};
+            use winit::window::{CursorIcon, ResizeDirection};
+            let icon = match ui_out.cursor {
+                UiCursor::Default => CursorIcon::Default,
+                UiCursor::Grab => CursorIcon::Grab,
+                UiCursor::Grabbing => CursorIcon::Grabbing,
+                UiCursor::NResize => CursorIcon::NResize,
+                UiCursor::SResize => CursorIcon::SResize,
+                UiCursor::EResize => CursorIcon::EResize,
+                UiCursor::WResize => CursorIcon::WResize,
+                UiCursor::NeResize => CursorIcon::NeResize,
+                UiCursor::NwResize => CursorIcon::NwResize,
+                UiCursor::SeResize => CursorIcon::SeResize,
+                UiCursor::SwResize => CursorIcon::SwResize,
+            };
+            window.set_cursor(icon);
+
+            if ui_out.request_window_minimize {
+                window.set_minimized(true);
+            }
+            if ui_out.request_window_toggle_maximize {
+                window.set_maximized(!window.is_maximized());
+            }
+            if ui_out.request_window_close {
+                self.pending_exit = true;
+            }
+            if ui_out.request_window_drag {
+                let _ = window.drag_window();
+            }
+            if let Some(edge) = ui_out.request_window_drag_resize {
+                let dir = match edge {
+                    WindowResizeEdge::East => ResizeDirection::East,
+                    WindowResizeEdge::North => ResizeDirection::North,
+                    WindowResizeEdge::NorthEast => ResizeDirection::NorthEast,
+                    WindowResizeEdge::NorthWest => ResizeDirection::NorthWest,
+                    WindowResizeEdge::South => ResizeDirection::South,
+                    WindowResizeEdge::SouthEast => ResizeDirection::SouthEast,
+                    WindowResizeEdge::SouthWest => ResizeDirection::SouthWest,
+                    WindowResizeEdge::West => ResizeDirection::West,
+                };
+                let _ = window.drag_resize_window(dir);
+            }
+        }
+
+        self.ui_state.profile.frame_us = frame_t0.elapsed().as_micros() as u64;
+
+        if let Some(choice) = discard_choice {
+            match choice {
+                DiscardConfirmChoice::Discard => {
+                    if let Some(action) = self.pending_project_action.take() {
+                        self.perform_project_action(action);
+                    }
+                }
+                DiscardConfirmChoice::Cancel => {
+                    self.pending_project_action = None;
+                }
+            }
+        }
+
+        if let Some(choice) = template_choice {
+            match choice {
+                NewProjectTemplateChoice::Cancel => {
+                    self.show_new_template_picker = false;
+                }
+                NewProjectTemplateChoice::Create {
+                    template_id,
+                    world_size_m,
+                    sea_level,
+                } => {
+                    self.new_project_with_template(
+                        &template_id,
+                        world_size_m,
+                        sea_level,
+                    );
+                }
+            }
+        }
+
+        self.handle_home_actions(home_actions);
+
+        if self.screen == AppScreen::Editor {
+            self.apply_actions(ui_out.actions);
+            if ui_out.request_undo {
+                self.undo();
+            }
+            if ui_out.request_redo {
+                self.redo();
+            }
+            if ui_out.request_save {
+                self.save_current_project();
+            }
+            if ui_out.request_save_as {
+                self.save_project_as();
+            }
+            if ui_out.request_load_path {
+                self.request_project_action(PendingProjectAction::Open);
+            }
+            if ui_out.request_new_project {
+                self.request_project_action(PendingProjectAction::New);
+            }
+            if ui_out.request_close_project {
+                self.request_project_action(PendingProjectAction::Close);
+            }
+            if ui_out.request_export_path {
+                self.choose_export_directory();
+            }
+            if ui_out.request_start_export {
+                self.start_export();
+            }
+            if ui_out.camera_reset {
+                if let Some(r) = self.renderer.as_mut() {
+                    r.request_camera_reframe();
+                    r.frame_camera_to_terrain();
+                }
+            }
+            if ui_out.camera_top_view {
+                if let Some(r) = self.renderer.as_mut() {
+                    r.camera_top_view();
+                }
+            }
+            if ui_out.camera_frame_selection {
+                if let Some(r) = self.renderer.as_mut() {
+                    r.frame_camera_to_selection();
+                }
+            }
+            if ui_out.request_full_build {
+                self.scheduler.quality = PreviewQuality::Full;
+                self.ui_state.quality = PreviewQuality::Full;
+                self.ui_state.profile.quality = "Full (EXPORT)";
+                self.request_rebuild();
+            }
+            if ui_out.request_cancel_build {
+                // Bump the eval token so the worker discards the in-flight job.
+                self.eval_token = self.eval_token.wrapping_add(1);
+                self.eval_worker.set_token(self.eval_token);
+                self.ui_state.refining = false;
+                self.ui_state.build_progress = None;
+                self.ui_state.refining_layer_name = None;
+                self.ui_state.status = "Build cancelled".into();
+            }
+            if let Some(res) = self.ui_state.pending_preview_resolution.take() {
+                if self.session.document.preview_resolution != res {
+                    self.session.document.preview_resolution = res;
+                    self.request_rebuild();
+                }
+            }
+            if ui_out.request_save_bookmark {
+                let slot = self
+                    .ui_state
+                    .bookmarks
+                    .iter()
+                    .position(|b| b.is_none())
+                    .unwrap_or(0);
+                self.save_camera_bookmark(slot);
+            }
+            if let Some(slot) = ui_out.request_save_bookmark_slot {
+                self.save_camera_bookmark(slot);
+            }
+            if let Some(slot) = ui_out.request_recall_bookmark {
+                self.recall_camera_bookmark(slot);
+            }
+        }
+        if self.ui_state.layout_dirty {
+            self.ui_state.layout.clamp_mut();
+            save_layout_prefs(&self.ui_state.layout);
+            self.ui_state.layout_dirty = false;
+            self.refresh_viewport_rect();
+        }
+
+        if self.gui_wants_pointer
+            || self.pending_project_action.is_some()
+            || self.show_new_template_picker
+        {
+            window.request_redraw();
+        }
+    }
+}

@@ -40,6 +40,9 @@ pub struct GuiRenderer {
     image_samp: wgpu::Sampler,
     image_w: u32,
     image_h: u32,
+    /// Skip GPU atlas rewrite when queued image set is unchanged.
+    image_atlas_fp: u64,
+    cached_image_uvs: Vec<[f32; 4]>,
     format: wgpu::TextureFormat,
 }
 
@@ -277,6 +280,8 @@ impl GuiRenderer {
             image_samp,
             image_w,
             image_h,
+            image_atlas_fp: 0,
+            cached_image_uvs: Vec::new(),
             format,
         }
     }
@@ -416,9 +421,24 @@ impl GuiRenderer {
         fb_h: u32,
     ) {
         self.sync_font_atlas(device, queue);
-        if let Some((w, h, rgba)) = ctx.image_rgba.take() {
-            self.upload_image(device, queue, w, h, &rgba);
-        }
+        let image_uvs = if ctx.images.is_empty() {
+            self.image_atlas_fp = 0;
+            self.cached_image_uvs.clear();
+            Vec::new()
+        } else {
+            let fp = images_fingerprint(&ctx.images);
+            if fp == self.image_atlas_fp && self.cached_image_uvs.len() == ctx.images.len() {
+                ctx.images.clear();
+                self.cached_image_uvs.clone()
+            } else {
+                let (w, h, rgba, uvs) = pack_image_atlas(&ctx.images);
+                self.upload_image(device, queue, w, h, &rgba);
+                self.image_atlas_fp = fp;
+                self.cached_image_uvs = uvs.clone();
+                ctx.images.clear();
+                uvs
+            }
+        };
 
         let fb_w = fb_w.max(1);
         let fb_h = fb_h.max(1);
@@ -531,18 +551,22 @@ impl GuiRenderer {
                             [0.0, 0.0],
                         );
                     }
-                    DrawCmd::Image { rect } => {
+                    DrawCmd::Image { rect, image_id } => {
                         let x0 = (rect.min_x * sx).round();
                         let y0 = (rect.min_y * sy).round();
                         let x1 = (rect.max_x * sx).round().max(x0 + 1.0);
                         let y1 = (rect.max_y * sy).round().max(y0 + 1.0);
+                        let uv = image_uvs
+                            .get(*image_id as usize)
+                            .copied()
+                            .unwrap_or([0.0, 0.0, 1.0, 1.0]);
                         push_quad(
                             &mut verts,
                             x0,
                             y0,
                             x1,
                             y1,
-                            [0.0, 0.0, 1.0, 1.0],
+                            uv,
                             [1.0, 1.0, 1.0, 1.0],
                             2.0,
                             0.0,
@@ -656,6 +680,145 @@ fn make_bind_group(
             },
         ],
     })
+}
+
+fn images_fingerprint(images: &[(u32, u32, Vec<u8>)]) -> u64 {
+    let mut h = 0xcbf29ce484222325u64;
+    let mix = |h: &mut u64, b: u8| {
+        *h ^= u64::from(b);
+        *h = h.wrapping_mul(0x100000001b3);
+    };
+    for b in (images.len() as u64).to_le_bytes() {
+        mix(&mut h, b);
+    }
+    for (w, ht, rgba) in images {
+        for b in w.to_le_bytes() {
+            mix(&mut h, b);
+        }
+        for b in ht.to_le_bytes() {
+            mix(&mut h, b);
+        }
+        for b in (rgba.len() as u64).to_le_bytes() {
+            mix(&mut h, b);
+        }
+        let n = rgba.len();
+        if n == 0 {
+            continue;
+        }
+        let head = n.min(32);
+        for &b in &rgba[..head] {
+            mix(&mut h, b);
+        }
+        if n > 64 {
+            for &b in &rgba[n - 32..] {
+                mix(&mut h, b);
+            }
+            let stride = (n / 64).max(1);
+            let mut i = 0;
+            while i < n {
+                mix(&mut h, rgba[i]);
+                i += stride;
+            }
+        }
+    }
+    h
+}
+
+fn pack_image_atlas(images: &[(u32, u32, Vec<u8>)]) -> (u32, u32, Vec<u8>, Vec<[f32; 4]>) {
+    const MAX_DIM: u32 = 512;
+    const ATLAS_W: u32 = 2048;
+    const PAD: u32 = 1;
+
+    struct Cell {
+        w: u32,
+        h: u32,
+        rgba: Vec<u8>,
+    }
+
+    let cells: Vec<Cell> = images
+        .iter()
+        .map(|(w, h, rgba)| {
+            let w = (*w).max(1);
+            let h = (*h).max(1);
+            if w <= MAX_DIM && h <= MAX_DIM && rgba.len() >= (w as usize) * (h as usize) * 4 {
+                return Cell {
+                    w,
+                    h,
+                    rgba: rgba.clone(),
+                };
+            }
+            // Downscale oversized sources (terrain preview, etc.) for the atlas.
+            let scale = (MAX_DIM as f32 / w as f32)
+                .min(MAX_DIM as f32 / h as f32)
+                .min(1.0);
+            let nw = ((w as f32) * scale).round().max(1.0) as u32;
+            let nh = ((h as f32) * scale).round().max(1.0) as u32;
+            let mut out = vec![0u8; (nw as usize) * (nh as usize) * 4];
+            for y in 0..nh {
+                let sy = ((y as f32 + 0.5) * (h as f32) / (nh as f32)) as u32;
+                let sy = sy.min(h - 1);
+                for x in 0..nw {
+                    let sx = ((x as f32 + 0.5) * (w as f32) / (nw as f32)) as u32;
+                    let sx = sx.min(w - 1);
+                    let si = ((sy * w + sx) * 4) as usize;
+                    let di = ((y * nw + x) * 4) as usize;
+                    if si + 3 < rgba.len() {
+                        out[di..di + 4].copy_from_slice(&rgba[si..si + 4]);
+                    }
+                }
+            }
+            Cell {
+                w: nw,
+                h: nh,
+                rgba: out,
+            }
+        })
+        .collect();
+
+    let mut uvs = vec![[0.0f32; 4]; cells.len()];
+    let mut placements: Vec<(u32, u32, u32, u32)> = Vec::with_capacity(cells.len());
+    let mut cursor_x = 0u32;
+    let mut cursor_y = 0u32;
+    let mut row_h = 0u32;
+    let mut atlas_w = 1u32;
+    let mut atlas_h = 1u32;
+
+    for cell in &cells {
+        let bw = cell.w + PAD;
+        let bh = cell.h + PAD;
+        if cursor_x > 0 && cursor_x + bw > ATLAS_W {
+            cursor_x = 0;
+            cursor_y += row_h;
+            row_h = 0;
+        }
+        placements.push((cursor_x, cursor_y, cell.w, cell.h));
+        row_h = row_h.max(bh);
+        atlas_w = atlas_w.max(cursor_x + cell.w);
+        atlas_h = atlas_h.max(cursor_y + cell.h);
+        cursor_x += bw;
+    }
+
+    let atlas_w = atlas_w.max(1);
+    let atlas_h = atlas_h.max(1);
+    let mut atlas = vec![0u8; (atlas_w as usize) * (atlas_h as usize) * 4];
+    for (i, cell) in cells.iter().enumerate() {
+        let (x0, y0, w, h) = placements[i];
+        for y in 0..h {
+            let src = (y as usize) * (cell.w as usize) * 4;
+            let dst = (((y0 + y) as usize) * (atlas_w as usize) + (x0 as usize)) * 4;
+            let row_bytes = (w as usize) * 4;
+            if src + row_bytes <= cell.rgba.len() && dst + row_bytes <= atlas.len() {
+                atlas[dst..dst + row_bytes].copy_from_slice(&cell.rgba[src..src + row_bytes]);
+            }
+        }
+        let u0 = x0 as f32 / atlas_w as f32;
+        let v0 = y0 as f32 / atlas_h as f32;
+        let u1 = (x0 + w) as f32 / atlas_w as f32;
+        let v1 = (y0 + h) as f32 / atlas_h as f32;
+        uvs[i] = [u0, v0, u1, v1];
+    }
+
+    (atlas_w, atlas_h, atlas, uvs)
 }
 
 fn push_quad(

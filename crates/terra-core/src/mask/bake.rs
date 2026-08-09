@@ -6,6 +6,7 @@ use crate::heightfield::{Heightfield, HeightfieldMetrics};
 use std::collections::HashMap;
 
 /// Bake all mask assets against a reference heightfield.
+use crate::layer::OutputId;
 ///
 /// If `reference` metrics differ from `target`, heights are sampled by normalized UV.
 pub fn bake_mask_assets(
@@ -13,6 +14,18 @@ pub fn bake_mask_assets(
     reference: &Heightfield,
     target: HeightfieldMetrics,
     aux: &HashMap<String, MaskField>,
+) -> HashMap<MaskId, MaskField> {
+    bake_mask_assets_resolved(assets, reference, target, aux, &HashMap::new())
+}
+
+/// Bake assets while resolving stable layer-output references against fields
+/// published by layers already evaluated below the consumer.
+pub fn bake_mask_assets_resolved(
+    assets: &[MaskAsset],
+    reference: &Heightfield,
+    target: HeightfieldMetrics,
+    aux: &HashMap<String, MaskField>,
+    published: &HashMap<OutputId, MaskField>,
 ) -> HashMap<MaskId, MaskField> {
     let hf = if reference.metrics.width == target.width && reference.metrics.height == target.height
     {
@@ -23,7 +36,7 @@ pub fn bake_mask_assets(
 
     let mut out = HashMap::new();
     for asset in assets {
-        let mut field = bake_source(&asset.source, assets, &hf, aux);
+        let mut field = bake_source(&asset.source, assets, &hf, aux, published);
         apply_mask_ops(&mut field, &asset.ops);
         out.insert(asset.id, field);
     }
@@ -49,9 +62,14 @@ fn bake_source(
     assets: &[MaskAsset],
     hf: &Heightfield,
     aux: &HashMap<String, MaskField>,
+    published: &HashMap<OutputId, MaskField>,
 ) -> MaskField {
     match source {
-        MaskSource::None | MaskSource::Named(_) => MaskField::ones(hf.metrics),
+        MaskSource::None => MaskField::ones(hf.metrics),
+        MaskSource::Named(name) => aux
+            .get(name)
+            .cloned()
+            .unwrap_or_else(|| MaskField::ones(hf.metrics)),
         MaskSource::Constant(v) => MaskField::filled(hf.metrics, *v),
         MaskSource::Height { min, max } => MaskField::from_height_range(hf, *min, *max),
         MaskSource::Slope { min_deg, max_deg } => {
@@ -158,13 +176,45 @@ fn bake_source(
             .get("deposition")
             .cloned()
             .unwrap_or_else(|| MaskField::ones(hf.metrics)),
+        MaskSource::Hardness => aux
+            .get("hardness")
+            .cloned()
+            .unwrap_or_else(|| MaskField::filled(hf.metrics, 0.0)),
+        MaskSource::Temperature => aux
+            .get("temperature")
+            .cloned()
+            .unwrap_or_else(|| MaskField::ones(hf.metrics)),
+        MaskSource::Rainfall => aux
+            .get("rainfall")
+            .cloned()
+            .unwrap_or_else(|| MaskField::ones(hf.metrics)),
+        MaskSource::Humidity => aux
+            .get("humidity")
+            .cloned()
+            .unwrap_or_else(|| MaskField::ones(hf.metrics)),
+        MaskSource::Snow => aux
+            .get("snow")
+            .cloned()
+            .unwrap_or_else(|| MaskField::zeros(hf.metrics)),
+        MaskSource::SoilMoisture => aux
+            .get("soil_moisture")
+            .cloned()
+            .unwrap_or_else(|| MaskField::ones(hf.metrics)),
+        MaskSource::WindExposure => aux
+            .get("wind_exposure")
+            .cloned()
+            .unwrap_or_else(|| MaskField::ones(hf.metrics)),
+        MaskSource::LayerOutput { output_id } => published
+            .get(output_id)
+            .cloned()
+            .unwrap_or_else(|| MaskField::zeros(hf.metrics)),
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::mask::{MaskAsset, MaskId, MaskSource, PaintBuffer};
+    use crate::mask::{default_mask_display_color, MaskAsset, MaskId, MaskSource, PaintBuffer};
 
     #[test]
     fn painted_mask_bakes_painted_values() {
@@ -178,6 +228,7 @@ mod tests {
             source: MaskSource::Painted { mask_id: id },
             ops: Vec::new(),
             paint: Some(paint),
+            display_color: default_mask_display_color(),
         }];
         let baked = bake_mask_assets(
             &assets,
@@ -188,5 +239,44 @@ mod tests {
         let field = &baked[&id];
         assert!(field.data().iter().any(|&v| v > 0.0));
         assert!(field.data().iter().any(|&v| v < 1.0));
+    }
+
+    #[test]
+    fn named_and_layer_output_sources_resolve_dynamic_fields() {
+        let metrics = HeightfieldMetrics::new(4, 4, 4.0, 4.0);
+        let named_id = MaskId::new();
+        let output_mask_id = MaskId::new();
+        let output_id = OutputId::new();
+        let assets = vec![
+            MaskAsset {
+                id: named_id,
+                name: "coast".into(),
+                source: MaskSource::Named("beach".into()),
+                ops: Vec::new(),
+                paint: None,
+                display_color: default_mask_display_color(),
+            },
+            MaskAsset {
+                id: output_mask_id,
+                name: "published".into(),
+                source: MaskSource::LayerOutput { output_id },
+                ops: Vec::new(),
+                paint: None,
+                display_color: default_mask_display_color(),
+            },
+        ];
+        let mut aux = HashMap::new();
+        aux.insert("beach".into(), MaskField::filled(metrics, 0.25));
+        let mut published = HashMap::new();
+        published.insert(output_id, MaskField::filled(metrics, 0.75));
+        let baked = bake_mask_assets_resolved(
+            &assets,
+            &Heightfield::zeros(metrics),
+            metrics,
+            &aux,
+            &published,
+        );
+        assert!((baked[&named_id].get(0, 0) - 0.25).abs() < 1e-6);
+        assert!((baked[&output_mask_id].get(0, 0) - 0.75).abs() < 1e-6);
     }
 }

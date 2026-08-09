@@ -1,0 +1,4 @@
+# Windows default stack (~1MB) is tight for debug wgpu/NVIDIA pipeline
+# creation with capture overlays (OBS/Overwolf/Medal) injected.
+[target.'cfg(windows)']
+rustflags = ["-C", "link-arg=/STACK:16777216"]

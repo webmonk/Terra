@@ -116,14 +116,15 @@ fn fbm(p0: vec2<f32>) -> f32 {
     var amp = 1.0;
     var sum = 0.0;
     var norm = 0.0;
+    var ridge_weight = 1.0;
     let oct = min(u.octaves, 12u);
     for (var o = 0u; o < oct; o++) {
-        // Match CPU: seed.wrapping_add(o * 1013)
-        let oct_seed = u.seed + o * 1013u;
+        let oct_seed = select(u.seed + o * 1013u, u.seed + o * 9173u, u.mode == 1u);
         var n = sample_noise_seeded(p, oct_seed);
         if (u.mode == 1u) {
             n = 1.0 - abs(n);
-            n = n * n;
+            n = n * n * ridge_weight;
+            ridge_weight = clamp(n * 2.0, 0.0, 1.0);
         }
         sum += n * amp;
         norm += amp;

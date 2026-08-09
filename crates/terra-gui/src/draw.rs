@@ -26,8 +26,8 @@ pub enum DrawCmd {
         color: Color,
         uv: [f32; 4],
     },
-    /// Full RGBA preview image (uploaded once per frame via GuiContext).
-    Image { rect: Rect },
+    /// RGBA image region from the per-frame atlas (`image_id` indexes GuiContext::images).
+    Image { rect: Rect, image_id: u32 },
 }
 
 #[derive(Debug, Default)]
