@@ -1,8 +1,7 @@
 //! Phase 2 geomorphology / hydrology foundation.
 //!
 //! Shared terrain-analysis and drainage primitives for later erosion, canyon,
-//! river, sediment, and geological filters. See
-//! `docs/architecture/terrain_eval_phase2.md`.
+//! river, sediment, and geological filters.
 
 mod accumulation;
 mod debug;

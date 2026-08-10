@@ -3,8 +3,6 @@
 //! Heightfields remain the primary authoring and erosion domain. These helpers produce a
 //! **dual-height** representation: a carved floor DEM plus a ceiling aux map, limited to a
 //! UV region / falloff. A lightweight triangle proxy visualizes the overhang / cave roof.
-//!
-//! See `docs/algorithms/volumetric.md`.
 
 use crate::heightfield::Heightfield;
 use crate::layer::{LocalSdfParams, OverhangStampParams};

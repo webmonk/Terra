@@ -418,8 +418,8 @@ fn default_material_roughness() -> f32 {
 
 /// Artist climate controls for biome classification (Phase H).
 ///
-/// Values are normalized artist knobs unless noted (temperatures â‰ˆ \[0,1\] warmâ†”cold
-/// scale, precip \[0,1\], heights in meters). See `docs/algorithms/climate.md`.
+/// Values are normalized artist knobs unless noted (temperatures ≈ [0,1] warm↔cold
+/// scale, precip [0,1], heights in meters).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClimateParams {
     /// Base temperature at sea level (warm â‰ˆ 1).

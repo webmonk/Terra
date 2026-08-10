@@ -510,8 +510,8 @@ impl HydraulicErosionParams {
 /// Stream-power erosion (SPE) parameters.
 ///
 /// Incision follows \(E = K\,A^{m}\,S^{n}\) modulated by softness \(1-K_{\mathrm{hard}}\).
-/// Drainage uses Priority-Flood + D8/Dâˆž on the CPU export oracle; Draft/Medium GPU
-/// runs an approximate multi-pass D8 SPE (see `docs/algorithms/stream_power.md`).
+/// Drainage uses Priority-Flood + D8/D∞ on the CPU export oracle; Draft/Medium GPU
+/// runs an approximate multi-pass D8 SPE.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamPowerParams {
     pub iterations: u32,

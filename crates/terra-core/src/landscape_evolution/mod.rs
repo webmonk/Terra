@@ -3,8 +3,7 @@
 //! Stream-power landscape evolution after Cordonnier et al. (uplift + fluvial
 //! incision) and Tzathas et al. 2024 (analytical / fast evaluation).
 //!
-//! This is **not** droplet hydraulic erosion. See
-//! `docs/algorithms/landscape_evolution.md`.
+//! This is **not** droplet hydraulic erosion.
 
 mod analytical;
 mod cache;

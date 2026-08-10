@@ -1,8 +1,7 @@
 //! Multi-field terrain evaluation architecture (Phase 1).
 //!
 //! Artists continue to author a **layer stack**. Internally, layers compile to
-//! [`EvalGraph`] operators over a shared [`TerrainFieldSet`]. See
-//! `docs/architecture/terrain_eval_phase1.md`.
+//! [`EvalGraph`] operators over a shared [`TerrainFieldSet`].
 //!
 //! This module deliberately sits beside [`crate::eval::StackEvaluator`]: existing
 //! processors remain the execution path while new multi-field operators and

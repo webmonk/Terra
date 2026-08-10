@@ -1,9 +1,8 @@
 //! Simplified climate fields and biome classification (Phase H).
 //!
-//! Physically motivated artist controls — not a GCM. Equations documented in
-//! `docs/algorithms/climate.md`. CPU is the export oracle; GPU preview may
-//! skip height-affecting work, while climate AuxMaps are baked on CPU and
-//! uploaded as R32Float for overlays.
+//! Physically motivated artist controls — not a GCM. CPU is the export oracle;
+//! GPU preview may skip height-affecting work, while climate AuxMaps are baked
+//! on CPU and uploaded as R32Float for overlays.
 
 use crate::analyze::jump_flood_distance;
 use crate::heightfield::Heightfield;
