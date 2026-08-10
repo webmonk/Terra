@@ -86,4 +86,10 @@ impl MaskField {
         }
         out
     }
+
+    /// Scale all samples in place with a 4-wide friendly loop.
+    pub fn scale_in_place(&mut self, s: f32) {
+        crate::simd_ops::scale_slice_in_place(self.data_mut(), s);
+        crate::simd_ops::clamp_slice_in_place(self.data_mut(), 0.0, 1.0);
+    }
 }

@@ -46,6 +46,112 @@ pub struct LayoutPrefs {
     /// Default false — artists stay in the current workspace unless they opt in.
     #[serde(default)]
     pub auto_switch_workspace_on_create: bool,
+    /// Persisted viewport render quality settings (user preference).
+    #[serde(default)]
+    pub viewport_render: ViewportRenderPrefs,
+}
+
+/// User-level viewport render preferences (Phase 12).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViewportRenderPrefs {
+    #[serde(default = "default_render_mode")]
+    pub mode: String,
+    #[serde(default = "default_render_preset")]
+    pub preset: String,
+    #[serde(default = "default_target_fps")]
+    pub target_fps: f32,
+    #[serde(default = "default_max_spp")]
+    pub max_spp: u32,
+    #[serde(default = "default_true")]
+    pub dynamic_resolution: bool,
+    #[serde(default = "default_true")]
+    pub denoise: bool,
+    #[serde(default = "default_interactive_spp")]
+    pub interactive_spp: u32,
+    #[serde(default = "default_settling_spp")]
+    pub settling_spp: u32,
+    #[serde(default = "default_refining_spp")]
+    pub refining_spp: u32,
+    #[serde(default = "default_bounces_interactive")]
+    pub max_bounces_interactive: u32,
+    #[serde(default = "default_bounces_refining")]
+    pub max_bounces_refining: u32,
+    #[serde(default = "default_min_scale")]
+    pub min_internal_scale: f32,
+    #[serde(default = "default_max_scale")]
+    pub max_internal_scale: f32,
+    #[serde(default = "default_history_clamp")]
+    pub history_clamp_k: f32,
+    #[serde(default = "default_converge")]
+    pub converge_fraction: f32,
+    #[serde(default)]
+    pub debug_viz_mode: u32,
+}
+
+fn default_render_mode() -> String {
+    "Raster".into()
+}
+fn default_render_preset() -> String {
+    "Balanced".into()
+}
+fn default_target_fps() -> f32 {
+    60.0
+}
+fn default_max_spp() -> u32 {
+    128
+}
+fn default_true() -> bool {
+    true
+}
+fn default_interactive_spp() -> u32 {
+    1
+}
+fn default_settling_spp() -> u32 {
+    2
+}
+fn default_refining_spp() -> u32 {
+    4
+}
+fn default_bounces_interactive() -> u32 {
+    2
+}
+fn default_bounces_refining() -> u32 {
+    4
+}
+fn default_min_scale() -> f32 {
+    0.5
+}
+fn default_max_scale() -> f32 {
+    1.0
+}
+fn default_history_clamp() -> f32 {
+    1.5
+}
+fn default_converge() -> f32 {
+    0.95
+}
+
+impl Default for ViewportRenderPrefs {
+    fn default() -> Self {
+        Self {
+            mode: default_render_mode(),
+            preset: default_render_preset(),
+            target_fps: default_target_fps(),
+            max_spp: default_max_spp(),
+            dynamic_resolution: true,
+            denoise: true,
+            interactive_spp: default_interactive_spp(),
+            settling_spp: default_settling_spp(),
+            refining_spp: default_refining_spp(),
+            max_bounces_interactive: default_bounces_interactive(),
+            max_bounces_refining: default_bounces_refining(),
+            min_internal_scale: default_min_scale(),
+            max_internal_scale: default_max_scale(),
+            history_clamp_k: default_history_clamp(),
+            converge_fraction: default_converge(),
+            debug_viz_mode: 0,
+        }
+    }
 }
 
 fn default_preferred_workspace() -> String {
@@ -70,6 +176,7 @@ impl Default for LayoutPrefs {
             left_dock_w: None,
             preferred_workspace: default_preferred_workspace(),
             auto_switch_workspace_on_create: false,
+            viewport_render: ViewportRenderPrefs::default(),
         }
     }
 }

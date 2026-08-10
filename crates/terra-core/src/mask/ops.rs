@@ -80,6 +80,14 @@ pub fn apply_mask_ops(field: &mut MaskField, ops: &[MaskOp]) {
     for op in ops {
         match *op {
             MaskOp::Blur { radius } => blur_inplace(field, radius),
+            MaskOp::Invert => {
+                for v in field.data_mut() {
+                    *v = 1.0 - *v;
+                }
+            }
+            MaskOp::Clamp { min, max } => {
+                crate::simd_ops::clamp_slice_in_place(field.data_mut(), min, max);
+            }
             other => {
                 for v in field.data_mut() {
                     *v = other.apply_unary(*v).clamp(0.0, 1.0);

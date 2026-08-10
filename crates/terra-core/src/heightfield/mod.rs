@@ -13,7 +13,8 @@ use std::sync::Arc;
 pub const DEFAULT_TILE_SIZE: u32 = 256;
 /// Default ghost/halo width in samples per edge.
 pub const DEFAULT_HALO: u32 = 2;
-/// Default interactive preview resolution.
+/// Default interactive preview resolution (overridden by WC-style
+/// `preview_resolution_for_world_size` when creating projects).
 pub const DEFAULT_PREVIEW_RES: u32 = 1024;
 
 /// World-space metrics for a regular grid DEM.

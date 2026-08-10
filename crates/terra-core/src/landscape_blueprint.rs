@@ -262,9 +262,10 @@ impl LandscapeBlueprint {
 /// World Creator–style Resolution → interactive preview samples.
 ///
 /// WC's Resolution is world extent in metres; at default 1 m precision, sample
-/// count matches that extent. We cap samples for interactive preview performance.
+/// count matches that extent (4096 m → 4096²). We only clamp extreme worlds so
+/// interactive preview stays on the same 1 sample/metre footing as WC.
 pub fn preview_resolution_for_world_size(world_size_m: f32) -> u32 {
-    world_size_m.round().clamp(128.0, 2048.0) as u32
+    world_size_m.round().clamp(128.0, 8192.0) as u32
 }
 
 /// Explicit evaluation stages for dependency ordering / cycle prevention.
@@ -344,7 +345,8 @@ mod tests {
     #[test]
     fn preview_resolution_follows_world_size_like_wc() {
         assert_eq!(preview_resolution_for_world_size(1024.0), 1024);
-        assert_eq!(preview_resolution_for_world_size(4096.0), 2048);
+        assert_eq!(preview_resolution_for_world_size(4096.0), 4096);
         assert_eq!(preview_resolution_for_world_size(64.0), 128);
+        assert_eq!(preview_resolution_for_world_size(16_000.0), 8192);
     }
 }

@@ -108,23 +108,37 @@ pub fn gradient_components(
     hf: &Heightfield,
     radius_m: f32,
 ) -> (MaskField, MaskField, MaskField) {
+    use rayon::prelude::*;
+
     let m = hf.metrics;
     let r = sample_radius_texels(hf, radius_m);
     let dx = m.dx() * r as f32;
     let dz = m.dz() * r as f32;
-    let mut gx = MaskField::zeros(m);
-    let mut gz = MaskField::zeros(m);
-    let mut mag = MaskField::zeros(m);
-    for j in 0..m.height as i32 {
-        for i in 0..m.width as i32 {
+    let w = m.width as usize;
+    let n = (m.width * m.height) as usize;
+    let computed: Vec<(f32, f32, f32)> = (0..n)
+        .into_par_iter()
+        .map(|idx| {
+            let i = (idx % w) as i32;
+            let j = (idx / w) as i32;
             let px = (sample_h(hf, i + r, j) - sample_h(hf, i - r, j)) / (2.0 * dx.max(1e-6));
             let pz = (sample_h(hf, i, j + r) - sample_h(hf, i, j - r)) / (2.0 * dz.max(1e-6));
-            gx.set(i as u32, j as u32, px);
-            gz.set(i as u32, j as u32, pz);
-            mag.set(i as u32, j as u32, (px * px + pz * pz).sqrt());
-        }
+            (px, pz, (px * px + pz * pz).sqrt())
+        })
+        .collect();
+    let mut gx_data = Vec::with_capacity(n);
+    let mut gz_data = Vec::with_capacity(n);
+    let mut mag_data = Vec::with_capacity(n);
+    for (px, pz, mag) in computed {
+        gx_data.push(px);
+        gz_data.push(pz);
+        mag_data.push(mag);
     }
-    (gx, gz, mag)
+    (
+        MaskField::from_raw(m, &gx_data),
+        MaskField::from_raw(m, &gz_data),
+        MaskField::from_raw(m, &mag_data),
+    )
 }
 
 /// Slope as |∇h| mapped to \[0,1\] via atan → degrees / 90 (artist-friendly).

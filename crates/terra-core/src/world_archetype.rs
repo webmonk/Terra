@@ -157,7 +157,7 @@ pub fn build_world(
         WorldTemplate::Blank => world_size_m.clamp(1024.0, 200_000.0),
         _ => world_size_m.clamp(2048.0, 200_000.0),
     };
-    let preview_res = preview_res.clamp(128, 2048);
+    let preview_res = preview_res.clamp(128, 8192);
     let mps = (world_size_m / preview_res as f32).max(1.0);
 
     let mut doc = scaffold_doc(template, world_size_m, preview_res, mps);

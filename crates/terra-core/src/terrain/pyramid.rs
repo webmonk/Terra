@@ -15,11 +15,21 @@ pub enum TileState {
     Stale,
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
 pub struct TileRecord {
     pub state: TileState,
     pub revision: u64,
     pub input_revision_hash: u64,
+    /// Min height in metres for resident payload (0 when unknown).
+    #[serde(default)]
+    pub height_min: f32,
+    /// Max height in metres for resident payload (0 when unknown).
+    #[serde(default)]
+    pub height_max: f32,
+    /// World-space geometric error at this pyramid level (metres).
+    #[serde(default)]
+    pub geometric_error: f32,
+    #[serde(default)]
     pub last_used_frame: u64,
 }
 
@@ -29,6 +39,9 @@ impl Default for TileRecord {
             state: TileState::Missing,
             revision: 0,
             input_revision_hash: 0,
+            height_min: 0.0,
+            height_max: 0.0,
+            geometric_error: 0.0,
             last_used_frame: 0,
         }
     }
@@ -154,6 +167,9 @@ impl TerrainPyramid {
                 state: TileState::Resident,
                 revision,
                 input_revision_hash,
+                height_min: 0.0,
+                height_max: 0.0,
+                geometric_error: 0.0,
                 last_used_frame: frame,
             },
         );

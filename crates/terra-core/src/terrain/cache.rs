@@ -1,5 +1,17 @@
 use super::TerrainTileKey;
+use crate::heightfield::TileId;
+use crate::layer::LayerId;
 use std::collections::HashMap;
+
+/// Composite cache identity for a resident terrain tile payload.
+#[derive(Debug, Clone, PartialEq, Eq, Hash)]
+pub struct TerrainCacheKey {
+    pub layer_id: Option<LayerId>,
+    pub generation: u32,
+    pub tile: TileId,
+    pub level: u8,
+    pub param_hash: u64,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct TilePageHandle {
@@ -332,5 +344,22 @@ mod tests {
             cache.insert(key(layer, 1), 8, 1, 1),
             Err(TileCacheError::AllCandidatesPinned { .. })
         ));
+    }
+
+    #[test]
+    fn terrain_cache_key_distinguishes_generations() {
+        let layer = LayerId::new();
+        let a = TerrainCacheKey {
+            layer_id: Some(layer),
+            generation: 1,
+            tile: TileId { tx: 0, tz: 0 },
+            level: 2,
+            param_hash: 42,
+        };
+        let b = TerrainCacheKey {
+            generation: 2,
+            ..a.clone()
+        };
+        assert_ne!(a, b);
     }
 }

@@ -103,7 +103,7 @@ impl TerraApp {
                         .scheduler
                         .quality
                         .resolution(
-                            self.session.document.preview_resolution.min(1024),
+                            self.session.document.preview_resolution.min(8192),
                             self.session.document.export_resolution,
                         )
                         .max(1) as f32;

@@ -169,6 +169,10 @@ impl TerrainRuntime {
     }
 
     /// Dequeue work supported by one backend within the current interaction-state budget.
+    ///
+    /// When tile records carry [`crate::TileRecord::geometric_error`], callers may raise
+    /// priority via [`WorkPriority::from_screen_error`] after projecting error with
+    /// `terra_render::projected_error_px` (render crate) or an equivalent helper.
     pub fn take_frame_work_matching<F>(&mut self, accepts: F) -> Vec<TerrainWorkItem>
     where
         F: FnMut(&TerrainWorkItem) -> bool,

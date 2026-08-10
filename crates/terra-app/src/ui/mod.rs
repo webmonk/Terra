@@ -207,6 +207,10 @@ pub struct UiState {
     pub lighting_preset: LightingPreset,
     /// Converged samples in Progressive RT mode (read-only renderer telemetry).
     pub progressive_samples: u32,
+    /// Progressive path-tracer active this frame (synced from renderer mode).
+    pub progressive_renderer_active: bool,
+    /// Artist-facing viewport render controls (synced to renderer each frame).
+    pub viewport_render: ViewportRenderSettings,
     /// Viewport display lighting preset menu open.
     pub lighting_menu_open: bool,
     /// Camera speed dropdown on the bottom viewport bar.
@@ -320,6 +324,129 @@ impl LightingPreset {
 
     pub fn is_progressive(self) -> bool {
         matches!(self, LightingPreset::Progressive)
+    }
+
+    /// Suggested viewport renderer mode for this lighting preset.
+    pub fn suggested_renderer_mode(self) -> terra_render::ViewportRendererMode {
+        if self.is_progressive() {
+            terra_render::ViewportRendererMode::ProgressiveRayTraced
+        } else {
+            terra_render::ViewportRendererMode::Raster
+        }
+    }
+}
+
+/// Primary viewport rendering controls (synced to [`terra_render::ViewportQualityManager`]).
+#[derive(Debug, Clone)]
+pub struct ViewportRenderSettings {
+    pub mode: terra_render::ViewportRendererMode,
+    pub preset: terra_render::QualityPreset,
+    pub target_fps: f32,
+    pub max_spp: u32,
+    pub dynamic_resolution: bool,
+    pub denoise: bool,
+    pub menu_open: bool,
+    pub advanced_open: bool,
+    pub interactive_spp: u32,
+    pub settling_spp: u32,
+    pub refining_spp: u32,
+    pub max_bounces_interactive: u32,
+    pub max_bounces_refining: u32,
+    pub min_internal_scale: f32,
+    pub max_internal_scale: f32,
+    pub history_clamp_k: f32,
+    pub converge_fraction: f32,
+    /// Developer debug visualization (0 = final). Hidden from artists by default.
+    pub debug_viz_mode: u32,
+}
+
+impl Default for ViewportRenderSettings {
+    fn default() -> Self {
+        let cfg = terra_render::RenderQualityConfig::default();
+        Self {
+            mode: cfg.mode,
+            preset: cfg.preset,
+            target_fps: cfg.target_fps,
+            max_spp: cfg.max_accumulated_spp,
+            dynamic_resolution: cfg.dynamic_resolution_enabled,
+            denoise: cfg.denoise_enabled,
+            menu_open: false,
+            advanced_open: false,
+            interactive_spp: cfg.interactive_spp,
+            settling_spp: cfg.settling_spp,
+            refining_spp: cfg.refining_spp,
+            max_bounces_interactive: cfg.max_bounces_interactive,
+            max_bounces_refining: cfg.max_bounces_refining,
+            min_internal_scale: cfg.min_internal_scale,
+            max_internal_scale: cfg.max_internal_scale,
+            history_clamp_k: cfg.history_clamp_k,
+            converge_fraction: cfg.converge_fraction,
+            debug_viz_mode: 0,
+        }
+    }
+}
+
+impl ViewportRenderSettings {
+    pub fn from_prefs(prefs: &terra_gui::ViewportRenderPrefs) -> Self {
+        let mut s = Self::default();
+        s.mode = match prefs.mode.as_str() {
+            "Fast" => terra_render::ViewportRendererMode::Fast,
+            "Raster" => terra_render::ViewportRendererMode::Raster,
+            "Final" => terra_render::ViewportRendererMode::Final,
+            _ => terra_render::ViewportRendererMode::ProgressiveRayTraced,
+        };
+        s.preset = match prefs.preset.as_str() {
+            "Performance" => terra_render::QualityPreset::Performance,
+            "Quality" => terra_render::QualityPreset::Quality,
+            _ => terra_render::QualityPreset::Balanced,
+        };
+        s.target_fps = prefs.target_fps;
+        s.max_spp = prefs.max_spp;
+        s.dynamic_resolution = prefs.dynamic_resolution;
+        s.denoise = prefs.denoise;
+        s.interactive_spp = prefs.interactive_spp;
+        s.settling_spp = prefs.settling_spp;
+        s.refining_spp = prefs.refining_spp;
+        s.max_bounces_interactive = prefs.max_bounces_interactive;
+        s.max_bounces_refining = prefs.max_bounces_refining;
+        s.min_internal_scale = prefs.min_internal_scale;
+        s.max_internal_scale = prefs.max_internal_scale;
+        s.history_clamp_k = prefs.history_clamp_k;
+        s.converge_fraction = prefs.converge_fraction;
+        s.debug_viz_mode = prefs.debug_viz_mode;
+        s
+    }
+
+    pub fn to_prefs(&self) -> terra_gui::ViewportRenderPrefs {
+        terra_gui::ViewportRenderPrefs {
+            mode: match self.mode {
+                terra_render::ViewportRendererMode::Fast => "Fast".into(),
+                terra_render::ViewportRendererMode::Raster => "Raster".into(),
+                terra_render::ViewportRendererMode::ProgressiveRayTraced => {
+                    "ProgressiveRayTraced".into()
+                }
+                terra_render::ViewportRendererMode::Final => "Final".into(),
+            },
+            preset: match self.preset {
+                terra_render::QualityPreset::Performance => "Performance".into(),
+                terra_render::QualityPreset::Balanced => "Balanced".into(),
+                terra_render::QualityPreset::Quality => "Quality".into(),
+            },
+            target_fps: self.target_fps,
+            max_spp: self.max_spp,
+            dynamic_resolution: self.dynamic_resolution,
+            denoise: self.denoise,
+            interactive_spp: self.interactive_spp,
+            settling_spp: self.settling_spp,
+            refining_spp: self.refining_spp,
+            max_bounces_interactive: self.max_bounces_interactive,
+            max_bounces_refining: self.max_bounces_refining,
+            min_internal_scale: self.min_internal_scale,
+            max_internal_scale: self.max_internal_scale,
+            history_clamp_k: self.history_clamp_k,
+            converge_fraction: self.converge_fraction,
+            debug_viz_mode: self.debug_viz_mode,
+        }
     }
 }
 
@@ -878,6 +1005,36 @@ pub struct FrameProfile {
     pub visible_tiles_exact: usize,
     pub visible_tiles_fallback: usize,
     pub visible_tiles_missing: usize,
+    /// GPU terrain pass microseconds (0 if TIMESTAMP_QUERY unsupported).
+    pub gpu_terrain_us: u64,
+    /// GPU shadow pass microseconds.
+    pub gpu_shadow_us: u64,
+    pub gpu_timestamps_supported: bool,
+    // Progressive path-tracer debug (Phase 12)
+    pub camera_version: u64,
+    pub terrain_version: u64,
+    pub lighting_version: u64,
+    pub viewport_version: u64,
+    pub material_version: u64,
+    pub geometry_version: u64,
+    pub last_invalidation: &'static str,
+    pub accum_frame: u32,
+    pub global_frame: u64,
+    pub max_spp: u32,
+    pub spp_this_frame: u32,
+    pub bounce_count: u32,
+    pub internal_scale: f32,
+    pub smoothed_gpu_ms: f32,
+    pub last_gpu_ms: f32,
+    pub convergence_fraction: f32,
+    pub active_tiles: u32,
+    pub reduced_tiles: u32,
+    pub converged_tiles: u32,
+    pub path_trace_us: u64,
+    pub temporal_us: u64,
+    pub denoise_us: u64,
+    pub interaction_state: &'static str,
+    pub renderer_mode: &'static str,
 }
 
 impl FrameProfile {
@@ -912,9 +1069,10 @@ impl FrameProfile {
         self.terrain_work_queued = stats.work.queued;
         self.terrain_work_cancelled = stats.work.cancelled + stats.work.stale_discarded;
         self.refinement_state = match stats.refinement {
-            terra_core::EditorRefinementState::ActiveInteraction => "Active",
+            terra_core::EditorRefinementState::Interactive => "Interactive",
             terra_core::EditorRefinementState::Settling => "Settling",
-            terra_core::EditorRefinementState::IdleRefinement => "Idle refine",
+            terra_core::EditorRefinementState::Refining => "Refining",
+            terra_core::EditorRefinementState::Converged => "Converged",
             terra_core::EditorRefinementState::Export => "Export",
         };
     }
@@ -932,6 +1090,51 @@ impl FrameProfile {
         self.visible_tiles_exact = exact;
         self.visible_tiles_fallback = fallback;
         self.visible_tiles_missing = missing;
+    }
+
+    pub fn update_progressive(
+        &mut self,
+        versions: terra_render::SceneVersions,
+        last_invalidation: terra_render::InvalidationReason,
+        accum_frame: u32,
+        global_frame: u64,
+        quality: &terra_render::ViewportQualityManager,
+        gpu: &terra_render::GpuTimings,
+        interaction: terra_core::EditorRefinementState,
+        mode: terra_render::ViewportRendererMode,
+        progressive_samples: u32,
+    ) {
+        self.camera_version = versions.camera_version;
+        self.terrain_version = versions.terrain_version;
+        self.lighting_version = versions.lighting_version;
+        self.viewport_version = versions.viewport_version;
+        self.material_version = versions.material_version;
+        self.geometry_version = versions.geometry_version;
+        self.last_invalidation = last_invalidation.label();
+        self.accum_frame = accum_frame;
+        self.global_frame = global_frame;
+        self.max_spp = quality.config.max_accumulated_spp;
+        self.spp_this_frame = quality.spp_this_frame;
+        self.bounce_count = quality.bounce_count;
+        self.internal_scale = quality.internal_scale;
+        self.smoothed_gpu_ms = quality.smoothed_gpu_ms();
+        self.last_gpu_ms = quality.last_gpu_ms();
+        self.convergence_fraction = quality.convergence_fraction;
+        self.active_tiles = quality.active_sampling_tiles;
+        self.reduced_tiles = quality.reduced_sampling_tiles;
+        self.converged_tiles = quality.converged_sampling_tiles;
+        self.path_trace_us = gpu.path_trace_us;
+        self.temporal_us = gpu.temporal_us;
+        self.denoise_us = gpu.denoise_us;
+        self.interaction_state = match interaction {
+            terra_core::EditorRefinementState::Interactive => "Interactive",
+            terra_core::EditorRefinementState::Settling => "Settling",
+            terra_core::EditorRefinementState::Refining => "Refining",
+            terra_core::EditorRefinementState::Converged => "Converged",
+            terra_core::EditorRefinementState::Export => "Export",
+        };
+        self.renderer_mode = mode.label();
+        let _ = progressive_samples;
     }
 }
 

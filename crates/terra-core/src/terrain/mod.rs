@@ -12,7 +12,7 @@ mod runtime;
 mod work;
 
 pub use cache::{
-    ResidentTile, TileCacheError, TileCacheInsert, TileCacheStats, TilePageHandle,
+    ResidentTile, TerrainCacheKey, TileCacheError, TileCacheInsert, TileCacheStats, TilePageHandle,
     TileResidencyCache,
 };
 pub use executor::{execute_vector_height_tile, TileExecutionError, TileExecutionOutput};
@@ -23,6 +23,6 @@ pub use invalidation::{
 pub use pyramid::{PyramidConfig, TerrainLevel, TerrainPyramid, TileRecord, TileState};
 pub use runtime::{TerrainRuntime, TerrainRuntimeStats};
 pub use work::{
-    EditorRefinementState, RefinementController, TerrainTileKey, TerrainWorkItem, TerrainWorkKind,
-    TerrainWorkScheduler, WorkPriority, WorkSchedulerStats,
+    EditorRefinementState, RefinementController, RefinementTimings, TerrainTileKey, TerrainWorkItem,
+    TerrainWorkKind, TerrainWorkScheduler, WorkPriority, WorkSchedulerStats,
 };

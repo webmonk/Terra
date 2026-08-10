@@ -313,37 +313,37 @@ pub struct GeomorphicDetailParams {
 }
 
 fn detail_amplitude() -> f32 {
-    8.0
+    14.0
 }
 fn detail_scale() -> f32 {
-    120.0
+    72.0
 }
 fn detail_octaves() -> u32 {
-    4
+    5
 }
 fn flow_alignment() -> f32 {
-    0.85
+    0.9
 }
 fn slope_gate() -> f32 {
-    0.12
+    0.08
 }
 fn detail_seed() -> u64 {
     73
 }
 fn drainage_preservation() -> f32 {
-    0.7
+    0.65
 }
 fn detail_silhouette() -> f32 {
-    0.92
+    0.9
 }
 fn detail_ridge_breakup() -> f32 {
-    0.75
+    0.9
 }
 fn detail_gully() -> f32 {
-    0.85
+    1.2
 }
 fn detail_rock() -> f32 {
-    0.45
+    0.55
 }
 
 impl Default for GeomorphicDetailParams {
@@ -371,7 +371,7 @@ impl GeomorphicDetailParams {
         let meso = self.amplitude.max(0.0);
         let micro = self
             .micro_amplitude_m
-            .unwrap_or_else(|| (meso * 0.22).max(0.35));
+            .unwrap_or_else(|| (meso * 0.38).max(1.5));
         crate::analyze::TerrainAmplificationParams {
             meso_amplitude_m: meso,
             micro_amplitude_m: micro,

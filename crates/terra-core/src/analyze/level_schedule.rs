@@ -71,7 +71,7 @@ fn default_hd_zone() -> [f32; 4] {
 }
 
 fn default_min_wavelength() -> f32 {
-    8.0
+    1.0
 }
 
 impl Default for LevelStepSettings {

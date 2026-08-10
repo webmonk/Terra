@@ -367,7 +367,7 @@ pub(crate) fn try_apply(
                         let resolution = app                            .scheduler
                             .quality
                             .resolution(
-                                app.session.document.preview_resolution.min(1024),
+                                app.session.document.preview_resolution.min(8192),
                                 app.session.document.export_resolution,
                             )
                             .max(1);

@@ -43,7 +43,8 @@ fn fs_atrous(@builtin(position) position: vec4<f32>) -> @location(0) vec4<f32> {
             let sample_color = textureLoad(input_color, q, 0).rgb;
             let sample_depth = textureLoad(depth_tex, q, 0).r;
             let spatial = kernel_weight(ox) * kernel_weight(oy);
-            let depth_weight = exp(-abs(sample_depth - center_depth) * 2400.0 / f32(step_size));
+            let depth_tol = max(abs(center_depth) * 0.02 + 0.002, 1e-5);
+            let depth_weight = exp(-abs(sample_depth - center_depth) / depth_tol);
             let luma_weight = exp(-abs(luminance(sample_color) - luminance(center)) / sigma_l);
             let sky_guard = select(1.0, select(0.0, 1.0, sample_depth > 0.9999), center_depth > 0.9999);
             let weight = spatial * depth_weight * luma_weight * sky_guard;
