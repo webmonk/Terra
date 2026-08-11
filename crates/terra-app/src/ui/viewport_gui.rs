@@ -911,6 +911,11 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
         checkbox(ui, "Denoise", &mut vr.denoise);
 
         ui.separator();
+        section_header(ui, "Lighting");
+        slider_f32(ui, "Sun azimuth °", &mut vr.sun_azimuth_deg, 0.0, 360.0);
+        slider_f32(ui, "Sun elevation °", &mut vr.sun_elevation_deg, 0.0, 90.0);
+
+        ui.separator();
         if button_toggle_advanced(ui, &mut vr.advanced_open) {
             // toggled in helper
         }

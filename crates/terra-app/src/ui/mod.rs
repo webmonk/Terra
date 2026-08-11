@@ -336,6 +336,58 @@ impl LightingPreset {
     }
 }
 
+/// Convert a sun azimuth (degrees, compass bearing around +Y) and elevation
+/// (degrees above the horizon) into a `light_dir` xyz — the direction *from* the
+/// light *toward* the scene, matching `EnvironmentLighting::light_dir`. The
+/// result is unit length (the renderer normalizes it anyway); sun intensity is
+/// carried separately in `light_dir.w`.
+pub fn sun_dir_from_az_el(azimuth_deg: f32, elevation_deg: f32) -> [f32; 3] {
+    let az = azimuth_deg.to_radians();
+    let el = elevation_deg.to_radians();
+    let ce = el.cos();
+    // toward-sun = (ce·cos az, sin el, ce·sin az); light_dir points the other way.
+    [-(ce * az.cos()), -el.sin(), -(ce * az.sin())]
+}
+
+/// Inverse of [`sun_dir_from_az_el`]: recover `(azimuth, elevation)` in degrees
+/// from a `light_dir` xyz. Azimuth is wrapped to `[0, 360)`.
+pub fn sun_az_el_from_dir(light_dir: [f32; 3]) -> (f32, f32) {
+    // toward-sun is the negated light direction.
+    let s = [-light_dir[0], -light_dir[1], -light_dir[2]];
+    let len = (s[0] * s[0] + s[1] * s[1] + s[2] * s[2]).sqrt().max(1e-6);
+    let (x, y, z) = (s[0] / len, s[1] / len, s[2] / len);
+    let elevation = y.clamp(-1.0, 1.0).asin().to_degrees();
+    let mut azimuth = z.atan2(x).to_degrees();
+    if azimuth < 0.0 {
+        azimuth += 360.0;
+    }
+    (azimuth, elevation)
+}
+
+#[cfg(test)]
+mod sun_dir_tests {
+    use super::*;
+
+    #[test]
+    fn az_el_round_trips_through_dir() {
+        for &(az, el) in &[(0.0f32, 45.0f32), (90.0, 10.0), (215.0, 72.0), (359.0, 1.0)] {
+            let dir = sun_dir_from_az_el(az, el);
+            let (az2, el2) = sun_az_el_from_dir(dir);
+            assert!((el - el2).abs() < 1e-2, "elevation {el} -> {el2}");
+            // Compare azimuth modulo 360 so 359° vs 359° does not read as a 360° gap.
+            let daz = ((az - az2 + 540.0) % 360.0 - 180.0).abs();
+            assert!(daz < 1e-2, "azimuth {az} -> {az2}");
+        }
+    }
+
+    #[test]
+    fn studio_preset_reads_as_a_high_sun() {
+        let (ld, _, _) = LightingPreset::Studio.params();
+        let (_az, el) = sun_az_el_from_dir([ld[0], ld[1], ld[2]]);
+        assert!(el > 60.0, "Studio should read as a high sun, got {el}");
+    }
+}
+
 /// Primary viewport rendering controls (synced to [`terra_render::ViewportQualityManager`]).
 #[derive(Debug, Clone)]
 pub struct ViewportRenderSettings {
@@ -361,11 +413,22 @@ pub struct ViewportRenderSettings {
     pub converge_fraction: f32,
     /// Developer debug visualization (0 = final). Hidden from artists by default.
     pub debug_viz_mode: u32,
+    /// Editable sun direction, shared by Raster and RT. Azimuth is a compass
+    /// bearing around +Y (degrees); elevation is degrees above the horizon.
+    /// Seeded from the lighting preset when it changes, then overrides the
+    /// preset's baked direction so the sliders move the sun.
+    pub sun_azimuth_deg: f32,
+    pub sun_elevation_deg: f32,
 }
 
 impl Default for ViewportRenderSettings {
     fn default() -> Self {
         let cfg = terra_render::RenderQualityConfig::default();
+        // Seed the editable sun angle from the default lighting preset so the
+        // initial state matches what selecting Studio would produce.
+        let (studio_dir, _, _) = LightingPreset::Studio.params();
+        let (sun_azimuth_deg, sun_elevation_deg) =
+            sun_az_el_from_dir([studio_dir[0], studio_dir[1], studio_dir[2]]);
         Self {
             mode: cfg.mode,
             preset: cfg.preset,
@@ -386,6 +449,8 @@ impl Default for ViewportRenderSettings {
             history_clamp_k: cfg.history_clamp_k,
             converge_fraction: cfg.converge_fraction,
             debug_viz_mode: 0,
+            sun_azimuth_deg,
+            sun_elevation_deg,
         }
     }
 }
