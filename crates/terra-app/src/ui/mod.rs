@@ -205,6 +205,9 @@ pub struct UiState {
     pub pending_preview_resolution: Option<u32>,
     /// Environment lighting preset for the 3D viewport (presentation only).
     pub lighting_preset: LightingPreset,
+    /// True when the lighting values have been edited away from `lighting_preset`,
+    /// so the preset field renders blank. Cleared when a preset is (re)selected.
+    pub lighting_customized: bool,
     /// Converged samples in Progressive RT mode (read-only renderer telemetry).
     pub progressive_samples: u32,
     /// Progressive path-tracer active this frame (synced from renderer mode).
@@ -635,6 +638,8 @@ impl UiState {
         self.preview_mode = ws.viewport_mode;
         self.viewport_overlays = ws.viewport_overlays;
         self.lighting_preset = ws.lighting_preset;
+        // Applying a workspace re-selects its preset, so the lighting is not custom.
+        self.lighting_customized = false;
         self.inspector_advanced = ws.inspector_advanced;
         self.sculpt_radius = ws.brush.radius;
         self.sculpt_strength = ws.brush.strength;

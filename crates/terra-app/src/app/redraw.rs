@@ -190,23 +190,21 @@ impl TerraApp {
             // Terrain pass — always draws last-good GPU textures (never waits on eval).
             let render_t0 = Instant::now();
             {
-                // React to a lighting-preset change first: sync the render mode and
-                // seed the editable sun angle from the preset's baked direction.
-                if self.ui_state.lighting_preset != self.last_lighting_preset {
-                    self.last_lighting_preset = self.ui_state.lighting_preset;
+                // (Re)seed the editable lighting when a preset is selected: either a
+                // different preset, or the same one re-picked to clear a customized
+                // (blank) state. Editing any control sets `lighting_customized`, which
+                // blanks the preset field and suppresses re-seeding so the edit sticks.
+                let preset = self.ui_state.lighting_preset;
+                let customized = self.ui_state.lighting_customized;
+                if !customized
+                    && (preset != self.last_lighting_preset || self.last_lighting_customized)
+                {
                     renderer.notify_invalidation(terra_render::InvalidationReason::LightingChanged);
-                    // Keep the render mode consistent with the chosen lighting preset in
-                    // both directions: Progressive RT selects the path tracer, and every
-                    // other preset returns to Raster. Previously this only ever switched
-                    // *to* PT, so a non-progressive preset picked while in PT stayed
-                    // path-traced (mode and preset desynced).
-                    self.ui_state.viewport_render.mode =
-                        self.ui_state.lighting_preset.suggested_renderer_mode();
-                    // Seed the editable lighting (sun angle, intensity, exposure, sky)
-                    // from the preset so the controls start there; from there they
-                    // override it freely.
-                    let (preset_dir, preset_exposure, preset_clear) =
-                        self.ui_state.lighting_preset.params();
+                    // Keep the render mode consistent with the chosen preset in both
+                    // directions: Progressive RT selects the path tracer, every other
+                    // preset returns to Raster.
+                    self.ui_state.viewport_render.mode = preset.suggested_renderer_mode();
+                    let (preset_dir, preset_exposure, preset_clear) = preset.params();
                     let (az, el) =
                         crate::ui::sun_az_el_from_dir([preset_dir[0], preset_dir[1], preset_dir[2]]);
                     let vr = &mut self.ui_state.viewport_render;
@@ -215,7 +213,14 @@ impl TerraApp {
                     vr.sun_intensity = preset_dir[3];
                     vr.exposure = preset_exposure;
                     vr.sky_color = preset_clear;
+                    // Raster shading is not yet preset-defined; reset to neutral so a
+                    // preset restores a known, full lighting state.
+                    vr.ambient_strength = 1.0;
+                    vr.shadow_strength = 0.0;
+                    vr.fog_strength = 1.0;
                 }
+                self.last_lighting_preset = preset;
+                self.last_lighting_customized = customized;
 
                 // All viewport lighting is driven by the editable values (seeded from the
                 // preset above); the Home splash keeps its fixed look.

@@ -343,7 +343,10 @@ fn estimate_viewport_mode_bar_width(state: &UiState, vp: Rect) -> f32 {
         + gap * (labels.len().saturating_sub(1) as f32);
     let lighting_w = (18.0
         + 4.0
-        + DrawList::text_width(state.lighting_preset.label(), font_scale)
+        + DrawList::text_width(
+            if state.lighting_customized { "" } else { state.lighting_preset.label() },
+            font_scale,
+        )
         + 14.0
         + label_pad_x)
         .max(72.0)
@@ -408,7 +411,11 @@ fn draw_viewport_mode_bar(
     let item_radius = style::RADIUS_SM;
     let sep_gap = 10.0;
 
-    let preset_label = state.lighting_preset.label();
+    let preset_label = if state.lighting_customized {
+        ""
+    } else {
+        state.lighting_preset.label()
+    };
     let lighting_w = (18.0
         + 4.0
         + DrawList::text_width(preset_label, font_scale)
@@ -887,6 +894,7 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
             vr.mode = ViewportRendererMode::ALL[mode_idx];
             if vr.mode == ViewportRendererMode::ProgressiveRayTraced {
                 state.lighting_preset = LightingPreset::Progressive;
+                state.lighting_customized = false;
             }
         }
 
@@ -912,17 +920,22 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
 
         ui.separator();
         section_header(ui, "Lighting");
-        slider_f32(ui, "Sun azimuth °", &mut vr.sun_azimuth_deg, 0.0, 360.0);
-        slider_f32(ui, "Sun elevation °", &mut vr.sun_elevation_deg, 0.0, 90.0);
-        slider_f32(ui, "Sun intensity", &mut vr.sun_intensity, 0.0, 3.0);
-        slider_f32(ui, "Exposure", &mut vr.exposure, 0.1, 4.0);
-        slider_f32(ui, "Sky R", &mut vr.sky_color[0], 0.0, 1.0);
-        slider_f32(ui, "Sky G", &mut vr.sky_color[1], 0.0, 1.0);
-        slider_f32(ui, "Sky B", &mut vr.sky_color[2], 0.0, 1.0);
+        let mut lighting_edited = false;
+        lighting_edited |= slider_f32(ui, "Sun azimuth °", &mut vr.sun_azimuth_deg, 0.0, 360.0);
+        lighting_edited |= slider_f32(ui, "Sun elevation °", &mut vr.sun_elevation_deg, 0.0, 90.0);
+        lighting_edited |= slider_f32(ui, "Sun intensity", &mut vr.sun_intensity, 0.0, 3.0);
+        lighting_edited |= slider_f32(ui, "Exposure", &mut vr.exposure, 0.1, 4.0);
+        lighting_edited |= slider_f32(ui, "Sky R", &mut vr.sky_color[0], 0.0, 1.0);
+        lighting_edited |= slider_f32(ui, "Sky G", &mut vr.sky_color[1], 0.0, 1.0);
+        lighting_edited |= slider_f32(ui, "Sky B", &mut vr.sky_color[2], 0.0, 1.0);
         section_header(ui, "Raster shading");
-        slider_f32(ui, "Ambient", &mut vr.ambient_strength, 0.0, 2.0);
-        slider_f32(ui, "Shadow", &mut vr.shadow_strength, 0.0, 1.0);
-        slider_f32(ui, "Fog", &mut vr.fog_strength, 0.0, 2.0);
+        lighting_edited |= slider_f32(ui, "Ambient", &mut vr.ambient_strength, 0.0, 2.0);
+        lighting_edited |= slider_f32(ui, "Shadow", &mut vr.shadow_strength, 0.0, 1.0);
+        lighting_edited |= slider_f32(ui, "Fog", &mut vr.fog_strength, 0.0, 2.0);
+        if lighting_edited {
+            // Any lighting edit detaches from the named preset (blank preset field).
+            state.lighting_customized = true;
+        }
 
         ui.separator();
         if button_toggle_advanced(ui, &mut vr.advanced_open) {
@@ -1037,6 +1050,7 @@ fn draw_lighting_menu(ui: &mut GuiContext<'_>, state: &mut UiState, anchor: Rect
         }
         if ui.input.primary_released && ui.state.is_active(id) && hovered {
             state.lighting_preset = *preset;
+            state.lighting_customized = false;
             if preset.is_progressive() {
                 state.viewport_render.mode =
                     terra_render::ViewportRendererMode::ProgressiveRayTraced;

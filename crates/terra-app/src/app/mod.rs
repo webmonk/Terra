@@ -239,6 +239,7 @@ pub struct TerraApp {
     overhang_upload_fp: u64,
     /// Detect lighting preset changes for progressive invalidation.
     last_lighting_preset: crate::ui::LightingPreset,
+    last_lighting_customized: bool,
     /// Last mask id uploaded to the viewport overlay (detect enter/leave paint mode).
     last_mask_overlay_id: Option<terra_core::mask::MaskId>,
     /// Region Mask Editor session â€” paint/op edits invalidate mask cache only.
@@ -344,6 +345,7 @@ impl Default for TerraApp {
             veg_upload_fp: u64::MAX,
             overhang_upload_fp: u64::MAX,
             last_lighting_preset: crate::ui::LightingPreset::Studio,
+            last_lighting_customized: false,
             last_mask_overlay_id: None,
             mask_paint_stroke_before: None,
         }
