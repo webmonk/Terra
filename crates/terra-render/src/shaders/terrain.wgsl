@@ -321,10 +321,13 @@ fn sample_shadow_map(world_pos: vec3<f32>, n: vec3<f32>, sun_dir: vec3<f32>) -> 
     if (u.shadow.x < 0.5) {
         return 1.0;
     }
-    // Slope-scaled bias along the light direction.
+    // Slope-scaled bias along the light direction, scaled by world size: a shadow
+    // texel is metres wide on km-scale terrain, so the old sub-metre offset left
+    // lit surfaces self-shadowing (acne that darkened lit areas as strength rose).
     let ndl = max(dot(n, sun_dir), 0.0);
-    let bias = u.shadow.y * (1.0 + (1.0 - ndl) * 3.0);
-    let light_clip = u.light_view_proj * vec4<f32>(world_pos + sun_dir * bias * 12.0, 1.0);
+    let world_extent = max(u.world.x, u.world.y);
+    let bias = u.shadow.y * world_extent * (1.0 + (1.0 - ndl) * 3.0);
+    let light_clip = u.light_view_proj * vec4<f32>(world_pos + sun_dir * bias, 1.0);
     let ndc = light_clip.xyz / max(light_clip.w, 1e-4);
     let uv = ndc.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
     if (any(uv < vec2<f32>(0.001)) || any(uv > vec2<f32>(0.999)) || ndc.z < 0.0 || ndc.z > 1.0) {
