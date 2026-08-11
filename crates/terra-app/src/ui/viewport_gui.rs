@@ -855,9 +855,9 @@ fn draw_dirty_tiles_overlay(
 fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, anchor: Rect) {
     let menu_w = 300.0;
     let menu_h = if state.viewport_render.advanced_open {
-        660.0
+        790.0
     } else {
-        430.0
+        560.0
     };
     let rect = Rect::from_pos_size(
         (anchor.max_x - menu_w).max(8.0),
@@ -919,6 +919,10 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
         slider_f32(ui, "Sky R", &mut vr.sky_color[0], 0.0, 1.0);
         slider_f32(ui, "Sky G", &mut vr.sky_color[1], 0.0, 1.0);
         slider_f32(ui, "Sky B", &mut vr.sky_color[2], 0.0, 1.0);
+        section_header(ui, "Raster shading");
+        slider_f32(ui, "Ambient", &mut vr.ambient_strength, 0.0, 2.0);
+        slider_f32(ui, "Shadow", &mut vr.shadow_strength, 0.0, 1.0);
+        slider_f32(ui, "Fog", &mut vr.fog_strength, 0.0, 2.0);
 
         ui.separator();
         if button_toggle_advanced(ui, &mut vr.advanced_open) {

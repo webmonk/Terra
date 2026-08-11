@@ -81,4 +81,15 @@ fn raster_frame_covers_offscreen_target() {
     let err = pollster::block_on(gpu.device.pop_error_scope());
     assert!(err.is_none(), "validation error after height upload: {err:?}");
     assert_fully_overwritten(&gpu.read_rgba8(&target), "uploaded frame");
+
+    // Frame 3: enable raster cast shadows (dormant until wired to shadow_strength)
+    // so the directional depth pass actually runs — guard it against validation
+    // errors and confirm the frame still fully covers the target.
+    renderer.lighting.shadow_strength = 1.0;
+    gpu.fill(&target, MAGENTA);
+    gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+    renderer.render_to_view(&target.view, W, H);
+    let err = pollster::block_on(gpu.device.pop_error_scope());
+    assert!(err.is_none(), "validation error with shadows enabled: {err:?}");
+    assert_fully_overwritten(&gpu.read_rgba8(&target), "shadowed frame");
 }

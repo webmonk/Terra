@@ -426,6 +426,12 @@ pub struct ViewportRenderSettings {
     /// Editable sky / clear color, shared by both renderers (raster atmosphere +
     /// fog, RT sky). Seeded from the preset on change, then overridden.
     pub sky_color: [f32; 3],
+    /// Raster shading controls (inert in the RT backend). Ambient and fog default
+    /// to 1.0 (the current look); shadow_strength 0 keeps cast shadows off until
+    /// dialed up. These are not seeded from presets — they are raster tweaks.
+    pub ambient_strength: f32,
+    pub shadow_strength: f32,
+    pub fog_strength: f32,
 }
 
 impl Default for ViewportRenderSettings {
@@ -461,6 +467,9 @@ impl Default for ViewportRenderSettings {
             sun_intensity: studio_dir[3],
             exposure: studio_exposure,
             sky_color: studio_clear,
+            ambient_strength: 1.0,
+            shadow_strength: 0.0,
+            fog_strength: 1.0,
         }
     }
 }

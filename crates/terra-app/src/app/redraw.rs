@@ -234,6 +234,11 @@ impl TerraApp {
                 renderer.lighting.light_dir = light_dir;
                 renderer.lighting.exposure = exposure;
                 renderer.lighting.clear = clear;
+                // Raster shading controls are independent of the preset (not seeded),
+                // so push them straight from the editable state every frame.
+                renderer.lighting.ambient_strength = self.ui_state.viewport_render.ambient_strength;
+                renderer.lighting.shadow_strength = self.ui_state.viewport_render.shadow_strength;
+                renderer.lighting.fog_strength = self.ui_state.viewport_render.fog_strength;
 
                 let vr = &mut self.ui_state.viewport_render;
                 renderer.set_renderer_mode(vr.mode);

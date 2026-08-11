@@ -94,6 +94,8 @@ struct FrameUniforms {
     fog: [f32; 4],
     /// x=shadow_enabled, y=depth_bias, z=stream_level, w=soft_scale
     shadow: [f32; 4],
+    /// Raster shading controls: x=ambient_strength, y=shadow_strength, z=fog_strength, w=unused
+    raster: [f32; 4],
 }
 
 /// Viewport false-color / analysis shading (mode bar).
@@ -292,6 +294,12 @@ pub struct EnvironmentLighting {
     pub light_dir: [f32; 4],
     pub exposure: f32,
     pub clear: [f32; 3],
+    /// Raster fill-light multiplier (1.0 = current look).
+    pub ambient_strength: f32,
+    /// Raster cast-shadow darkness in [0, 1]; 0 disables the shadow pass.
+    pub shadow_strength: f32,
+    /// Raster aerial-perspective fog multiplier (1.0 = current look).
+    pub fog_strength: f32,
 }
 
 impl Default for EnvironmentLighting {
@@ -300,6 +308,9 @@ impl Default for EnvironmentLighting {
             light_dir: [-0.35, -0.90, -0.20, 1.00],
             exposure: 1.00,
             clear: [0.28, 0.32, 0.38],
+            ambient_strength: 1.0,
+            shadow_strength: 0.0,
+            fog_strength: 1.0,
         }
     }
 }
@@ -1663,6 +1674,10 @@ impl TerrainRenderer {
         }
 
         let backend = PresentationBackendId::from_mode(self.quality.config.mode);
+        // Raster cast shadows are driven by the lighting shadow-strength control;
+        // 0 keeps the depth pass off, matching the historical "no shadows" look.
+        self.shadow_map
+            .set_enabled(self.lighting.shadow_strength > 1e-4);
         let shadows_for_schedule =
             self.shadow_map.enabled() && matches!(backend, PresentationBackendId::RasterLit);
         self.frame_graph
@@ -1768,6 +1783,12 @@ impl TerrainRenderer {
                 0.0015,
                 self.tile_stream_level,
                 1.25,
+            ],
+            raster: [
+                self.lighting.ambient_strength,
+                self.lighting.shadow_strength,
+                self.lighting.fog_strength,
+                0.0,
             ],
         };
         let world_x = self.heights.world_size.0;
