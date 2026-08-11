@@ -973,7 +973,7 @@ pub fn combo(ui: &mut GuiContext<'_>, text: &str, selected: &mut usize, items: &
                 menu_h,
             )
         };
-        ui.queue_combo_menu(id, menu, items, *selected);
+        ui.queue_combo_menu(id, menu, field, items, *selected);
     }
 
     changed
@@ -1052,7 +1052,7 @@ pub fn combo_in_rect(
                 menu_h,
             )
         };
-        ui.queue_combo_menu(id, menu, items, *selected);
+        ui.queue_combo_menu(id, menu, field, items, *selected);
     }
 
     changed
