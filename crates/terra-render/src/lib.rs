@@ -1557,10 +1557,31 @@ impl TerrainRenderer {
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
+        let (width, height) = (self.config.width, self.config.height);
+        self.render_to_view(&view, width, height);
+        Ok(frame)
+    }
+
+    /// Record and submit one full frame (shadow, backend, overlays, post) into `view`.
+    ///
+    /// Target contract, until sizing is decoupled from the surface configuration:
+    /// - `view` must be a RENDER_ATTACHMENT-usable view whose texture format equals
+    ///   `self.config.format` — the terrain/ocean/wireframe/overlay/composite
+    ///   pipelines were baked against that format at construction. wgpu 24 exposes
+    ///   no format getter on `TextureView`, so this cannot be asserted here.
+    /// - `width`/`height` must equal `self.config.width`/`.height`: the depth
+    ///   buffer, progressive history, and path-tracer targets are allocated at the
+    ///   configured size (see `resize`), and the passes attach them alongside `view`.
+    pub fn render_to_view(&mut self, view: &wgpu::TextureView, width: u32, height: u32) {
+        debug_assert_eq!(
+            (width, height),
+            (self.config.width, self.config.height),
+            "render_to_view target size must match the configured size; call resize() first"
+        );
 
         self.scene_versions.begin_frame();
 
-        let aspect = self.config.width as f32 / self.config.height.max(1) as f32;
+        let aspect = width as f32 / height.max(1) as f32;
         if let Some(reason) = self.scene_versions.update_camera(&self.camera, aspect) {
             self.notify_invalidation(reason);
         }
@@ -1576,8 +1597,8 @@ impl TerrainRenderer {
             self.path_tracer.resize(
                 &self.device,
                 &self.queue,
-                self.config.width,
-                self.config.height,
+                width,
+                height,
                 internal_scale,
             );
             let mask = self.adaptive.prepare_all_active_mask();
@@ -1856,7 +1877,7 @@ impl TerrainRenderer {
                     }
                 }
 
-                let color_view = &view;
+                let color_view = view;
                 let terrain_ts = self
                     .gpu_timer
                     .as_mut()
@@ -1999,14 +2020,14 @@ impl TerrainRenderer {
                 &mut encoder,
                 HdrFrame {
                     color: self.path_tracer.radiance_view(),
-                    width: self.config.width,
-                    height: self.config.height,
+                    width,
+                    height,
                 },
                 GBufferViews {
                     depth: self.path_tracer.depth_view(),
                     normal: Some(self.path_tracer.normal_view()),
                 },
-                &view,
+                view,
                 view_proj,
                 self.quality.config.depth_rel_tol,
                 self.quality.config.history_clamp_k,
@@ -2018,7 +2039,7 @@ impl TerrainRenderer {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("progressive-overlay-pass"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: &view,
+                    view,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Load,
@@ -2044,7 +2065,7 @@ impl TerrainRenderer {
             .resolve_timestamps(self.gpu_timer.as_mut(), &mut encoder);
         self.queue.submit(Some(encoder.finish()));
 
-        let pixels = self.config.width as u64 * self.config.height as u64;
+        let pixels = width as u64 * height as u64;
         let spp = self.quality.spp_this_frame.max(if path_trace_mode { 1 } else { 0 });
         let bounces = self.quality.bounce_count.max(1);
         self.quality.approx_rays_this_frame = pixels * u64::from(spp) * u64::from(bounces);
@@ -2068,8 +2089,6 @@ impl TerrainRenderer {
         // Do not drive the hot path from fake sample-count variance.
         self.heights.tick_retirement(self.global_frame_index);
         self.global_frame_index = self.global_frame_index.wrapping_add(1);
-
-        Ok(frame)
     }
 
     /// Bootstrap adaptive tile states from accumulated sample count (debug / offline only).
