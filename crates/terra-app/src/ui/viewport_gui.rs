@@ -865,7 +865,9 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
         menu_w,
         menu_h,
     );
-    let mut scroll = 0.0;
+    // Scroll offset must persist across frames — a per-frame `0.0` local would
+    // snap the panel back to the top every frame, defeating wheel and thumb drag.
+    let mut scroll = state.viewport_render.menu_scroll;
     let was_open = state.viewport_render.menu_open;
     let mut open = was_open;
     if ui.begin_window(
@@ -949,6 +951,7 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
         }
         ui.end_window(&mut scroll);
     }
+    state.viewport_render.menu_scroll = scroll;
     state.viewport_render.menu_open = open;
     // Persist render prefs when the panel closes after edits.
     if !open && was_open {
@@ -1565,4 +1568,64 @@ fn toolbar_button(ui: &mut GuiContext<'_>, id: Id, rect: Rect, label: &str, acti
     );
     ui.label_centered_in_rect(rect, label, style::TEXT, FONT_SCALE * TYPE_LABEL);
     clicked
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use terra_gui::{GuiContext, GuiInput, GuiState};
+
+    /// Drive one frame of the render panel exactly as the mode bar does:
+    /// inside an overlay layer, through `with_menu_input`.
+    fn render_menu_frame(gs: &mut GuiState, ui_state: &mut UiState, input: GuiInput, anchor: Rect) {
+        let mut ctx = GuiContext::begin(1200.0, 800.0, 1.0, input, gs);
+        ctx.begin_overlay();
+        ctx.with_menu_input(|ctx| draw_viewport_render_menu(ctx, ui_state, anchor));
+        ctx.end_overlay();
+        ctx.end();
+    }
+
+    /// Regression guard: the advanced render panel's scroll offset must survive
+    /// across frames. A frame-local `let mut scroll = 0.0` would snap it back to
+    /// the top every frame, so the wheel (and thumb drag) would never move.
+    #[test]
+    fn render_panel_scroll_persists_across_frames() {
+        let mut gs = GuiState::default();
+        let mut ui_state = UiState::default();
+        ui_state.viewport_render.menu_open = true;
+        ui_state.viewport_render.advanced_open = true;
+
+        // Anchor (the Render button): max_x = 900, max_y = 60 → window at (600, 64) 300x520.
+        let anchor = Rect::from_pos_size(836.0, 40.0, 64.0, 20.0);
+        let content_pt = (750.0, 338.0); // inside the panel's scrollable body
+
+        // Frame 1: settle so the overflow (scroll_max) is measured for the wheel gate.
+        render_menu_frame(
+            &mut gs,
+            &mut ui_state,
+            GuiInput {
+                pointer: Some(content_pt),
+                ..Default::default()
+            },
+            anchor,
+        );
+
+        // Frame 2: wheel down over the panel body.
+        render_menu_frame(
+            &mut gs,
+            &mut ui_state,
+            GuiInput {
+                pointer: Some(content_pt),
+                scroll_delta: -3.0,
+                ..Default::default()
+            },
+            anchor,
+        );
+
+        assert!(
+            ui_state.viewport_render.menu_scroll > 0.0,
+            "advanced render panel must retain scroll offset across frames, got {}",
+            ui_state.viewport_render.menu_scroll
+        );
+    }
 }
