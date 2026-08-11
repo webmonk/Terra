@@ -202,10 +202,13 @@ impl TerraApp {
                 if self.ui_state.lighting_preset != self.last_lighting_preset {
                     self.last_lighting_preset = self.ui_state.lighting_preset;
                     renderer.notify_invalidation(terra_render::InvalidationReason::LightingChanged);
-                    if self.ui_state.lighting_preset.is_progressive() {
-                        self.ui_state.viewport_render.mode =
-                            terra_render::ViewportRendererMode::ProgressiveRayTraced;
-                    }
+                    // Keep the render mode consistent with the chosen lighting preset in
+                    // both directions: Progressive RT selects the path tracer, and every
+                    // other preset returns to Raster. Previously this only ever switched
+                    // *to* PT, so a non-progressive preset picked while in PT stayed
+                    // path-traced (mode and preset desynced).
+                    self.ui_state.viewport_render.mode =
+                        self.ui_state.lighting_preset.suggested_renderer_mode();
                 }
 
                 let vr = &mut self.ui_state.viewport_render;
