@@ -855,9 +855,9 @@ fn draw_dirty_tiles_overlay(
 fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, anchor: Rect) {
     let menu_w = 300.0;
     let menu_h = if state.viewport_render.advanced_open {
-        520.0
+        660.0
     } else {
-        280.0
+        430.0
     };
     let rect = Rect::from_pos_size(
         (anchor.max_x - menu_w).max(8.0),
@@ -914,6 +914,11 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
         section_header(ui, "Lighting");
         slider_f32(ui, "Sun azimuth °", &mut vr.sun_azimuth_deg, 0.0, 360.0);
         slider_f32(ui, "Sun elevation °", &mut vr.sun_elevation_deg, 0.0, 90.0);
+        slider_f32(ui, "Sun intensity", &mut vr.sun_intensity, 0.0, 3.0);
+        slider_f32(ui, "Exposure", &mut vr.exposure, 0.1, 4.0);
+        slider_f32(ui, "Sky R", &mut vr.sky_color[0], 0.0, 1.0);
+        slider_f32(ui, "Sky G", &mut vr.sky_color[1], 0.0, 1.0);
+        slider_f32(ui, "Sky B", &mut vr.sky_color[2], 0.0, 1.0);
 
         ui.separator();
         if button_toggle_advanced(ui, &mut vr.advanced_open) {

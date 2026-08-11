@@ -419,6 +419,13 @@ pub struct ViewportRenderSettings {
     /// preset's baked direction so the sliders move the sun.
     pub sun_azimuth_deg: f32,
     pub sun_elevation_deg: f32,
+    /// Editable sun intensity (`light_dir.w`) and tonemap exposure, shared by
+    /// both renderers. Seeded from the preset on change, then overridden.
+    pub sun_intensity: f32,
+    pub exposure: f32,
+    /// Editable sky / clear color, shared by both renderers (raster atmosphere +
+    /// fog, RT sky). Seeded from the preset on change, then overridden.
+    pub sky_color: [f32; 3],
 }
 
 impl Default for ViewportRenderSettings {
@@ -426,7 +433,7 @@ impl Default for ViewportRenderSettings {
         let cfg = terra_render::RenderQualityConfig::default();
         // Seed the editable sun angle from the default lighting preset so the
         // initial state matches what selecting Studio would produce.
-        let (studio_dir, _, _) = LightingPreset::Studio.params();
+        let (studio_dir, studio_exposure, studio_clear) = LightingPreset::Studio.params();
         let (sun_azimuth_deg, sun_elevation_deg) =
             sun_az_el_from_dir([studio_dir[0], studio_dir[1], studio_dir[2]]);
         Self {
@@ -451,6 +458,9 @@ impl Default for ViewportRenderSettings {
             debug_viz_mode: 0,
             sun_azimuth_deg,
             sun_elevation_deg,
+            sun_intensity: studio_dir[3],
+            exposure: studio_exposure,
+            sky_color: studio_clear,
         }
     }
 }

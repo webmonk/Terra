@@ -202,30 +202,34 @@ impl TerraApp {
                     // path-traced (mode and preset desynced).
                     self.ui_state.viewport_render.mode =
                         self.ui_state.lighting_preset.suggested_renderer_mode();
-                    // Seed azimuth/elevation from the preset so the sliders start at the
-                    // preset's sun; from there they override it freely.
-                    let (preset_dir, _, _) = self.ui_state.lighting_preset.params();
+                    // Seed the editable lighting (sun angle, intensity, exposure, sky)
+                    // from the preset so the controls start there; from there they
+                    // override it freely.
+                    let (preset_dir, preset_exposure, preset_clear) =
+                        self.ui_state.lighting_preset.params();
                     let (az, el) =
                         crate::ui::sun_az_el_from_dir([preset_dir[0], preset_dir[1], preset_dir[2]]);
-                    self.ui_state.viewport_render.sun_azimuth_deg = az;
-                    self.ui_state.viewport_render.sun_elevation_deg = el;
+                    let vr = &mut self.ui_state.viewport_render;
+                    vr.sun_azimuth_deg = az;
+                    vr.sun_elevation_deg = el;
+                    vr.sun_intensity = preset_dir[3];
+                    vr.exposure = preset_exposure;
+                    vr.sky_color = preset_clear;
                 }
 
+                // All viewport lighting is driven by the editable values (seeded from the
+                // preset above); the Home splash keeps its fixed look.
                 let (light_dir, exposure, clear) = if self.screen == AppScreen::Home {
                     ([-0.35, -0.90, -0.20, 1.00], 1.0, [0.071, 0.082, 0.102])
                 } else {
-                    let (mut ld, exposure, clear) = self.ui_state.lighting_preset.params();
-                    // Sun direction comes from the editable azimuth/elevation (seeded from
-                    // the preset on change) so dragging the sliders moves the sun and it
-                    // sticks. Intensity stays in w; the renderer normalizes the xyz.
-                    let dir = crate::ui::sun_dir_from_az_el(
-                        self.ui_state.viewport_render.sun_azimuth_deg,
-                        self.ui_state.viewport_render.sun_elevation_deg,
-                    );
-                    ld[0] = dir[0];
-                    ld[1] = dir[1];
-                    ld[2] = dir[2];
-                    (ld, exposure, clear)
+                    let vr = &self.ui_state.viewport_render;
+                    let dir =
+                        crate::ui::sun_dir_from_az_el(vr.sun_azimuth_deg, vr.sun_elevation_deg);
+                    (
+                        [dir[0], dir[1], dir[2], vr.sun_intensity],
+                        vr.exposure,
+                        vr.sky_color,
+                    )
                 };
                 renderer.lighting.light_dir = light_dir;
                 renderer.lighting.exposure = exposure;
