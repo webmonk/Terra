@@ -69,6 +69,27 @@ pub fn expand_radius_for(class: DirtyClass, stencil: u32, iterations: u32) -> u3
     }
 }
 
+impl DirtyClass {
+    /// Sample-space support radius for cache keys and invalidation expansion.
+    ///
+    /// Basin-coupled processes are treated as global — callers should prefer
+    /// `mark_all` when this returns `None`.
+    pub fn support_radius_samples(
+        self,
+        tile_size_samples: u32,
+        stencil: u32,
+        iterations: u32,
+    ) -> Option<u32> {
+        match self {
+            Self::BasinDependent => None,
+            Self::Local | Self::Expanding => Some(
+                expand_radius_for(self, stencil, iterations)
+                    .saturating_mul(tile_size_samples.max(1)),
+            ),
+        }
+    }
+}
+
 /// Process tiles with neighbor halo refresh between passes.
 pub struct TileScheduler {
     pub dirty: Vec<TileId>,
@@ -462,6 +483,19 @@ mod tests {
         assert_eq!(
             dirty_class_for(&LayerKind::ThermalErosion(Default::default())),
             DirtyClass::Expanding
+        );
+    }
+
+    #[test]
+    fn basin_dependent_support_radius_is_global() {
+        assert_eq!(
+            DirtyClass::BasinDependent.support_radius_samples(256, 1, 1),
+            None
+        );
+        assert!(
+            DirtyClass::Local
+                .support_radius_samples(256, 2, 1)
+                .is_some()
         );
     }
 

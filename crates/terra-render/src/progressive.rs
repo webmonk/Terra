@@ -8,8 +8,9 @@ use bytemuck::{Pod, Zeroable};
 use glam::Mat4;
 use wgpu::util::DeviceExt;
 
-const FILTER_PASSES: usize = 4;
-const MAX_HISTORY: f32 = 256.0;
+use crate::scene_versions::InvalidationReason;
+
+const MAX_FILTER_PASSES: usize = 4;
 
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
@@ -24,6 +25,13 @@ struct ProgressiveUniforms {
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct FilterUniforms {
     params: [f32; 4],
+}
+
+#[repr(C)]
+#[derive(Clone, Copy, Pod, Zeroable)]
+struct CompositeUniforms {
+    mode: u32,
+    _pad: [u32; 3],
 }
 
 fn target(format: wgpu::TextureFormat) -> Option<wgpu::ColorTargetState> {
@@ -94,11 +102,15 @@ pub struct ProgressiveRenderer {
     atrous_pipeline: wgpu::RenderPipeline,
     composite_pipeline: wgpu::RenderPipeline,
     temporal_uniform: wgpu::Buffer,
-    filter_uniforms: [wgpu::Buffer; FILTER_PASSES],
+    filter_uniforms: [wgpu::Buffer; MAX_FILTER_PASSES],
+    composite_uniform: wgpu::Buffer,
     history_index: usize,
     history_valid: bool,
     samples: u32,
-    frame_index: u32,
+    max_samples: u32,
+    history_cap: u32,
+    accumulation_frame_index: u32,
+    last_invalidation_reason: InvalidationReason,
     previous_view_proj: Mat4,
     last_signature: Option<[f32; 8]>,
 }
@@ -175,7 +187,7 @@ impl ProgressiveRenderer {
                     count: None,
                 },
                 sampled_texture_entry(1, wgpu::TextureSampleType::Float { filterable: false }),
-                sampled_texture_entry(2, wgpu::TextureSampleType::Depth),
+                sampled_texture_entry(2, wgpu::TextureSampleType::Float { filterable: false }),
                 sampled_texture_entry(3, wgpu::TextureSampleType::Float { filterable: false }),
                 sampled_texture_entry(4, wgpu::TextureSampleType::Float { filterable: false }),
                 sampled_texture_entry(5, wgpu::TextureSampleType::Float { filterable: false }),
@@ -201,10 +213,22 @@ impl ProgressiveRenderer {
         });
         let composite_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("progressive-composite-bgl"),
-            entries: &[sampled_texture_entry(
-                0,
-                wgpu::TextureSampleType::Float { filterable: false },
-            )],
+            entries: &[
+                wgpu::BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: wgpu::ShaderStages::FRAGMENT,
+                    ty: wgpu::BindingType::Buffer {
+                        ty: wgpu::BufferBindingType::Uniform,
+                        has_dynamic_offset: false,
+                        min_binding_size: None,
+                    },
+                    count: None,
+                },
+                sampled_texture_entry(1, wgpu::TextureSampleType::Float { filterable: false }),
+                sampled_texture_entry(2, wgpu::TextureSampleType::Float { filterable: false }),
+                sampled_texture_entry(3, wgpu::TextureSampleType::Float { filterable: false }),
+                sampled_texture_entry(4, wgpu::TextureSampleType::Float { filterable: false }),
+            ],
         });
 
         let temporal_shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
@@ -322,6 +346,11 @@ impl ProgressiveRenderer {
                 usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
             })
         });
+        let composite_uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
+            label: Some("progressive-composite-uniform"),
+            contents: bytemuck::bytes_of(&CompositeUniforms::zeroed()),
+            usage: wgpu::BufferUsages::UNIFORM | wgpu::BufferUsages::COPY_DST,
+        });
 
         Self {
             enabled: false,
@@ -341,10 +370,14 @@ impl ProgressiveRenderer {
             composite_pipeline,
             temporal_uniform,
             filter_uniforms,
+            composite_uniform,
             history_index: 0,
             history_valid: false,
             samples: 0,
-            frame_index: 0,
+            max_samples: 128,
+            history_cap: 8,
+            accumulation_frame_index: 0,
+            last_invalidation_reason: InvalidationReason::None,
             previous_view_proj: Mat4::IDENTITY,
             last_signature: None,
         }
@@ -376,43 +409,70 @@ impl ProgressiveRenderer {
     }
 
     pub fn frame_seed(&self) -> u32 {
-        self.frame_index
+        self.accumulation_frame_index
+    }
+
+    pub fn accumulation_frame_index(&self) -> u32 {
+        self.accumulation_frame_index
+    }
+
+    pub fn last_invalidation_reason(&self) -> InvalidationReason {
+        self.last_invalidation_reason
     }
 
     pub fn scene_view(&self) -> &wgpu::TextureView {
         &self.scene
     }
 
+    pub fn set_max_samples(&mut self, max_samples: u32) {
+        self.max_samples = max_samples.max(1);
+        self.samples = self.samples.min(self.max_samples);
+    }
+
+    pub fn set_history_cap(&mut self, cap: u32) {
+        self.history_cap = cap.max(1);
+    }
+
     pub fn invalidate(&mut self) {
+        self.invalidate_with_reason(InvalidationReason::None);
+    }
+
+    pub fn invalidate_with_reason(&mut self, reason: InvalidationReason) {
+        self.last_invalidation_reason = reason;
         self.history_valid = false;
         self.samples = 0;
-        self.frame_index = 0;
+        self.accumulation_frame_index = 0;
         self.last_signature = None;
     }
 
-    pub fn prepare_signature(&mut self, signature: [f32; 8]) {
-        if let Some(previous) = self.last_signature {
-            if previous
+    pub fn signature_changed(&self, signature: [f32; 8]) -> bool {
+        self.last_signature.is_none_or(|previous| {
+            previous
                 .iter()
                 .zip(signature.iter())
                 .any(|(a, b)| (a - b).abs() > 1e-5)
-            {
-                self.history_valid = false;
-                self.samples = 0;
-                self.frame_index = 0;
-            }
-        }
+        })
+    }
+
+    pub fn prepare_signature(&mut self, signature: [f32; 8]) {
         self.last_signature = Some(signature);
     }
 
-    pub fn resolve_to(
+    pub fn resolve_hdr(
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
+        scene_hdr: &wgpu::TextureView,
         current_depth: &wgpu::TextureView,
         surface_view: &wgpu::TextureView,
         view_proj: Mat4,
+        depth_rel_tol: f32,
+        variance_scale: f32,
+        filter_passes: u32,
+        temporal_timestamps: Option<wgpu::RenderPassTimestampWrites<'_>>,
+        mut denoise_timestamps: Option<wgpu::RenderPassTimestampWrites<'_>>,
+        debug_viz_mode: u32,
     ) {
         let inverse = view_proj.inverse();
         let inverse_finite = inverse.to_cols_array().iter().all(|v| v.is_finite());
@@ -422,6 +482,8 @@ impl ProgressiveRenderer {
         }
 
         let write = 1 - self.history_index;
+        let scene_input = scene_hdr;
+        let max_history = self.history_cap.min(self.max_samples) as f32;
         let temporal = ProgressiveUniforms {
             inv_view_proj: inverse.to_cols_array_2d(),
             prev_view_proj: if self.history_valid {
@@ -435,7 +497,7 @@ impl ProgressiveRenderer {
                 if self.history_valid { 1.0 } else { 0.0 },
                 self.samples as f32,
             ],
-            params: [MAX_HISTORY, 0.0025, 0.0, 0.0],
+            params: [max_history, depth_rel_tol.max(1e-5), 0.0, 0.0],
         };
         queue.write_buffer(&self.temporal_uniform, 0, bytemuck::bytes_of(&temporal));
 
@@ -449,7 +511,7 @@ impl ProgressiveRenderer {
                 },
                 wgpu::BindGroupEntry {
                     binding: 1,
-                    resource: wgpu::BindingResource::TextureView(&self.scene),
+                    resource: wgpu::BindingResource::TextureView(scene_input),
                 },
                 wgpu::BindGroupEntry {
                     binding: 2,
@@ -505,7 +567,7 @@ impl ProgressiveRenderer {
                     }),
                 ],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes: temporal_timestamps,
                 occlusion_query_set: None,
             });
             pass.set_pipeline(&self.temporal_pipeline);
@@ -513,13 +575,14 @@ impl ProgressiveRenderer {
             pass.draw(0..3, 0..1);
         }
 
-        for pass_index in 0..FILTER_PASSES {
+        let filter_passes = (filter_passes as usize).min(MAX_FILTER_PASSES);
+        for pass_index in 0..filter_passes {
             let filter = FilterUniforms {
                 params: [
                     self.width as f32,
                     self.height as f32,
                     (1u32 << pass_index) as f32,
-                    3.0,
+                    variance_scale.max(0.1),
                 ],
             };
             queue.write_buffer(
@@ -566,7 +629,11 @@ impl ProgressiveRenderer {
                     },
                 })],
                 depth_stencil_attachment: None,
-                timestamp_writes: None,
+                timestamp_writes: if pass_index == 0 {
+                    denoise_timestamps.take()
+                } else {
+                    None
+                },
                 occlusion_query_set: None,
             });
             pass.set_pipeline(&self.atrous_pipeline);
@@ -574,14 +641,45 @@ impl ProgressiveRenderer {
             pass.draw(0..3, 0..1);
         }
 
-        let filtered = &self.denoise[(FILTER_PASSES - 1) & 1];
+        let filtered = if filter_passes == 0 {
+            &self.history_color[write]
+        } else {
+            &self.denoise[(filter_passes - 1) & 1]
+        };
+        let composite_u = CompositeUniforms {
+            mode: debug_viz_mode,
+            _pad: [0; 3],
+        };
+        queue.write_buffer(
+            &self.composite_uniform,
+            0,
+            bytemuck::bytes_of(&composite_u),
+        );
         let composite_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("progressive-composite-bg"),
             layout: &self.composite_layout,
-            entries: &[wgpu::BindGroupEntry {
-                binding: 0,
-                resource: wgpu::BindingResource::TextureView(filtered),
-            }],
+            entries: &[
+                wgpu::BindGroupEntry {
+                    binding: 0,
+                    resource: self.composite_uniform.as_entire_binding(),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 1,
+                    resource: wgpu::BindingResource::TextureView(filtered),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 2,
+                    resource: wgpu::BindingResource::TextureView(scene_input),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 3,
+                    resource: wgpu::BindingResource::TextureView(&self.history_moments[write]),
+                },
+                wgpu::BindGroupEntry {
+                    binding: 4,
+                    resource: wgpu::BindingResource::TextureView(&self.history_color[write]),
+                },
+            ],
         });
         {
             let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -605,8 +703,11 @@ impl ProgressiveRenderer {
 
         self.history_index = write;
         self.history_valid = true;
-        self.samples = self.samples.saturating_add(1).min(MAX_HISTORY as u32);
-        self.frame_index = self.frame_index.wrapping_add(1);
+        self.samples = self
+            .samples
+            .saturating_add(1)
+            .min(self.max_samples);
+        self.accumulation_frame_index = self.accumulation_frame_index.wrapping_add(1);
         self.previous_view_proj = view_proj;
     }
 }
@@ -640,12 +741,20 @@ mod tests {
         let mut progressive =
             ProgressiveRenderer::new(&device, 32, 24, wgpu::TextureFormat::Rgba8Unorm);
         progressive.set_enabled(true);
+        let hdr = make_view(
+            &device,
+            "progressive-test-hdr",
+            32,
+            24,
+            wgpu::TextureFormat::Rgba16Float,
+            wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
+        );
         let depth = make_view(
             &device,
             "progressive-test-depth",
             32,
             24,
-            wgpu::TextureFormat::Depth32Float,
+            wgpu::TextureFormat::R32Float,
             wgpu::TextureUsages::RENDER_ATTACHMENT | wgpu::TextureUsages::TEXTURE_BINDING,
         );
         let output = make_view(
@@ -661,9 +770,9 @@ mod tests {
         });
         {
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("progressive-test-clear"),
+                label: Some("progressive-test-clear-hdr"),
                 color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view: progressive.scene_view(),
+                    view: &hdr,
                     resolve_target: None,
                     ops: wgpu::Operations {
                         load: wgpu::LoadOp::Clear(wgpu::Color {
@@ -675,25 +784,46 @@ mod tests {
                         store: wgpu::StoreOp::Store,
                     },
                 })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &depth,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Clear(1.0),
-                        store: wgpu::StoreOp::Store,
-                    }),
-                    stencil_ops: None,
-                }),
+                depth_stencil_attachment: None,
                 timestamp_writes: None,
                 occlusion_query_set: None,
             });
         }
-        progressive.resolve_to(
+        {
+            let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                label: Some("progressive-test-depth-clear"),
+                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                    view: &depth,
+                    resolve_target: None,
+                    ops: wgpu::Operations {
+                        load: wgpu::LoadOp::Clear(wgpu::Color {
+                            r: 1.0,
+                            g: 0.0,
+                            b: 0.0,
+                            a: 1.0,
+                        }),
+                        store: wgpu::StoreOp::Store,
+                    },
+                })],
+                depth_stencil_attachment: None,
+                timestamp_writes: None,
+                occlusion_query_set: None,
+            });
+        }
+        progressive.resolve_hdr(
             &device,
             &queue,
             &mut encoder,
+            &hdr,
             &depth,
             &output,
             Mat4::IDENTITY,
+            0.015,
+            3.0,
+            4,
+            None,
+            None,
+            0,
         );
         queue.submit(Some(encoder.finish()));
         let _ = device.poll(wgpu::Maintain::Wait);

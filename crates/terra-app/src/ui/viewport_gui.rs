@@ -3,7 +3,8 @@
 use crate::ui::{EditorTool, LightingPreset, Preview2dMode, UiState};
 use terra_core::document::TerrainDocument;
 use crate::ui::style::{self, FONT_SCALE, GAP, PAD, TYPE_BODY, TYPE_CAPTION, TYPE_LABEL};
-use terra_gui::{Color, DrawList, GuiContext, Icon, Id, Rect};
+use terra_gui::{checkbox, combo, section_header, slider_f32, slider_i32, Color, DrawList, GuiContext, Icon, Id, Rect};
+use terra_render::{QualityPreset, ViewportRendererMode};
 
 /// Bottom viewport tool-mode buttons (legacy authoring modes; kept for tools rail).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -178,7 +179,7 @@ pub fn draw_viewport_overlays(
     }
 
     let brush_active = ui_state.editor_tool.is_brush();
-    let progressive = ui_state.lighting_preset.is_progressive();
+    let progressive = ui_state.progressive_renderer_active;
     let layout = compute_overlay_layout(vp, brush_active, progressive);
 
     let mode_bar_w = estimate_viewport_mode_bar_width(ui_state, vp);
@@ -347,7 +348,16 @@ fn estimate_viewport_mode_bar_width(state: &UiState, vp: Rect) -> f32 {
         + label_pad_x)
         .max(72.0)
         .min(148.0);
-    let content_w = modes_w + sep_gap + 1.0 + sep_gap + lighting_w;
+    let render_w = (DrawList::text_width("Render", font_scale) + label_pad_x * 2.0).max(64.0);
+    let content_w = modes_w
+        + sep_gap
+        + 1.0
+        + sep_gap
+        + lighting_w
+        + sep_gap
+        + 1.0
+        + sep_gap
+        + render_w;
     (content_w + pad_x * 2.0).min(vp.width() - PAD * 2.0)
 }
 
@@ -496,6 +506,29 @@ fn draw_viewport_mode_bar(
 
     if state.lighting_menu_open {
         ui.with_menu_input(|ui| draw_lighting_menu(ui, state, lighting_rect));
+    }
+
+    x = lighting_rect.max_x + sep_gap;
+    draw_bar_separator(ui, x, bar);
+    x += 1.0 + sep_gap;
+
+    let render_w = (DrawList::text_width("Render", font_scale) + label_pad_x * 2.0).max(64.0);
+    let render_rect = Rect::from_pos_size(x, btn_y, render_w, btn_h);
+    if lighting_combo_button(
+        ui,
+        Id::new("viewport_render"),
+        render_rect,
+        "Render",
+        state.viewport_render.menu_open,
+        font_scale,
+        item_radius,
+    ) {
+        state.viewport_render.menu_open = !state.viewport_render.menu_open;
+        state.lighting_menu_open = false;
+        state.camera_speed_menu_open = false;
+    }
+    if state.viewport_render.menu_open {
+        ui.with_menu_input(|ui| draw_viewport_render_menu(ui, state, render_rect));
     }
     ui.end_overlay();
 
@@ -819,6 +852,142 @@ fn draw_dirty_tiles_overlay(
     ui.end_overlay();
 }
 
+fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, anchor: Rect) {
+    let menu_w = 300.0;
+    let menu_h = if state.viewport_render.advanced_open {
+        520.0
+    } else {
+        280.0
+    };
+    let rect = Rect::from_pos_size(
+        (anchor.max_x - menu_w).max(8.0),
+        anchor.max_y + 4.0,
+        menu_w,
+        menu_h,
+    );
+    let mut scroll = 0.0;
+    let was_open = state.viewport_render.menu_open;
+    let mut open = was_open;
+    if ui.begin_window(
+        Id::new("viewport_render_panel"),
+        "Viewport Rendering",
+        rect,
+        &mut open,
+        &mut scroll,
+    ) {
+        let vr = &mut state.viewport_render;
+        let mode_labels: Vec<&str> = ViewportRendererMode::ALL.iter().map(|m| m.label()).collect();
+        let mut mode_idx = ViewportRendererMode::ALL
+            .iter()
+            .position(|m| *m == vr.mode)
+            .unwrap_or(2);
+        if combo(ui, "Mode", &mut mode_idx, &mode_labels) {
+            vr.mode = ViewportRendererMode::ALL[mode_idx];
+            if vr.mode == ViewportRendererMode::ProgressiveRayTraced {
+                state.lighting_preset = LightingPreset::Progressive;
+            }
+        }
+
+        let preset_labels: Vec<&str> = QualityPreset::ALL.iter().map(|p| p.label()).collect();
+        let mut preset_idx = QualityPreset::ALL
+            .iter()
+            .position(|p| *p == vr.preset)
+            .unwrap_or(1);
+        if combo(ui, "Quality preset", &mut preset_idx, &preset_labels) {
+            vr.preset = QualityPreset::ALL[preset_idx];
+        }
+
+        let mut target_fps = vr.target_fps as i32;
+        if slider_i32(ui, "Target FPS", &mut target_fps, 24, 120) {
+            vr.target_fps = target_fps as f32;
+        }
+        let mut max_spp = vr.max_spp as i32;
+        if slider_i32(ui, "Max spp", &mut max_spp, 8, 512) {
+            vr.max_spp = max_spp as u32;
+        }
+        checkbox(ui, "Dynamic resolution", &mut vr.dynamic_resolution);
+        checkbox(ui, "Denoise", &mut vr.denoise);
+
+        ui.separator();
+        if button_toggle_advanced(ui, &mut vr.advanced_open) {
+            // toggled in helper
+        }
+        if vr.advanced_open {
+            section_header(ui, "Advanced");
+            let mut interactive_spp = vr.interactive_spp as i32;
+            if slider_i32(ui, "Interactive spp", &mut interactive_spp, 1, 4) {
+                vr.interactive_spp = interactive_spp as u32;
+            }
+            let mut refining_spp = vr.refining_spp as i32;
+            if slider_i32(ui, "Refining spp", &mut refining_spp, 1, 8) {
+                vr.refining_spp = refining_spp as u32;
+            }
+            let mut bounces = vr.max_bounces_refining as i32;
+            if slider_i32(ui, "Max bounces", &mut bounces, 1, 8) {
+                vr.max_bounces_refining = bounces as u32;
+            }
+            slider_f32(ui, "Min internal scale", &mut vr.min_internal_scale, 0.25, 1.0);
+            slider_f32(ui, "Max internal scale", &mut vr.max_internal_scale, 0.25, 1.0);
+            slider_f32(ui, "History clamp", &mut vr.history_clamp_k, 0.5, 3.0);
+            slider_f32(ui, "Converge fraction", &mut vr.converge_fraction, 0.5, 1.0);
+            let mut settling_spp = vr.settling_spp as i32;
+            if slider_i32(ui, "Settling spp", &mut settling_spp, 1, 8) {
+                vr.settling_spp = settling_spp as u32;
+            }
+            section_header(ui, "Developer");
+            let debug_labels = [
+                "Final",
+                "Noisy",
+                "Variance",
+                "Samples",
+                "History",
+            ];
+            let mut debug_idx = vr.debug_viz_mode.min(4) as usize;
+            if combo(ui, "Debug viz", &mut debug_idx, &debug_labels) {
+                vr.debug_viz_mode = debug_idx as u32;
+            }
+        }
+        ui.end_window(&mut scroll);
+    }
+    state.viewport_render.menu_open = open;
+    // Persist render prefs when the panel closes after edits.
+    if !open && was_open {
+        state.layout_dirty = true;
+    }
+}
+
+fn button_toggle_advanced(ui: &mut GuiContext<'_>, open: &mut bool) -> bool {
+    let row = ui.allocate(style::ROW_H);
+    let id = Id::new("render_advanced_toggle");
+    let hovered = ui.pointer_in(row);
+    if hovered {
+        ui.state.set_hot(id);
+    }
+    if hovered && ui.input.primary_pressed {
+        ui.state.active = Some(id);
+    }
+    let toggled = ui.input.primary_released && ui.state.is_active(id) && hovered;
+    if toggled {
+        *open = !*open;
+    }
+    ui.panel(
+        row,
+        if hovered {
+            style::BUTTON_HOVER
+        } else {
+            style::BUTTON_BG
+        },
+    );
+    ui.label_at(
+        row.min_x + 8.0,
+        row.min_y + 4.0,
+        if *open { "Advanced ▲" } else { "Advanced ▼" },
+        style::TEXT_DIM,
+        FONT_SCALE * TYPE_LABEL,
+    );
+    toggled
+}
+
 fn draw_lighting_menu(ui: &mut GuiContext<'_>, state: &mut UiState, anchor: Rect) {
     ui.begin_overlay();
     let item_h = 26.0;
@@ -851,6 +1020,10 @@ fn draw_lighting_menu(ui: &mut GuiContext<'_>, state: &mut UiState, anchor: Rect
         }
         if ui.input.primary_released && ui.state.is_active(id) && hovered {
             state.lighting_preset = *preset;
+            if preset.is_progressive() {
+                state.viewport_render.mode =
+                    terra_render::ViewportRendererMode::ProgressiveRayTraced;
+            }
             state.lighting_menu_open = false;
             state.viewport_lighting_selected = false;
             // Lighting is presentation for the 3D terrain view â€” leave analysis
@@ -895,7 +1068,25 @@ fn draw_progressive_status(
     state: &UiState,
     layout: &ViewportOverlayLayout,
 ) {
-    let label = format!("Progressive RT  {} spp", state.progressive_samples);
+    let profile = &state.profile;
+    let label = match profile.interaction_state {
+        "Interactive" => "Interactive".to_string(),
+        "Settling" => "Settling".to_string(),
+        "Converged" => format!(
+            "Converged  {} spp",
+            state.progressive_samples.min(profile.max_spp)
+        ),
+        "Refining" => {
+            let pct = (profile.convergence_fraction * 100.0).clamp(0.0, 100.0) as u32;
+            format!(
+                "Refining {}%  {} / {} spp",
+                pct,
+                state.progressive_samples.min(profile.max_spp),
+                profile.max_spp
+            )
+        }
+        other => format!("{other}  {} spp", state.progressive_samples),
+    };
     let width = DrawList::text_width(&label, FONT_SCALE * TYPE_LABEL) + 18.0;
     let panel = Rect::from_pos_size(
         layout.vp.max_x - PAD - width,

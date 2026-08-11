@@ -6,6 +6,9 @@
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
 
+/// wgpu default `max_buffer_size` on many adapters (256 MiB).
+const MAX_BUFFER_BYTES: u64 = 256 * 1024 * 1024;
+
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 pub struct GridVertex {
@@ -30,9 +33,48 @@ pub struct TerrainGrid {
 }
 
 impl TerrainGrid {
+    /// Largest `4n+1` grid that fits vertex + index buffers under [`MAX_BUFFER_BYTES`].
+    ///
+    /// Dense Full previews want 1 vertex ≈ 1 height sample, but a 4097² solid grid
+    /// overflows the default 256 MiB buffer limit (verts + skirts).
+    pub fn max_resolution_for_device_limits() -> u32 {
+        let vert_bytes = std::mem::size_of::<GridVertex>() as u64;
+        // Surface indices dominate: 6 * (r-1)^2 * 4 bytes.
+        let max_cells = ((MAX_BUFFER_BYTES / 24) as f64).sqrt().floor() as u32;
+        let max_from_idx = max_cells.saturating_add(1);
+        // Verts ≈ r² + 8r + 4 (surface + border walls + underside).
+        let max_verts = MAX_BUFFER_BYTES / vert_bytes;
+        let max_from_vert = {
+            let disc = 64.0f64 + 4.0 * ((max_verts as f64) - 4.0);
+            ((-8.0 + disc.sqrt()) * 0.5).floor() as u32
+        };
+        // Edge line-list: 4*r*(r-1) u32 indices.
+        let max_from_edges = {
+            // 16*r*(r-1) <= MAX → r² - r - MAX/16 <= 0
+            let m = (MAX_BUFFER_BYTES / 16) as f64;
+            let disc = 1.0 + 4.0 * m;
+            ((1.0 + disc.sqrt()) * 0.5).floor() as u32
+        };
+        let raw = max_from_idx
+            .min(max_from_vert)
+            .min(max_from_edges)
+            .min(4097)
+            .max(513);
+        // Leave a small margin so skirts/underside never push over the limit.
+        let safe = raw.saturating_sub(32).max(513);
+        crate::clipmap::WorldGridConfig::for_world(safe).grid_size
+    }
+
     pub fn new(device: &wgpu::Device, resolution: u32) -> Self {
-        let res = resolution.max(2);
+        let res = resolution
+            .max(2)
+            .min(Self::max_resolution_for_device_limits());
         let (verts, indices, surface_index_count, edges) = build_solid_grid(res);
+        debug_assert!(
+            (verts.len() as u64) * std::mem::size_of::<GridVertex>() as u64 <= MAX_BUFFER_BYTES
+        );
+        debug_assert!((indices.len() as u64) * 4 <= MAX_BUFFER_BYTES);
+        debug_assert!((edges.len() as u64) * 4 <= MAX_BUFFER_BYTES);
         Self {
             vertex_buf: device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
                 label: Some("terrain-grid-v"),
@@ -227,5 +269,17 @@ mod tests {
         let edges = grid_edge_indices(17);
         assert!(!edges.is_empty());
         assert_eq!(edges.len() % 2, 0);
+    }
+
+    #[test]
+    fn max_resolution_fits_default_buffer_limit() {
+        let res = TerrainGrid::max_resolution_for_device_limits();
+        assert!(res >= 513);
+        assert!(res <= 4097);
+        assert_eq!((res - 1) % 4, 0);
+        let (verts, indices, _, edges) = build_solid_grid(res);
+        assert!((verts.len() as u64) * 16 <= MAX_BUFFER_BYTES);
+        assert!((indices.len() as u64) * 4 <= MAX_BUFFER_BYTES);
+        assert!((edges.len() as u64) * 4 <= MAX_BUFFER_BYTES);
     }
 }

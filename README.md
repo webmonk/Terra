@@ -15,10 +15,10 @@
 >
 > Large parts of the editor are incomplete or only sketched in:
 >
-> - **Real-time terrain visualization** — live feedback when you change the landscape still needs major refinement; expect laggy, approximate, or stale previews
-> - **Export pipeline** — export is not supported for production use yet (stubs / incomplete paths only)
-> - **Objects** — object placement and scattering exist largely as placeholders
-> - **Materials** — material / surface authoring is placeholder-level and not a full shading pipeline
+> - **Real-time terrain visualization** — progressive Draft→Full preview with a hybrid GPU+CPU path exists, but live feedback still needs major refinement; expect laggy, approximate, or stale results
+> - **Export pipeline** — a heightmap-oriented export package writer exists, but it is not production-ready and the main Export CTA is still blocked
+> - **Objects** — vegetation scatter exists; general prop/object placement is largely placeholder
+> - **Materials** — material IDs / strata / hardness and viewport tinting exist; this is not a full shading or surface-authoring pipeline
 >
 > Treat everything you see as experimental scaffolding. Star the repo, experiment locally, and contribute if you like — but do not depend on Terra for real work yet.
 
@@ -29,33 +29,40 @@ The goal is a real-time authoring environment where artists compose landforms, b
 ## Vision
 
 - **Layer-and-mask workflow** — paint, stack, and blend terrain like a digital landscape canvas
-- **Free & open source** — MIT OR Apache-2.0; anyone can use, study, and contribute
-- **Artist-first** — shape tools, regions, biomes, and world rules without wiring a graph
+- **Free & open source** — MIT; anyone can use, study, and contribute
+- **Artist-first** — shape tools, biomes, masks, and world rules without wiring a graph
 - **Real-time preview** — progressive / multi-resolution evaluation with optional GPU compute
 
 ## Current status
 
-Early development. Core pieces exist (heightfields, layers, masks, CPU evaluation, wgpu viewport), but many features are incomplete or experimental — see the disclaimer above. Longer-term direction lives in the [roadmap](docs/roadmap.md).
+Early development, but past empty scaffolding. A usable **layer-stack editor** is in place: heightfields, masks/distributions, biomes, shape tools, CPU evaluation, progressive Draft→Medium→Full preview, and a wgpu viewport with a hybrid GPU path for many generators and filters.
+
+Still incomplete or experimental: export readiness/UX, materials shading, object/prop scattering beyond basic vegetation, volumetric overhangs/caves, and several simulations that are CPU-heavy or only partially on GPU. Product “Regions” were removed in favor of a single World Creator–style stack (biomes, masks, and world rules own placement).
+
+See the disclaimer above before relying on any of this.
 
 ## Features (in progress)
 
-- Layer stack with masks, blend modes, and distribution nodes
-- Shape tools, region influence, biome placement, and world rules
-- Progressive / multi-resolution preview with refinement
-- GPU compute path for erosion and related sims (`terra-gpu`)
-- Project save/load and heightmap export (`terra-io`) — export is still unfinished
+- Layer stack with blend modes, groups, biome containers, masks, and distribution / placement rules
+- Shape layers and brushes (procedural landforms, stamps, paths, polygons, sculpt base/strokes, heightmap import) plus shape objects
+- Biome paint & placement, Apply Where, and world rules
+- Progressive Draft→Full evaluation with hybrid GPU+CPU preview (`terra-gpu` / `terra-render`)
+- Geomorph, erosion, hydrology, and landscape-evolution operators (CPU foundations; GPU subset for common generators/filters and thermal/hydraulic)
+- New World templates (`WorldTemplate`: Blank, Tropical Island, Alpine Range, Desert Mesa, River Valley, Badlands, Young/Old Mountains, Dune Field, Coastal)
+- Project JSON save/load; heightmap-oriented export package via `terra-io` (not production-ready)
+- Undo/redo for stack edits, paint strokes, world rules, and simulation scenarios
+- Editor workspaces: Sculpt, Biomes, Filters, Mask, Simulation, Surface, Objects
 
 ## Stack
 
 | Crate | Role |
 |-------|------|
-| `terra-core` | Heightfields, layers, masks, regions, biomes, CPU evaluation |
-| `terra-gpu` | WGSL compute (erosion, tiled sims) |
-| `terra-render` | wgpu 3D viewport / clipmaps |
+| `terra-core` | Heightfields, layers, masks, biomes, CPU evaluation, commands |
+| `terra-gpu` | WGSL compute for supported generators, filters, and erosion |
+| `terra-render` | wgpu 3D viewport / clipmaps / progressive presentation |
 | `terra-gui` | Custom immediate-mode wgpu UI toolkit (not egui) |
-| `terra-ui` | Editor chrome, panels, tools; emits `PanelAction` |
-| `terra-io` | Import/export, GeoTIFF bridge |
-| `terra-app` | Application binary (winit event loop + wiring) |
+| `terra-app` | Editor chrome, panels, tools; application binary (winit event loop + wiring) |
+| `terra-io` | Project JSON, export package, limited grayscale GeoTIFF import |
 
 `terra-core` must stay free of `wgpu` and UI crates. `terra-gui` must stay free of domain types.
 
@@ -68,16 +75,19 @@ cargo run -p terra-app
 cargo test --workspace
 ```
 
-Real-time viewport path: GPU height/normal textures + static grid displacement (no mesh rebuild). See [docs/perf_migration.md](docs/perf_migration.md). Enable **View → Profiler** for per-frame timings.
+Real-time viewport path: GPU height/normal textures + static grid displacement (no mesh rebuild). Enable **View → Profiler** for per-frame timings.
 
 ## Documentation
 
-- [Architecture](docs/architecture.md) — crate boundaries and evaluation model
-- [Roadmap](docs/roadmap.md) — longer-term direction
-- Algorithm notes under [`docs/algorithms/`](docs/algorithms/)
-- Feature design notes under [`docs/architecture/`](docs/architecture/)
+User-facing guides for authoring terrain. Treat these as orientation — the product is early and unfinished.
 
-Historical sprint notes live under [`docs/archive/`](docs/archive/) and are not the current design source of truth.
+Terra uses a **layer stack** (World Creator–style), not a node graph. Workspaces change which tools are emphasized; they do not lock you into a fixed pipeline.
+
+| Guide | What it covers |
+|-------|----------------|
+| [Workflow structure](docs/workflow.md) | Layer stack, biomes, masks, workspaces, and how pieces fit together |
+| [Creating terrain](docs/creating-terrain.md) | New project → sculpt → biomes → filters → save |
+| [Editor overview](docs/editor.md) | Shell layout, panels, and common actions |
 
 ## Contributing
 
@@ -85,11 +95,4 @@ Contributions are welcome as the project takes shape. See [CONTRIBUTING.md](CONT
 
 ## License
 
-Licensed under either of
-
-- Apache License, Version 2.0 ([LICENSE-APACHE](LICENSE-APACHE))
-- MIT license ([LICENSE-MIT](LICENSE-MIT))
-
-at your option.
-
-World Creator is a trademark of its respective owners. Terra is an independent open-source project and is not affiliated with or endorsed by World Creator.
+Licensed under the [MIT License](LICENSE).

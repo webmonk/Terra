@@ -93,7 +93,7 @@ pub(crate) fn try_apply(
                                 .stamp_circle(key, wx, wz, radius_m, strength, false);
                         }
                     }
-                    let res = app.session.document.preview_resolution.min(1024).max(64);
+                    let res = app.session.document.preview_resolution.min(8192).max(64);
                     if let Some(layer) = app.session.document.selected_placement_layer_mut() {
                         match tool {
                             terra_core::biome_paint::BiomePaintTool::Smooth => {

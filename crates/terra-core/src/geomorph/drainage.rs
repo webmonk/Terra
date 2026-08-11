@@ -63,12 +63,17 @@ pub fn drainage_analysis(
 /// Ridge graph approximation: local maxima along D8 drainage divides
 /// (cells that are higher than all downhill neighbours and not channels).
 pub fn ridge_mask(hf: &Heightfield, graph: &FlowGraph) -> MaskField {
+    use rayon::prelude::*;
+
     let m = hf.metrics;
     let w = m.width as usize;
     let h = m.height as usize;
-    let mut out = MaskField::zeros(m);
-    for j in 0..h {
-        for i in 0..w {
+    let n = w * h;
+    let data: Vec<f32> = (0..n)
+        .into_par_iter()
+        .map(|idx| {
+            let i = idx % w;
+            let j = idx / w;
             let h0 = hf.get(i as u32, j as u32);
             let mut is_ridge = true;
             let mut has_nb = false;
@@ -84,15 +89,15 @@ pub fn ridge_mask(hf: &Heightfield, graph: &FlowGraph) -> MaskField {
                     break;
                 }
             }
-            // Also treat cells with no donors and high relief as divide-ish.
-            let idx = j * w + i;
             let divide = graph.donors[idx].is_empty() && graph.receivers[idx].len() <= 1;
             if (is_ridge && has_nb) || (divide && is_ridge) {
-                out.set(i as u32, j as u32, 1.0);
+                1.0
+            } else {
+                0.0
             }
-        }
-    }
-    out
+        })
+        .collect();
+    MaskField::from_raw(m, &data)
 }
 
 /// Valley graph: channel cells unioned with strong concavity seeds.

@@ -13,7 +13,32 @@ struct FrameUniforms {
     // x = stochastic frame seed, y = progressive enabled, z = accumulated samples, w = biome tint
     render: vec4<f32>,
     // x = shading_mode (0 lit, 1 height, 2 slope, 3 flow), y = contours on, z = contour interval m
+    // w = clipmap hole half-extent (Chebyshev metres); 0 = no hole
     viz: vec4<f32>,
+    // Directional light view-projection for shadow map sampling.
+    light_view_proj: mat4x4<f32>,
+    // x=use_tile_stream, y=tile_size, z=halo, w=max_pages
+    stream: vec4<f32>,
+    // x=fog_density, y=height_falloff, z=max_amount, w=sun_scatter
+    fog: vec4<f32>,
+    // x=shadow_enabled, y=depth_bias, z=stream_level, w=soft_scale
+    shadow: vec4<f32>,
+};
+
+/// Physical page-table row (must match `GpuPageTableEntry`, 48 bytes).
+struct PageTableEntry {
+    key_hash_lo: u32,
+    key_hash_hi: u32,
+    generation: u32,
+    valid: u32,
+    level: u32,
+    tile_x: u32,
+    tile_z: u32,
+    width: u32,
+    height: u32,
+    halo: u32,
+    revision_lo: u32,
+    revision_hi: u32,
 };
 
 
@@ -41,6 +66,10 @@ struct MaterialPalette {
 @group(0) @binding(12) var albedo_array: texture_2d_array<f32>;
 @group(0) @binding(13) var albedo_samp: sampler;
 @group(0) @binding(14) var placement_tint_tex: texture_2d<f32>;
+@group(0) @binding(15) var tile_atlas: texture_2d_array<f32>;
+@group(0) @binding(16) var<storage, read> page_table: array<PageTableEntry>;
+@group(0) @binding(17) var shadow_map: texture_depth_2d;
+@group(0) @binding(18) var shadow_samp: sampler_comparison;
 
 struct VsIn {
     @location(0) uv: vec2<f32>,
@@ -70,22 +99,7 @@ fn vs_main(v: VsIn) -> VsOut {
     );
     let huv = clamp(huv_raw, vec2<f32>(0.0), vec2<f32>(1.0));
 
-    // Bilinear height sample via textureLoad (R32Float is typically non-filterable).
-    let tw = max(u.grid.x - 1.0, 1.0);
-    let th = max(u.grid.y - 1.0, 1.0);
-    let fx = huv.x * tw;
-    let fy = huv.y * th;
-    let x0 = i32(floor(fx));
-    let y0 = i32(floor(fy));
-    let x1 = min(x0 + 1, i32(tw));
-    let y1 = min(y0 + 1, i32(th));
-    let tx = fx - f32(x0);
-    let ty = fy - f32(y0);
-    let h00 = textureLoad(height_tex, vec2<i32>(x0, y0), 0).r;
-    let h10 = textureLoad(height_tex, vec2<i32>(x1, y0), 0).r;
-    let h01 = textureLoad(height_tex, vec2<i32>(x0, y1), 0).r;
-    let h11 = textureLoad(height_tex, vec2<i32>(x1, y1), 0).r;
-    let surface_h = mix(mix(h00, h10, tx), mix(h01, h11, tx), ty);
+    let surface_h = sample_height_bilinear(huv);
     // grid.w = slab base height (below terrain min).
     let base_y = u.grid.w;
     let h = select(surface_h, base_y, v.use_base > 0.5);
@@ -150,11 +164,53 @@ fn sample_map(map: texture_2d<f32>, uv: vec2<f32>) -> f32 {
     return textureLoad(map, vec2<i32>(x, y), 0).r;
 }
 
-fn sample_height_uv(uv: vec2<f32>) -> f32 {
+fn sample_height_monolithic(uv: vec2<f32>) -> f32 {
     let dim = textureDimensions(height_tex);
     let x = i32(clamp(uv.x * f32(dim.x - 1u), 0.0, f32(dim.x - 1u)));
     let y = i32(clamp(uv.y * f32(dim.y - 1u), 0.0, f32(dim.y - 1u)));
     return textureLoad(height_tex, vec2<i32>(x, y), 0).r;
+}
+
+fn find_tile_page(level: u32, tile_x: u32, tile_z: u32) -> i32 {
+    let max_pages = u32(max(u.stream.w, 1.0));
+    for (var i = 0u; i < max_pages; i = i + 1u) {
+        let e = page_table[i];
+        if (e.valid != 0u && e.level == level && e.tile_x == tile_x && e.tile_z == tile_z) {
+            return i32(i);
+        }
+    }
+    return -1;
+}
+
+fn sample_height_streamed_point(sx: f32, sy: f32) -> f32 {
+    let tile_size = max(u.stream.y, 1.0);
+    let halo = u.stream.z;
+    let level = u32(u.shadow.z);
+    let tx = u32(floor(sx / tile_size));
+    let tz = u32(floor(sy / tile_size));
+    let page = find_tile_page(level, tx, tz);
+    if (page < 0) {
+        let dim = textureDimensions(height_tex);
+        let x = i32(clamp(sx, 0.0, f32(dim.x - 1u)));
+        let y = i32(clamp(sy, 0.0, f32(dim.y - 1u)));
+        return textureLoad(height_tex, vec2<i32>(x, y), 0).r;
+    }
+    let e = page_table[u32(page)];
+    let local_x = sx - f32(tx) * tile_size;
+    let local_z = sy - f32(tz) * tile_size;
+    let lx = i32(clamp(floor(local_x + halo), 0.0, f32(e.width + e.halo * 2u - 1u)));
+    let lz = i32(clamp(floor(local_z + halo), 0.0, f32(e.height + e.halo * 2u - 1u)));
+    return textureLoad(tile_atlas, vec2<i32>(lx, lz), page, 0).r;
+}
+
+fn sample_height_uv(uv: vec2<f32>) -> f32 {
+    if (u.stream.x > 0.5) {
+        let tw = max(u.grid.x - 1.0, 1.0);
+        let th = max(u.grid.y - 1.0, 1.0);
+        let c = clamp(uv, vec2<f32>(0.0), vec2<f32>(1.0));
+        return sample_height_streamed_point(c.x * tw, c.y * th);
+    }
+    return sample_height_monolithic(uv);
 }
 
 fn material_color(id: u32) -> vec3<f32> {
@@ -245,11 +301,48 @@ fn sample_height_bilinear(uv: vec2<f32>) -> f32 {
     let p0 = vec2<i32>(floor(p));
     let p1 = min(p0 + vec2<i32>(1), vec2<i32>(dim) - vec2<i32>(1));
     let f = fract(p);
+    if (u.stream.x > 0.5) {
+        let h00 = sample_height_streamed_point(f32(p0.x), f32(p0.y));
+        let h10 = sample_height_streamed_point(f32(p1.x), f32(p0.y));
+        let h01 = sample_height_streamed_point(f32(p0.x), f32(p1.y));
+        let h11 = sample_height_streamed_point(f32(p1.x), f32(p1.y));
+        return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
+    }
     let h00 = textureLoad(height_tex, p0, 0).r;
     let h10 = textureLoad(height_tex, vec2<i32>(p1.x, p0.y), 0).r;
     let h01 = textureLoad(height_tex, vec2<i32>(p0.x, p1.y), 0).r;
     let h11 = textureLoad(height_tex, p1, 0).r;
     return mix(mix(h00, h10, f.x), mix(h01, h11, f.x), f.y);
+}
+
+fn sample_shadow_map(world_pos: vec3<f32>, n: vec3<f32>, sun_dir: vec3<f32>) -> f32 {
+    if (u.shadow.x < 0.5) {
+        return 1.0;
+    }
+    // Slope-scaled bias along the light direction.
+    let ndl = max(dot(n, sun_dir), 0.0);
+    let bias = u.shadow.y * (1.0 + (1.0 - ndl) * 3.0);
+    let light_clip = u.light_view_proj * vec4<f32>(world_pos + sun_dir * bias * 12.0, 1.0);
+    let ndc = light_clip.xyz / max(light_clip.w, 1e-4);
+    let uv = ndc.xy * vec2<f32>(0.5, -0.5) + vec2<f32>(0.5, 0.5);
+    if (any(uv < vec2<f32>(0.001)) || any(uv > vec2<f32>(0.999)) || ndc.z < 0.0 || ndc.z > 1.0) {
+        return 1.0;
+    }
+    // Wider PCF kernel to hide ortho shadow texelation on large worlds.
+    let soft = max(u.shadow.w, 1.5);
+    let texel = soft / 2048.0;
+    var vis = 0.0;
+    vis += textureSampleCompare(shadow_map, shadow_samp, uv + vec2<f32>(-1.5 * texel, -1.5 * texel), ndc.z);
+    vis += textureSampleCompare(shadow_map, shadow_samp, uv + vec2<f32>( 0.5 * texel, -1.5 * texel), ndc.z);
+    vis += textureSampleCompare(shadow_map, shadow_samp, uv + vec2<f32>( 1.5 * texel, -0.5 * texel), ndc.z);
+    vis += textureSampleCompare(shadow_map, shadow_samp, uv + vec2<f32>(-1.5 * texel,  0.5 * texel), ndc.z);
+    vis += textureSampleCompare(shadow_map, shadow_samp, uv + vec2<f32>( 0.0, 0.0), ndc.z);
+    vis += textureSampleCompare(shadow_map, shadow_samp, uv + vec2<f32>( 1.5 * texel,  1.5 * texel), ndc.z);
+    vis += textureSampleCompare(shadow_map, shadow_samp, uv + vec2<f32>(-0.5 * texel,  1.5 * texel), ndc.z);
+    vis += textureSampleCompare(shadow_map, shadow_samp, uv + vec2<f32>( 1.5 * texel, -1.5 * texel), ndc.z);
+    vis += textureSampleCompare(shadow_map, shadow_samp, uv + vec2<f32>(-1.5 * texel,  1.5 * texel), ndc.z);
+    // Soften contact: never crush lit slopes to pure black.
+    return mix(0.35, 1.0, vis / 9.0);
 }
 
 /// Trace against the full heightfield rather than only nearby screen pixels.
@@ -347,6 +440,18 @@ fn fs_wireframe(i: VsOut) -> @location(0) vec4<f32> {
 
 @fragment
 fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
+    // Coarse clipmap rings / fallback leave a hole so finer coverage is never overdrawn.
+    if (u.viz.w > 0.5) {
+        let cells = max(u.clipmap.w - 1.0, 1.0);
+        let center = vec2<f32>(
+            u.clipmap.x + u.clipmap.z * cells * 0.5,
+            u.clipmap.y + u.clipmap.z * cells * 0.5,
+        );
+        let d = max(abs(i.world_pos.x - center.x), abs(i.world_pos.z - center.y));
+        if (d < u.viz.w) {
+            discard;
+        }
+    }
     // Slab sides / underside — World Creator–style light cliff faces.
     if (i.face > 0.5) {
         var n = i.normal;
@@ -525,17 +630,21 @@ fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
     let bounce = albedo * 0.22 * (0.40 + 0.60 * h_norm);
 
     let ao = height_ao(i.terrain_uv, i.world_pos.y);
-    var shadow_visibility = ao;
+    let map_shadow = sample_shadow_map(i.world_pos, n, sun_dir);
+    // Keep ambient occlusion as fill; shadow map only darkens direct sun.
+    var shadow_visibility = mix(ao, ao * map_shadow, 0.85);
     var sky_visibility = ao;
     if (u.render.y > 0.5) {
         let origin = i.world_pos + n * max(h_span * 0.00035, 0.35);
         let stochastic_sun = jittered_sun(sun_dir, i.position.xy);
-        shadow_visibility = terrain_visibility(
+        let ray_vis = terrain_visibility(
             origin,
             stochastic_sun,
             max(u.world.x, u.world.y) * 1.35,
             u.render.x,
         );
+        // Combine stable shadow map with stochastic contact/softening.
+        shadow_visibility = min(shadow_visibility, mix(ray_vis, ray_vis * ao, 0.35));
         sky_visibility = mix(0.28, 1.0, stochastic_sky_visibility(origin, n, i.position.xy));
     }
     let ambient = (hemi * 0.38 + bounce * mix(0.65, 1.25, sky_visibility)) * sky_visibility;
@@ -562,12 +671,18 @@ fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
 
     var color = albedo * ambient * (1.0 - metalness * 0.5) + direct;
 
-    // Camera-distance + height atmospheric haze — stronger aerial perspective.
+    // Camera-distance + height atmospheric haze (sun-aware aerial perspective).
     let cam_dist = length(i.world_pos - u.eye.xyz);
     let height_haze = clamp((i.world_pos.y - u.world.z) / h_span, 0.0, 1.0);
-    let fog_amount = 1.0 - exp(-cam_dist * 0.00016);
-    let fog_col = mix(vec3<f32>(0.42, 0.48, 0.56), vec3<f32>(0.55, 0.62, 0.72), height_haze);
-    color = mix(color, fog_col, clamp(fog_amount, 0.0, 0.32));
+    let fog_density = max(u.fog.x, 1e-6);
+    let fog_amount = (1.0 - exp(-cam_dist * fog_density))
+        * mix(1.0, 1.0 - height_haze * u.fog.y, 0.65);
+    let sun_scatter = u.fog.w;
+    let fog_cool = vec3<f32>(0.42, 0.48, 0.56);
+    let fog_warm = vec3<f32>(0.62, 0.55, 0.42);
+    let fog_hi = vec3<f32>(0.55, 0.62, 0.72);
+    let fog_col = mix(mix(fog_cool, fog_warm, sun_scatter * 0.45), fog_hi, height_haze);
+    color = mix(color, fog_col, clamp(fog_amount, 0.0, max(u.fog.z, 0.05)));
 
     let exposure = max(u.eye.w, 0.1);
     color = aces_tonemap(color * exposure);

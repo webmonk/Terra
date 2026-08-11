@@ -501,10 +501,21 @@ impl ApplicationHandler for TerraApp {
             };
             let stall_refine = self.mouse_pressed.is_some() || self.gui_interacting;
             let now_ms = self.runtime_started.elapsed().as_millis() as u64;
-            let interaction_active =
-                live_paint || self.mouse_pressed.is_some() || self.gui_interacting;
+            let scene_meaningful = self
+                .renderer
+                .as_ref()
+                .map(|r| r.scene_versions().meaningful_this_frame())
+                .unwrap_or(false);
+            let terrain_edits = self.pending_eval
+                || self.needs_height_upload
+                || self.placement_tint_dirty
+                || self.mask_overlay_dirty;
+            let meaningful_interaction = scene_meaningful || live_paint || terrain_edits;
             self.terrain_runtime
-                .update_refinement(now_ms, interaction_active);
+                .update_refinement(now_ms, meaningful_interaction);
+            if let Some(renderer) = self.renderer.as_mut() {
+                renderer.set_interaction_state(self.terrain_runtime.refinement.state());
+            }
             if let Some(engine) = self.gpu_engine.as_mut() {
                 engine.set_simulation_iteration_cap(
                     self.terrain_runtime

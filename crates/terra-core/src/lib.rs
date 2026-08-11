@@ -35,6 +35,7 @@ pub mod rebuild_feedback;
 pub mod scatter;
 pub mod shape_history;
 pub mod shape_object;
+pub mod simd_ops;
 pub mod simulation_scenario;
 pub mod sparse_paint;
 pub mod surface;
@@ -116,10 +117,10 @@ pub use sparse_paint::{
 pub use terrain::{
     DirtyEvent, EditorRefinementState, FrequencyBand, InvalidationKey, InvalidationSet,
     NormalizedRect, OperationDescriptor, OperationLocality, PyramidConfig, RefinementController,
-    RegionSet, ResidentTile, TerrainLevel, TerrainPyramid, TerrainRuntime, TerrainRuntimeStats,
-    TerrainTileKey, TerrainWorkItem, TerrainWorkKind, TerrainWorkScheduler, TileCacheError,
-    TileCacheInsert, TileCacheStats, TilePageHandle, TileRecord, TileResidencyCache, TileState,
-    WorkPriority, WorkSchedulerStats,
+    RefinementTimings, RegionSet, ResidentTile, TerrainCacheKey, TerrainLevel, TerrainPyramid, TerrainRuntime,
+    TerrainRuntimeStats, TerrainTileKey, TerrainWorkItem, TerrainWorkKind, TerrainWorkScheduler,
+    TileCacheError, TileCacheInsert, TileCacheStats, TilePageHandle, TileRecord, TileResidencyCache,
+    TileState, WorkPriority, WorkSchedulerStats,
 };
 pub use world_archetype::{
     alpine_world, badlands_world, blank_world_design, build_world, coastal_world, desert_world,

@@ -18,11 +18,15 @@ pub enum PreviewQuality {
 
 impl PreviewQuality {
     pub fn resolution(self, full_preview: u32, export: u32) -> u32 {
+        let full = full_preview.max(128);
         match self {
-            PreviewQuality::Draft => 256,
-            PreviewQuality::Medium => 512,
-            PreviewQuality::Full => full_preview,
-            PreviewQuality::Export => export,
+            // Interactive ladder aims closer to World Creator preview density.
+            // Draft/Medium used to hard-cap at 256/512, which kept the viewport
+            // looking coarse even after refine started.
+            PreviewQuality::Draft => 512.min(full),
+            PreviewQuality::Medium => 1024.min(full),
+            PreviewQuality::Full => full,
+            PreviewQuality::Export => export.max(full),
         }
     }
 

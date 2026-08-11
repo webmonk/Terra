@@ -9,11 +9,11 @@ All notable changes to Terra will be documented in this file.
   lithology), `ScaleBand::MultiScale` + `LayerKind::scale_band`, field invalidation
   graph with iterative guard, `TerrainStatistics`, `LandscapeStyle` presets, and
   realism benchmark worlds (Alpine, Desert Mesa, Badlands, Old/Young Mountains,
-  Dune Field, Coastal) — see `docs/architecture/phase11_geological_realism.md`
+  Dune Field, Coastal)
 - Rebuilt New World templates from scratch via `WorldTemplate` + shared
   cause→effect process chain (materials → evolution → hydro → meso → detail)
-- Dual MIT / Apache-2.0 licensing and CONTRIBUTING guide
-- Open-source packaging pass (README accuracy, docs archive for sprint notes)
+- MIT licensing and CONTRIBUTING guide
+- Open-source packaging pass (README accuracy, user-facing docs for workflow / creating terrain)
 - Drainage-conditioned multi-scale terrain amplification (`analyze::amplify_terrain` /
   Geomorphic Detail): macro/meso/micro metre bands, cascaded flow-aligned patterns,
   outputs for fine flow / micro-channel / ridge breakup / fine erosion

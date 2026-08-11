@@ -145,12 +145,18 @@ pub fn build_flow_graph(hf: &Heightfield, model: FlowModel) -> FlowGraph {
 ///
 /// Ties break toward the lowest direction index for determinism.
 pub fn flow_direction_d8(hf: &Heightfield) -> (Vec<u8>, MaskField) {
+    use rayon::prelude::*;
+
     let w = hf.metrics.width as usize;
     let h = hf.metrics.height as usize;
     let mut dirs = vec![NO_FLOW; w * h];
-    let mut mask = MaskField::zeros(hf.metrics);
-    for j in 0..h {
-        for i in 0..w {
+    let mut mask_data = vec![0.0f32; w * h];
+    dirs.par_iter_mut()
+        .zip(mask_data.par_iter_mut())
+        .enumerate()
+        .for_each(|(idx, (dir_slot, mask_slot))| {
+            let i = idx % w;
+            let j = idx / w;
             let h0 = hf.get(i as u32, j as u32);
             let mut best = NO_FLOW;
             let mut best_s = 0.0f32;
@@ -173,19 +179,15 @@ pub fn flow_direction_d8(hf: &Heightfield) -> (Vec<u8>, MaskField) {
                     best = k as u8;
                 }
             }
-            dirs[j * w + i] = best;
-            mask.set(
-                i as u32,
-                j as u32,
-                if best == NO_FLOW {
-                    -1.0
-                } else {
-                    best as f32 / 7.0
-                },
-            );
-        }
-    }
-    (dirs, mask)
+            *dir_slot = best;
+            // Match prior MaskField::set clamping (NO_FLOW sentinel → 0).
+            *mask_slot = if best == NO_FLOW {
+                0.0
+            } else {
+                (best as f32 / 7.0).clamp(0.0, 1.0)
+            };
+        });
+    (dirs, MaskField::from_raw(hf.metrics, &mask_data))
 }
 
 /// D∞ (Tarboton): partition flow between the two cells of the winning facet.

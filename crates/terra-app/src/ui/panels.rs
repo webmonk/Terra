@@ -429,7 +429,7 @@ fn export_panel(
         doc.export_resolution = export_res as u32;
     }
     let mut preview_res = doc.preview_resolution as i32;
-    if slider_i32(ui, "Preview res", &mut preview_res, 256, 2048) {
+    if slider_i32(ui, "Preview res", &mut preview_res, 256, 8192) {
         doc.preview_resolution = preview_res as u32;
     }
     ui.separator();
@@ -561,11 +561,68 @@ fn profiler_panel(ui: &mut GuiContext<'_>, ui_state: &UiState) {
     label(ui, &format!("Layer eval:  {:>6} us", p.eval_us));
     label(ui, &format!("GPU upload:  {:>6} us", p.upload_us));
     label(ui, &format!("Terrain draw:{:>6} us", p.render_us));
+    if p.gpu_timestamps_supported {
+        label(ui, &format!("GPU terrain: {:>6} us", p.gpu_terrain_us));
+        label(ui, &format!("GPU shadow:  {:>6} us", p.gpu_shadow_us));
+    } else {
+        label(ui, "GPU timestamps: unsupported");
+    }
     label(ui, &format!("UI:          {:>6} us", p.ui_us));
     label(ui, &format!("Frame total: {:>6} us", p.frame_us));
     ui.separator();
     label(ui, "Viewport never waits on eval;");
     label(ui, "last-good textures stay on screen.");
+    if !p.renderer_mode.is_empty() {
+        ui.separator();
+        label(ui, &format!("Renderer: {}", p.renderer_mode));
+        label(
+            ui,
+            &format!(
+                "Interaction: {}  |  accum {}/{} spp  (frame {})",
+                p.interaction_state, p.spp_this_frame, p.max_spp, p.accum_frame
+            ),
+        );
+        label(
+            ui,
+            &format!(
+                "Convergence {:.0}%  |  tiles active {} / reduced {} / converged {}",
+                p.convergence_fraction * 100.0,
+                p.active_tiles,
+                p.reduced_tiles,
+                p.converged_tiles
+            ),
+        );
+        label(
+            ui,
+            &format!(
+                "Internal scale {:.2}  |  GPU {:.2} ms (smooth {:.2})",
+                p.internal_scale, p.last_gpu_ms, p.smoothed_gpu_ms
+            ),
+        );
+        label(
+            ui,
+            &format!(
+                "Versions cam {} ter {} lit {}  |  last {}",
+                p.camera_version, p.terrain_version, p.lighting_version, p.last_invalidation
+            ),
+        );
+        if p.gpu_timestamps_supported {
+            label(
+                ui,
+                &format!(
+                    "PT {} us  temporal {} us  denoise {} us",
+                    p.path_trace_us, p.temporal_us, p.denoise_us
+                ),
+            );
+        }
+        label(
+            ui,
+            &format!(
+                "Global frame {}  |  bounces {}  |  samples {}",
+                p.global_frame, p.bounce_count, p.spp_this_frame
+            ),
+        );
+    }
 }
 
 fn changed_slider_terrain(doc: &mut TerrainDocument, ui: &mut GuiContext<'_>) {

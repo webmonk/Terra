@@ -52,6 +52,27 @@ impl WorkPriority {
             age: 0,
         }
     }
+
+    /// Screen-space urgency from projected geometric error (Phase 9).
+    pub fn from_screen_error(error_px: f32, visible: bool) -> Self {
+        let urgency = if !visible {
+            8
+        } else if error_px >= 8.0 {
+            255
+        } else if error_px >= 4.0 {
+            200
+        } else if error_px >= 2.0 {
+            128
+        } else {
+            64
+        };
+        Self {
+            urgency,
+            coarse_first: 0,
+            proximity: 0,
+            age: 0,
+        }
+    }
 }
 
 impl Ord for WorkPriority {
@@ -244,30 +265,73 @@ impl TerrainWorkScheduler {
     }
 }
 
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+/// Viewport / terrain interaction phases for progressive refinement.
+///
+/// Driven by meaningful scene changes (camera, terrain, lighting, …), not raw
+/// mouse-button or UI-hover state. Timings are owned by [`RefinementTimings`].
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
+#[serde(rename_all = "snake_case")]
 pub enum EditorRefinementState {
-    ActiveInteraction,
+    /// Camera/edit/light/etc. is actively changing the scene.
+    Interactive,
+    /// Short grace period after the last meaningful change.
     Settling,
-    IdleRefinement,
+    /// Stable; terrain and/or render quality are climbing toward the target.
+    Refining,
+    /// Render accumulation (and optionally terrain) reached the configured target.
+    Converged,
+    /// Export-quality evaluation owns the budget.
     Export,
 }
 
 impl EditorRefinementState {
+    pub fn label(self) -> &'static str {
+        match self {
+            Self::Interactive => "Interactive",
+            Self::Settling => "Settling",
+            Self::Refining => "Refining",
+            Self::Converged => "Converged",
+            Self::Export => "Export",
+        }
+    }
+
     pub fn terrain_budget_us(self) -> u64 {
         match self {
-            Self::ActiveInteraction => 2_000,
+            Self::Interactive => 2_000,
             Self::Settling => 5_000,
-            Self::IdleRefinement => 10_000,
+            Self::Refining => 10_000,
+            Self::Converged => 1_000,
             Self::Export => u64::MAX,
         }
     }
 
     pub fn simulation_iteration_cap(self) -> Option<u32> {
         match self {
-            Self::ActiveInteraction => Some(4),
+            Self::Interactive => Some(4),
             Self::Settling => Some(24),
-            Self::IdleRefinement => Some(256),
+            Self::Refining => Some(256),
+            Self::Converged => Some(256),
             Self::Export => None,
+        }
+    }
+}
+
+/// Configurable hysteresis for [`RefinementController`] state transitions.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+pub struct RefinementTimings {
+    /// Milliseconds without meaningful interaction before Interactive → Settling.
+    pub settle_after_ms: u64,
+    /// Milliseconds without meaningful interaction before Settling → Refining
+    /// (absolute from last interaction).
+    pub refine_after_ms: u64,
+}
+
+impl Default for RefinementTimings {
+    fn default() -> Self {
+        Self {
+            settle_after_ms: 75,
+            // 75 ms settling + ~150 ms stable → refining.
+            refine_after_ms: 225,
         }
     }
 }
@@ -276,17 +340,18 @@ impl EditorRefinementState {
 pub struct RefinementController {
     state: EditorRefinementState,
     last_interaction_ms: u64,
-    settle_after_ms: u64,
-    idle_after_ms: u64,
+    timings: RefinementTimings,
+    /// Set by the render path when accumulated samples reach the configured target.
+    render_converged: bool,
 }
 
 impl Default for RefinementController {
     fn default() -> Self {
         Self {
-            state: EditorRefinementState::IdleRefinement,
+            state: EditorRefinementState::Converged,
             last_interaction_ms: 0,
-            settle_after_ms: 80,
-            idle_after_ms: 450,
+            timings: RefinementTimings::default(),
+            render_converged: false,
         }
     }
 }
@@ -296,9 +361,18 @@ impl RefinementController {
         self.state
     }
 
+    pub fn timings(&self) -> RefinementTimings {
+        self.timings
+    }
+
+    pub fn set_timings(&mut self, timings: RefinementTimings) {
+        self.timings = timings;
+    }
+
     pub fn begin_interaction(&mut self, now_ms: u64) {
         self.last_interaction_ms = now_ms;
-        self.state = EditorRefinementState::ActiveInteraction;
+        self.render_converged = false;
+        self.state = EditorRefinementState::Interactive;
     }
 
     pub fn begin_export(&mut self) {
@@ -307,9 +381,23 @@ impl RefinementController {
 
     pub fn finish_export(&mut self, now_ms: u64) {
         self.last_interaction_ms = now_ms;
+        self.render_converged = false;
         self.state = EditorRefinementState::Settling;
     }
 
+    /// Notify that the progressive renderer reached its sample target.
+    pub fn set_render_converged(&mut self, converged: bool) {
+        self.render_converged = converged;
+    }
+
+    pub fn render_converged(&self) -> bool {
+        self.render_converged
+    }
+
+    /// Advance interaction hysteresis.
+    ///
+    /// `interaction_active` must mean a meaningful scene change this frame
+    /// (camera/terrain/lighting/…), not UI chrome hover or menu open.
     pub fn update(&mut self, now_ms: u64, interaction_active: bool) -> EditorRefinementState {
         if self.state == EditorRefinementState::Export {
             return self.state;
@@ -318,12 +406,14 @@ impl RefinementController {
             self.begin_interaction(now_ms);
         } else {
             let elapsed = now_ms.saturating_sub(self.last_interaction_ms);
-            self.state = if elapsed < self.settle_after_ms {
-                EditorRefinementState::ActiveInteraction
-            } else if elapsed < self.idle_after_ms {
+            self.state = if elapsed < self.timings.settle_after_ms {
+                EditorRefinementState::Interactive
+            } else if elapsed < self.timings.refine_after_ms {
                 EditorRefinementState::Settling
+            } else if self.render_converged {
+                EditorRefinementState::Converged
             } else {
-                EditorRefinementState::IdleRefinement
+                EditorRefinementState::Refining
             };
         }
         self.state
@@ -398,15 +488,42 @@ mod tests {
         controller.begin_interaction(100);
         assert_eq!(
             controller.update(120, false),
-            EditorRefinementState::ActiveInteraction
+            EditorRefinementState::Interactive
         );
         assert_eq!(
-            controller.update(250, false),
+            controller.update(200, false),
             EditorRefinementState::Settling
         );
         assert_eq!(
-            controller.update(700, false),
-            EditorRefinementState::IdleRefinement
+            controller.update(400, false),
+            EditorRefinementState::Refining
         );
+        controller.set_render_converged(true);
+        assert_eq!(
+            controller.update(401, false),
+            EditorRefinementState::Converged
+        );
+    }
+
+    #[test]
+    fn ui_without_scene_change_does_not_restart() {
+        let mut controller = RefinementController::default();
+        controller.begin_interaction(0);
+        assert_eq!(
+            controller.update(300, false),
+            EditorRefinementState::Refining
+        );
+        assert_eq!(
+            controller.update(350, false),
+            EditorRefinementState::Refining
+        );
+    }
+
+    #[test]
+    fn screen_error_maps_to_urgency() {
+        let hot = WorkPriority::from_screen_error(10.0, true);
+        let cold = WorkPriority::from_screen_error(1.0, true);
+        assert!(hot.urgency > cold.urgency);
+        assert_eq!(WorkPriority::from_screen_error(1.0, false).urgency, 8);
     }
 }

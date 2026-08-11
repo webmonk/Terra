@@ -18,7 +18,6 @@ Use a recent stable Rust toolchain. GPU features need a working wgpu backend (DX
 |-------|--------------------|
 | `terra-core` | `wgpu`, any UI crate |
 | `terra-gui` | `terra-core` or other domain crates |
-| `terra-ui` | owning eval/GPU; prefer emitting `PanelAction` |
 
 Keep domain content (layer kinds, presets, archetypes) in `terra-core` when practical. UI crates present and apply; they should not become a second catalog of truth.
 
@@ -33,9 +32,9 @@ Keep domain content (layer kinds, presets, archetypes) in `terra-core` when prac
 
 ## Docs
 
-- Public design docs live under `docs/architecture/` and `docs/algorithms/`.
-- Do not add new `*_sprint.md` pass notes to the default docs tree; use issues/PRs or `docs/archive/` for historical notes.
+- User-facing guides live under `docs/` (workflow, creating terrain, editor overview); the root [README](README.md) lists them.
+- Prefer updating those guides when authoring UX changes; keep algorithm internals in code comments or module docs rather than new algorithm guides.
 
 ## License
 
-By contributing, you agree that your contributions are dual-licensed under MIT and Apache-2.0, as described in [LICENSE](LICENSE).
+By contributing, you agree that your contributions are licensed under the MIT License, as described in [LICENSE](LICENSE).

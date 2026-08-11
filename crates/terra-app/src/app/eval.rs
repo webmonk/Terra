@@ -12,6 +12,11 @@ use crate::ui::Preview2dMode;
 use super::{
     quality_stage_progress, TerraApp,
 };
+
+/// Interactive Full preview ceiling — same 1 m footing as WC (world metres ≈ samples),
+/// capped at export-class 8192² so extreme worlds stay bounded.
+const INTERACTIVE_PREVIEW_CAP: u32 = 8192;
+
 impl TerraApp {
     pub(crate) fn request_rebuild(&mut self) {
         self.eval_token = self.scheduler.request_rebuild();
@@ -54,10 +59,11 @@ impl TerraApp {
         // Match the resolution already on screen (renderer tex or last_height).
         if let Some(r) = self.renderer.as_ref() {
             let w = r.heights.tex_size.0.max(1);
-            let preview = self.session.document.preview_resolution.min(1024);
+            let preview = self.session.document.preview_resolution.min(INTERACTIVE_PREVIEW_CAP);
+            let medium = PreviewQuality::Medium.resolution(preview, preview);
             self.scheduler.quality = if w >= preview {
                 PreviewQuality::Full
-            } else if w >= 512 {
+            } else if w >= medium {
                 PreviewQuality::Medium
             } else {
                 PreviewQuality::Draft
@@ -143,7 +149,7 @@ impl TerraApp {
             self.scheduler
                 .quality
                 .resolution(
-                    self.session.document.preview_resolution.min(1024),
+                    self.session.document.preview_resolution.min(INTERACTIVE_PREVIEW_CAP),
                     self.session.document.export_resolution,
                 )
                 .max(256),
@@ -301,7 +307,7 @@ impl TerraApp {
             masks: self.session.document.masks.clone(),
             base_metrics: self.session.document.metrics,
             level_steps: self.session.document.level_steps.clone(),
-            preview_res: self.session.document.preview_resolution.min(1024),
+            preview_res: self.session.document.preview_resolution.min(INTERACTIVE_PREVIEW_CAP),
             export_res: self.session.document.export_resolution,
             aux: self.scheduler.last_aux.clone(),
             strata: self.scheduler.last_strata.clone(),
@@ -395,7 +401,60 @@ impl TerraApp {
                     .update_tile_cache(atlas.residency().stats(), self.pending_tile_uploads.len());
             }
         }
+        if uploaded > 0 {
+            self.sync_tile_stream_to_renderer();
+        }
         uploaded
+    }
+
+    pub(crate) fn sync_tile_stream_to_renderer(&mut self) {
+        let (
+            atlas_view,
+            page_table,
+            tile_size,
+            halo,
+            max_pages,
+            _resident,
+            budget_util,
+        ) = {
+            let Some(atlas) = self.tile_atlas.as_ref() else {
+                return;
+            };
+            (
+                atlas.create_texture_view(),
+                atlas.page_table_buffer_cloned(),
+                atlas.tile_size(),
+                atlas.halo(),
+                atlas.max_pages(),
+                atlas.residency().stats().resident_tiles,
+                atlas.memory_budget().utilization(),
+            )
+        };
+        let _ = budget_util;
+        let level = self
+            .last_height
+            .as_ref()
+            .and_then(|height| {
+                self.terrain_runtime
+                    .pyramid
+                    .levels
+                    .iter()
+                    .position(|candidate| candidate.resolution == height.metrics.width)
+            })
+            .unwrap_or(0) as u8;
+        let Some(renderer) = self.renderer.as_mut() else {
+            return;
+        };
+        renderer.set_tile_stream_resources(
+            atlas_view,
+            page_table,
+            tile_size,
+            halo,
+            max_pages,
+            level,
+            // Streamed height is primary; shader falls back to monolithic on miss.
+            true,
+        );
     }
 
     pub(crate) fn mark_dirty_from(&mut self, id: LayerId) {
@@ -559,7 +618,7 @@ impl TerraApp {
             self.scheduler.quality = PreviewQuality::Draft;
             self.force_draft = false;
         }
-        let preview = self.session.document.preview_resolution.min(1024);
+        let preview = self.session.document.preview_resolution.min(INTERACTIVE_PREVIEW_CAP);
         let export = self.session.document.export_resolution;
         let base = self.session.document.metrics;
         let quality = self.scheduler.quality;
@@ -800,20 +859,21 @@ impl TerraApp {
                                 used_gpu = true;
                                 eval_completed = true;
                                 if needs_cpu_suffix {
-                                    // Unsupported shapes/stamps were passthrough only —
-                                    // GPU present is incomplete. Draft CPU must bake them
-                                    // or the viewport never changes.
+                                    // Unsupported layers need CPU bake at *this* quality
+                                    // (not Draft), then lifecycle advances Draft→Medium→Full.
                                     self.ui_state.profile.path = "GPU→async CPU";
                                     self.ui_state.refining = true;
-                                    self.ui_state.build_progress = Some(0.15);
+                                    self.ui_state.build_progress =
+                                        Some(quality_stage_progress(quality).max(0.15));
                                     if !self.worker_refine_pending {
-                                        let q = PreviewQuality::Draft;
-                                        self.enqueue_async_eval(q);
+                                        self.enqueue_async_eval(quality);
                                     }
                                 } else {
-                                    // Fully GPU-resident present — do not climb Full CPU.
-                                    self.ui_state.refining = false;
-                                    self.ui_state.build_progress = None;
+                                    // GPU finished this quality — keep climbing toward Full.
+                                    self.ui_state.refining = quality.next_refine().is_some();
+                                    if !self.ui_state.refining {
+                                        self.ui_state.build_progress = None;
+                                    }
                                 }
                             }
                             if used_gpu && !eval_completed {

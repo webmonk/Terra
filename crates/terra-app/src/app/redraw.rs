@@ -187,7 +187,7 @@ impl TerraApp {
                 return;
             };
 
-            // Terrain pass â€” always draws last-good GPU textures (never waits on eval).
+            // Terrain pass — always draws last-good GPU textures (never waits on eval).
             let render_t0 = Instant::now();
             {
                 let (light_dir, exposure, clear) = if self.screen == AppScreen::Home {
@@ -198,10 +198,43 @@ impl TerraApp {
                 renderer.lighting.light_dir = light_dir;
                 renderer.lighting.exposure = exposure;
                 renderer.lighting.clear = clear;
-                renderer.set_progressive_enabled(
-                    self.screen == AppScreen::Editor
-                        && self.ui_state.lighting_preset.is_progressive(),
-                );
+
+                if self.ui_state.lighting_preset != self.last_lighting_preset {
+                    self.last_lighting_preset = self.ui_state.lighting_preset;
+                    renderer.notify_invalidation(terra_render::InvalidationReason::LightingChanged);
+                    if self.ui_state.lighting_preset.is_progressive() {
+                        self.ui_state.viewport_render.mode =
+                            terra_render::ViewportRendererMode::ProgressiveRayTraced;
+                    }
+                }
+
+                let vr = &mut self.ui_state.viewport_render;
+                renderer.set_renderer_mode(vr.mode);
+                let quality = renderer.quality_mut();
+                if quality.config.preset != vr.preset {
+                    quality.set_preset(vr.preset);
+                }
+                quality.config.target_fps = vr.target_fps.clamp(15.0, 240.0);
+                quality.config.max_accumulated_spp = vr.max_spp.max(1);
+                quality.config.dynamic_resolution_enabled = vr.dynamic_resolution;
+                quality.config.denoise_enabled = vr.denoise;
+                quality.config.interactive_spp = vr.interactive_spp.max(1);
+                quality.config.settling_spp = vr.settling_spp.max(1);
+                quality.config.refining_spp = vr.refining_spp.max(1);
+                quality.config.max_bounces_interactive = vr.max_bounces_interactive.max(1);
+                quality.config.max_bounces_refining = vr.max_bounces_refining.max(1);
+                quality.config.min_internal_scale =
+                    vr.min_internal_scale.clamp(0.25, vr.max_internal_scale);
+                quality.config.max_internal_scale = vr.max_internal_scale.clamp(0.25, 1.0);
+                quality.config.history_clamp_k = vr.history_clamp_k.max(0.1);
+                quality.config.converge_fraction = vr.converge_fraction.clamp(0.0, 1.0);
+                let debug_viz = vr.debug_viz_mode;
+                renderer.set_debug_viz_mode(debug_viz);
+                // Mode alone selects the presentation backend (no dual progressive flag).
+                let progressive_active = self.screen == AppScreen::Editor
+                    && vr.mode.uses_progressive_path_tracer();
+                self.ui_state.progressive_renderer_active = progressive_active;
+
                 let shading = if self.ui_state.is_mask_view() {
                     terra_render::ViewportShadingMode::Lit
                 } else {
@@ -231,12 +264,32 @@ impl TerraApp {
             };
             self.ui_state.profile.render_us = render_t0.elapsed().as_micros() as u64;
             self.ui_state.profile.terrain_grid_size = renderer.last_grid_resolution;
+            self.ui_state.profile.gpu_terrain_us = renderer.last_gpu_timings.terrain_us;
+            self.ui_state.profile.gpu_shadow_us = renderer.last_gpu_timings.shadow_us;
+            self.ui_state.profile.gpu_timestamps_supported = renderer.last_gpu_timings.supported;
             self.ui_state.profile.update_visible_tiles(
                 renderer.last_tile_plan_exact,
                 renderer.last_tile_plan_fallback,
                 renderer.last_tile_plan_missing,
             );
-            self.ui_state.progressive_samples = renderer.progressive_samples();
+            let progressive_samples = renderer.progressive_samples();
+            self.ui_state.progressive_samples = progressive_samples;
+            let render_converged = progressive_samples
+                >= renderer.quality().config.max_accumulated_spp;
+            self.terrain_runtime
+                .refinement
+                .set_render_converged(render_converged);
+            self.ui_state.profile.update_progressive(
+                renderer.scene_versions_snapshot(),
+                renderer.progressive_last_invalidation(),
+                renderer.progressive_accumulation_frame(),
+                renderer.global_frame_index(),
+                renderer.quality(),
+                &renderer.last_gpu_timings,
+                renderer.interaction_state(),
+                renderer.quality().config.mode,
+                progressive_samples,
+            );
             self.ui_state.camera_xz = (
                 (renderer.camera.target.x / renderer.heights.world_size.0.max(1.0)).clamp(0.0, 1.0),
                 (renderer.camera.target.z / renderer.heights.world_size.1.max(1.0)).clamp(0.0, 1.0),
@@ -529,6 +582,7 @@ impl TerraApp {
         }
         if self.ui_state.layout_dirty {
             self.ui_state.layout.clamp_mut();
+            self.ui_state.layout.viewport_render = self.ui_state.viewport_render.to_prefs();
             save_layout_prefs(&self.ui_state.layout);
             self.ui_state.layout_dirty = false;
             self.refresh_viewport_rect();

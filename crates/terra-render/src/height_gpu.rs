@@ -1,4 +1,7 @@
 //! GPU-resident height + normal textures with double buffering.
+//!
+//! Large slot reallocations should retire old textures via [`crate::retirement::DeferredGpuRetirement`]
+//! instead of dropping them immediately on the upload path.
 
 use bytemuck::{Pod, Zeroable};
 use terra_core::heightfield::Heightfield;
@@ -22,7 +25,7 @@ struct HeightSlot {
     height: wgpu::Texture,
     height_view: wgpu::TextureView,
     /// Kept alive; sampled via `normal_view`.
-    _normal: wgpu::Texture,
+    normal: wgpu::Texture,
     normal_view: wgpu::TextureView,
     /// Cached normal-pass bind group for this slot (rebuilt on resize).
     normal_bind: Option<wgpu::BindGroup>,
@@ -66,7 +69,7 @@ impl HeightSlot {
             height_view: height_tex.create_view(&wgpu::TextureViewDescriptor::default()),
             normal_view: normal_tex.create_view(&wgpu::TextureViewDescriptor::default()),
             height: height_tex,
-            _normal: normal_tex,
+            normal: normal_tex,
             normal_bind: None,
             width,
             height_px: height,
@@ -169,6 +172,8 @@ pub struct HeightGpu {
     placement_tint: RgbaAuxMap,
     /// External R32Float height view (GPU engine output) when sharing without copy.
     shared_height_view: Option<wgpu::TextureView>,
+    retirement: crate::retirement::DeferredGpuRetirement,
+    current_frame: u64,
 }
 
 impl HeightGpu {
@@ -275,16 +280,37 @@ impl HeightGpu {
             biomes,
             placement_tint,
             shared_height_view: None,
+            retirement: crate::retirement::DeferredGpuRetirement::new(3),
+            current_frame: 0,
         }
+    }
+
+    /// Advance deferred texture retirement for the given frame index.
+    pub fn tick_retirement(&mut self, frame: u64) {
+        self.current_frame = frame;
+        self.retirement.tick(frame);
+    }
+
+    fn retire_slot(&mut self, slot: HeightSlot) {
+        self.retirement.queue(self.current_frame, slot.height);
+        self.retirement.queue(self.current_frame, slot.normal);
     }
 
     fn ensure_size(&mut self, device: &wgpu::Device, width: u32, height: u32) {
         if self.slots[self.write].width == width && self.slots[self.write].height_px == height {
             return;
         }
-        self.slots[self.write] = HeightSlot::new(device, width, height);
+        let old_write = std::mem::replace(
+            &mut self.slots[self.write],
+            HeightSlot::new(device, width, height),
+        );
+        self.retire_slot(old_write);
         if self.slots[self.display].width != width || self.slots[self.display].height_px != height {
-            self.slots[self.display] = HeightSlot::new(device, width, height);
+            let old_display = std::mem::replace(
+                &mut self.slots[self.display],
+                HeightSlot::new(device, width, height),
+            );
+            self.retire_slot(old_display);
         }
         self.tex_size = (width, height);
     }
@@ -304,6 +330,18 @@ impl HeightGpu {
         &mut self,
         device: &wgpu::Device,
         queue: &wgpu::Queue,
+        hf: &Heightfield,
+        regions: Option<&[SampleRect]>,
+    ) {
+        self.upload_regions_and_swap_with_staging(device, queue, None, hf, regions);
+    }
+
+    /// Same as [`Self::upload_regions_and_swap`] but routes large rects through a staging ring.
+    pub fn upload_regions_and_swap_with_staging(
+        &mut self,
+        device: &wgpu::Device,
+        queue: &wgpu::Queue,
+        mut staging: Option<&mut crate::staging::StagingRing>,
         hf: &Heightfield,
         regions: Option<&[SampleRect]>,
     ) {
@@ -330,6 +368,16 @@ impl HeightGpu {
         let use_dense = rects.len() == 1 && rects[0].w == w && rects[0].h == h;
         let dense = if use_dense { Some(hf.to_dense()) } else { None };
 
+        let mut encoder = if staging.is_some() {
+            Some(
+                device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                    label: Some("height-staging-enc"),
+                }),
+            )
+        } else {
+            None
+        };
+
         for rect in &rects {
             if rect.is_empty() {
                 continue;
@@ -347,29 +395,47 @@ impl HeightGpu {
                     }
                 }
             }
-            queue.write_texture(
-                wgpu::TexelCopyTextureInfo {
-                    texture: &slot.height,
-                    mip_level: 0,
-                    origin: wgpu::Origin3d {
-                        x: rect.x,
-                        y: rect.y,
-                        z: 0,
+            let origin = wgpu::Origin3d {
+                x: rect.x,
+                y: rect.y,
+                z: 0,
+            };
+            if let (Some(ring), Some(enc)) = (staging.as_mut(), encoder.as_mut()) {
+                ring.write_r32_region(
+                    device,
+                    queue,
+                    Some(enc),
+                    &slot.height,
+                    origin,
+                    rect.w,
+                    rect.h,
+                    &packed,
+                );
+            } else {
+                queue.write_texture(
+                    wgpu::TexelCopyTextureInfo {
+                        texture: &slot.height,
+                        mip_level: 0,
+                        origin,
+                        aspect: wgpu::TextureAspect::All,
                     },
-                    aspect: wgpu::TextureAspect::All,
-                },
-                bytemuck::cast_slice(&packed),
-                wgpu::TexelCopyBufferLayout {
-                    offset: 0,
-                    bytes_per_row: Some(rect.w * 4),
-                    rows_per_image: Some(rect.h),
-                },
-                wgpu::Extent3d {
-                    width: rect.w,
-                    height: rect.h,
-                    depth_or_array_layers: 1,
-                },
-            );
+                    bytemuck::cast_slice(&packed),
+                    wgpu::TexelCopyBufferLayout {
+                        offset: 0,
+                        bytes_per_row: Some(rect.w * 4),
+                        rows_per_image: Some(rect.h),
+                    },
+                    wgpu::Extent3d {
+                        width: rect.w,
+                        height: rect.h,
+                        depth_or_array_layers: 1,
+                    },
+                );
+            }
+        }
+
+        if let Some(enc) = encoder.take() {
+            queue.submit(Some(enc.finish()));
         }
 
         let normal_region = regions

@@ -91,8 +91,11 @@ pub struct GpuTileAtlas {
     residency: TileResidencyCache,
     handles: HashMap<TerrainTileKey, TilePageHandle>,
     page_extent: u32,
+    tile_size: u32,
+    halo: u32,
     max_pages: u32,
     page_bytes: u64,
+    memory_budget: crate::memory::MemoryBudget,
 }
 
 impl GpuTileAtlas {
@@ -150,6 +153,10 @@ impl GpuTileAtlas {
                 | wgpu::BufferUsages::COPY_SRC,
         });
         let page_bytes = u64::from(page_extent) * u64::from(page_extent) * 4;
+        let mut memory_budget = crate::memory::MemoryBudget::new(
+            ((page_bytes * u64::from(max_pages)) / (1024 * 1024)).max(1) + 64,
+        );
+        let _ = memory_budget.try_alloc(page_bytes * u64::from(max_pages));
         Ok(Self {
             texture,
             view,
@@ -157,8 +164,11 @@ impl GpuTileAtlas {
             residency: TileResidencyCache::new(page_bytes * u64::from(max_pages)),
             handles: HashMap::new(),
             page_extent,
+            tile_size,
+            halo,
             max_pages,
             page_bytes,
+            memory_budget,
         })
     }
 
@@ -242,12 +252,33 @@ impl GpuTileAtlas {
         &self.view
     }
 
+    /// Fresh view for bind-group ownership (atlas texture remains authoritative).
+    pub fn create_texture_view(&self) -> wgpu::TextureView {
+        self.texture.create_view(&wgpu::TextureViewDescriptor {
+            label: Some("terrain-tile-atlas-view"),
+            dimension: Some(wgpu::TextureViewDimension::D2Array),
+            ..Default::default()
+        })
+    }
+
     pub fn page_table_buffer(&self) -> &wgpu::Buffer {
         &self.page_table
     }
 
+    pub fn page_table_buffer_cloned(&self) -> wgpu::Buffer {
+        self.page_table.clone()
+    }
+
     pub fn page_extent(&self) -> u32 {
         self.page_extent
+    }
+
+    pub fn tile_size(&self) -> u32 {
+        self.tile_size
+    }
+
+    pub fn halo(&self) -> u32 {
+        self.halo
     }
 
     pub fn max_pages(&self) -> u32 {
@@ -256,6 +287,10 @@ impl GpuTileAtlas {
 
     pub fn residency(&self) -> &TileResidencyCache {
         &self.residency
+    }
+
+    pub fn memory_budget(&self) -> &crate::memory::MemoryBudget {
+        &self.memory_budget
     }
 
     fn write_page_entry(&self, queue: &wgpu::Queue, slot: u32, entry: GpuPageTableEntry) {

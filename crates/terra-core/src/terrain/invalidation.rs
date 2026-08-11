@@ -306,9 +306,7 @@ fn locality_for(kind: &LayerKind, base: HeightfieldMetrics) -> OperationLocality
         LayerKind::StreamPowerErosion(_)
         | LayerKind::RiverCarve(_)
         | LayerKind::RiverNetwork(_)
-        | LayerKind::MultiScaleAmplify(_) => OperationLocality::Watershed {
-            boundary_pad_m: base.tile_size as f32 * base.dx().max(base.dz()),
-        },
+        | LayerKind::MultiScaleAmplify(_) => OperationLocality::Global,
         // Most generators and modifiers are pointwise even when their authored bounds are global.
         // They propagate an upstream local change without expanding it.
         _ => OperationLocality::Local { radius_m: 0.0 },
