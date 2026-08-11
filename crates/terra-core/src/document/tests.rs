@@ -2,6 +2,41 @@
     use super::*;
 
     #[test]
+    fn viewport_lighting_round_trips_through_json() {
+        let mut doc = TerrainDocument::new_default();
+        doc.viewport_lighting = ViewportLighting {
+            sun_azimuth_deg: 123.5,
+            sun_elevation_deg: 22.0,
+            sun_intensity: 1.7,
+            exposure: 0.8,
+            sky_color: [0.1, 0.2, 0.3],
+            ambient_strength: 0.4,
+            shadow_strength: 0.9,
+            fog_strength: 0.25,
+            preset: String::new(),
+        };
+        let json = doc.to_json().expect("serialize");
+        let back = TerrainDocument::from_json(&json).expect("deserialize");
+        assert_eq!(back.viewport_lighting, doc.viewport_lighting);
+    }
+
+    #[test]
+    fn legacy_document_without_lighting_loads_with_default() {
+        // Project files saved before viewport_lighting existed must still load,
+        // taking the default rather than failing to parse (serde(default)).
+        let doc = TerrainDocument::new_default();
+        let mut value: serde_json::Value =
+            serde_json::from_str(&doc.to_json().expect("serialize")).expect("to value");
+        value
+            .as_object_mut()
+            .expect("json object")
+            .remove("viewport_lighting");
+        let stripped = serde_json::to_string(&value).expect("reserialize");
+        let back = TerrainDocument::from_json(&stripped).expect("load legacy");
+        assert_eq!(back.viewport_lighting, ViewportLighting::default());
+    }
+
+    #[test]
     fn flat_doc_normalizes_into_wc_tree() {
         let mut stack = LayerStack::new();
         stack.push(Layer::new(
@@ -37,6 +72,7 @@
             sparse_paint: Default::default(),
             world_rules: Default::default(),
             simulation_scenarios: Default::default(),
+            viewport_lighting: Default::default(),
         };
         doc.normalize_wc_tree();
         assert!(doc.stack.find_category(StackCategory::Shape).is_some());

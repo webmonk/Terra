@@ -19,6 +19,40 @@ use std::collections::HashMap;
 
 pub const DOCUMENT_VERSION: u32 = 1;
 
+/// Presentation lighting for the 3D viewport, saved with the project so a custom
+/// look is restored on load. Angles are degrees; strengths are renderer multipliers.
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ViewportLighting {
+    pub sun_azimuth_deg: f32,
+    pub sun_elevation_deg: f32,
+    pub sun_intensity: f32,
+    pub exposure: f32,
+    pub sky_color: [f32; 3],
+    pub ambient_strength: f32,
+    pub shadow_strength: f32,
+    pub fog_strength: f32,
+    /// UI preset chip label; empty when the values were customized (blank chip).
+    #[serde(default)]
+    pub preset: String,
+}
+
+impl Default for ViewportLighting {
+    fn default() -> Self {
+        // Matches the app's default Studio-seeded lighting.
+        Self {
+            sun_azimuth_deg: 30.98,
+            sun_elevation_deg: 72.91,
+            sun_intensity: 1.05,
+            exposure: 1.05,
+            sky_color: [0.18, 0.20, 0.24],
+            ambient_strength: 1.0,
+            shadow_strength: 0.0,
+            fog_strength: 1.0,
+            preset: String::from("Studio"),
+        }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct TerrainDocument {
     pub version: u32,
@@ -63,6 +97,9 @@ pub struct TerrainDocument {
     /// Simulation Scenarios — authoring containers over Simulation Layers.
     #[serde(default)]
     pub simulation_scenarios: crate::simulation_scenario::SimulationScenarioLibrary,
+    /// Presentation lighting for the 3D viewport (saved with the project).
+    #[serde(default)]
+    pub viewport_lighting: ViewportLighting,
 }
 
 impl Default for TerrainDocument {
@@ -152,6 +189,7 @@ impl TerrainDocument {
             sparse_paint,
             world_rules: crate::world_rules::WorldRuleLibrary::default(),
             simulation_scenarios: crate::simulation_scenario::SimulationScenarioLibrary::default(),
+            viewport_lighting: ViewportLighting::default(),
         }
     }
 

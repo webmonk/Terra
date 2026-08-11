@@ -64,11 +64,66 @@ impl TerraApp {
             return;
         }
         self.ui_state.status = "Savingâ€¦".into();
+        self.sync_lighting_to_document();
         self.project_io
             .start_save(self.session.document.clone(), path);
         if let Some(w) = &self.window {
             w.request_redraw();
         }
+    }
+
+    /// Copy the editable viewport lighting into the document so File > Save persists it.
+    pub(crate) fn sync_lighting_to_document(&mut self) {
+        let vr = &self.ui_state.viewport_render;
+        let preset = if self.ui_state.lighting_customized {
+            String::new()
+        } else {
+            self.ui_state.lighting_preset.label().to_string()
+        };
+        self.session.document.viewport_lighting = terra_core::document::ViewportLighting {
+            sun_azimuth_deg: vr.sun_azimuth_deg,
+            sun_elevation_deg: vr.sun_elevation_deg,
+            sun_intensity: vr.sun_intensity,
+            exposure: vr.exposure,
+            sky_color: vr.sky_color,
+            ambient_strength: vr.ambient_strength,
+            shadow_strength: vr.shadow_strength,
+            fog_strength: vr.fog_strength,
+            preset,
+        };
+    }
+
+    /// Restore editable viewport lighting from the current document (on open / new).
+    pub(crate) fn apply_document_lighting(&mut self) {
+        let l = self.session.document.viewport_lighting.clone();
+        {
+            let vr = &mut self.ui_state.viewport_render;
+            vr.sun_azimuth_deg = l.sun_azimuth_deg;
+            vr.sun_elevation_deg = l.sun_elevation_deg;
+            vr.sun_intensity = l.sun_intensity;
+            vr.exposure = l.exposure;
+            vr.sky_color = l.sky_color;
+            vr.ambient_strength = l.ambient_strength;
+            vr.shadow_strength = l.shadow_strength;
+            vr.fog_strength = l.fog_strength;
+        }
+        match crate::ui::LightingPreset::ALL
+            .iter()
+            .find(|p| p.label() == l.preset.as_str())
+        {
+            Some(preset) => {
+                self.ui_state.lighting_preset = *preset;
+                self.ui_state.lighting_customized = false;
+            }
+            None => {
+                // Saved as a customized (blank) look; keep the loaded values as-is.
+                self.ui_state.lighting_customized = true;
+            }
+        }
+        // Match the change-tracker so the redraw seed does not overwrite the loaded
+        // values on the next frame.
+        self.last_lighting_preset = self.ui_state.lighting_preset;
+        self.last_lighting_customized = self.ui_state.lighting_customized;
     }
 
     pub(crate) fn save_project_as(&mut self) {
@@ -279,6 +334,7 @@ impl TerraApp {
         self.pending_project_action = None;
 
         self.reset_runtime_for_document(world_size, ocean);
+        self.apply_document_lighting();
 
         // Editor chrome starts minimized on create/open.
         self.layers_gui
