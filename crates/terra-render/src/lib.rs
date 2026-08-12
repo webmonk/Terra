@@ -1,6 +1,6 @@
 //! wgpu terrain viewport — GPU height textures + world-fixed grid displacement.
 //!
-//! Long-term layout: [`frame_graph`], [`backends`], [`orchestrator`].
+//! Long-term layout: [`frame_graph`], [`backends`].
 //! [`TerrainRenderer`] remains the strangler host until Phase E cleanup.
 
 pub mod adaptive_sampling;
@@ -13,7 +13,6 @@ pub mod gpu_timing;
 pub mod grid;
 pub mod guides;
 pub mod height_gpu;
-pub mod orchestrator;
 pub mod overhang;
 pub mod path_tracer;
 pub mod progressive;
@@ -42,7 +41,6 @@ pub use gpu_timing::GpuTimings;
 pub use grid::TerrainGrid;
 pub use guides::{GuideOverlay, GuideState};
 pub use height_gpu::HeightGpu;
-pub use orchestrator::{backend_for_mode, schedule_for_mode, ViewportOrchestrator};
 pub use overhang::OverhangOverlay;
 pub use path_tracer::{PathTraceUniforms, PathTracer};
 pub use render_quality::{
