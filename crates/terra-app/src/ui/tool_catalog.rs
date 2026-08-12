@@ -1870,6 +1870,12 @@ mod tests {
     use std::collections::HashSet;
     use terra_core::mask::MaskSource;
 
+    /// Modes whose tools live on the viewport hotbar, not the left-rail catalog.
+    /// `Utilities` (Move / Measure / camera navigation) is intentionally
+    /// catalog-empty; Bake was removed. These modes are exempt from the
+    /// "every mode has catalog tools" invariant and, conversely, must stay empty.
+    const HOTBAR_ONLY_MODES: &[WorkspaceMode] = &[WorkspaceMode::Utilities];
+
     #[test]
     fn workspace_catalog_reuses_cached_definitions() {
         let cached = all_tools_cached();
@@ -1883,9 +1889,12 @@ mod tests {
     #[test]
     fn every_mode_has_tools() {
         for mode in WorkspaceMode::ALL {
+            if HOTBAR_ONLY_MODES.contains(&mode) {
+                continue;
+            }
             assert!(
                 !tools_for_mode(mode).is_empty(),
-                "{:?} should have tools",
+                "{:?} should have catalog tools",
                 mode
             );
         }
@@ -1952,11 +1961,14 @@ mod tests {
     }
 
     #[test]
-    fn utilities_catalog_is_empty() {
-        assert!(
-            tools_for_mode(WorkspaceMode::Utilities).is_empty(),
-            "Move/Measure live on the viewport hotbar; Bake was removed"
-        );
+    fn hotbar_only_modes_have_no_catalog_tools() {
+        for &mode in HOTBAR_ONLY_MODES {
+            assert!(
+                tools_for_mode(mode).is_empty(),
+                "{:?} tools live on the viewport hotbar; the left-rail catalog must stay empty",
+                mode
+            );
+        }
     }
 
     #[test]
