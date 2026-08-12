@@ -89,6 +89,8 @@ impl FieldSlot {
 /// Height remains a first-class [`Heightfield`] for mesh/export compatibility.
 /// Auxiliary / derived fields live in typed [`AuxMaps`] plus optional slots for
 /// fields that are not yet represented in AuxMaps.
+///
+/// Also acts as the mutable evaluation state threaded through graph execution.
 #[derive(Debug, Clone)]
 pub struct TerrainFieldSet {
     pub metrics: HeightfieldMetrics,
@@ -99,9 +101,6 @@ pub struct TerrainFieldSet {
     slots: HashMap<FieldId, FieldSlot>,
     next_revision: u64,
 }
-
-/// Alias emphasising the mutable evaluation state role.
-pub type TerrainState = TerrainFieldSet;
 
 impl TerrainFieldSet {
     pub fn new(metrics: HeightfieldMetrics) -> Self {

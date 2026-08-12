@@ -21,9 +21,7 @@ mod world_space;
 pub use derived::{DerivedFieldCache, DerivedFieldCacheStats};
 pub use determinism::{layer_seed, sample_seed, tile_seed};
 pub use diagnostics::{EvalDiagnostics, OperatorTiming};
-pub use field_set::{
-    FieldLifetime, FieldRevision, FieldSlot, FieldStorage, TerrainFieldSet, TerrainState,
-};
+pub use field_set::{FieldLifetime, FieldRevision, FieldSlot, FieldStorage, TerrainFieldSet};
 pub use graph::{compile_eval_graph, EvalGraph, EvalGraphNode, EvalNodeId};
 pub use mode::EvalMode;
 pub use operator::{
