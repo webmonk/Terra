@@ -182,10 +182,15 @@ const FRAME_UNIFORM_BUF_SIZE: u64 = 512;
 
 pub struct TerrainRenderer {
     /// Presentation surface. `None` for headless renderers built via `new_headless`.
-    pub surface: Option<wgpu::Surface<'static>>,
-    pub device: wgpu::Device,
-    pub queue: wgpu::Queue,
-    pub config: wgpu::SurfaceConfiguration,
+    ///
+    /// These four GPU handles are the renderer's private property: the app owns
+    /// the [`GpuContext`] and hands it *in*, so nothing acquires a device, queue,
+    /// or surface config back *through* the renderer. Keeping them private makes
+    /// that reach-through a compile error rather than a convention (A1-G1).
+    surface: Option<wgpu::Surface<'static>>,
+    device: wgpu::Device,
+    queue: wgpu::Queue,
+    config: wgpu::SurfaceConfiguration,
     pub pipeline: wgpu::RenderPipeline,
     /// Grid edge LineList overlay for the Wireframe display aid.
     pub wireframe_pipeline: wgpu::RenderPipeline,
@@ -323,7 +328,8 @@ impl Default for EnvironmentLighting {
 pub struct GpuContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
-    /// Swapchain color format negotiated for the window surface.
+    /// Color format the renderer's targets are built for — negotiated from the
+    /// window surface at runtime, or chosen directly for headless/offscreen use.
     pub surface_format: wgpu::TextureFormat,
 }
 
@@ -471,24 +477,21 @@ impl TerrainRenderer {
 
     /// Construct a renderer with no window or surface, for offscreen rendering.
     ///
-    /// Draw with [`Self::render_to_view`] into caller-supplied views of `format`
-    /// at exactly `width`×`height`; [`Self::render_terrain`] returns an error
-    /// because there is no swapchain to acquire from. [`Self::resize`] still
-    /// reallocates the offscreen targets (surface reconfiguration is skipped).
+    /// Takes the same app-owned [`GpuContext`] as [`Self::new`] — the device and
+    /// queue are cloned (cheap refcount bumps), and the render targets are built
+    /// for `ctx.surface_format`. Draw with [`Self::render_to_view`] into
+    /// caller-supplied views of that format at exactly `width`×`height`;
+    /// [`Self::render_terrain`] returns an error because there is no swapchain to
+    /// acquire from. [`Self::resize`] still reallocates the offscreen targets
+    /// (surface reconfiguration is skipped).
     ///
     /// Works on a default-limits, feature-less device: the path tracer needs four
     /// storage textures per stage, which `wgpu::Limits::default()` provides, and
     /// without `TIMESTAMP_QUERY` the GPU timer is simply absent.
-    pub fn new_headless(
-        device: wgpu::Device,
-        queue: wgpu::Queue,
-        format: wgpu::TextureFormat,
-        width: u32,
-        height: u32,
-    ) -> Self {
+    pub fn new_headless(ctx: &GpuContext, width: u32, height: u32) -> Self {
         let config = wgpu::SurfaceConfiguration {
             usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format,
+            format: ctx.surface_format,
             width: width.max(1),
             height: height.max(1),
             present_mode: wgpu::PresentMode::AutoVsync,
@@ -497,7 +500,7 @@ impl TerrainRenderer {
             desired_maximum_frame_latency: 2,
         };
         let size = winit::dpi::PhysicalSize::new(config.width, config.height);
-        Self::init(device, queue, None, config, size)
+        Self::init(ctx.device.clone(), ctx.queue.clone(), None, config, size)
     }
 
     /// Shared constructor tail: every device-only resource, after surface and

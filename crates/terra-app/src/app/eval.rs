@@ -341,7 +341,7 @@ impl TerraApp {
     }
 
     pub(crate) fn upload_pending_terrain_tiles(&mut self) -> usize {
-        if self.tile_atlas.is_none() || self.renderer.is_none() || self.last_height.is_none() {
+        if self.tile_atlas.is_none() || self.gpu.is_none() || self.last_height.is_none() {
             self.pending_tile_uploads.clear();
             return 0;
         }
@@ -375,7 +375,7 @@ impl TerraApp {
             };
             let published_key = key.clone();
             let result = self.tile_atlas.as_mut().unwrap().upload_height_tile(
-                &self.renderer.as_ref().unwrap().queue,
+                &self.gpu.as_ref().unwrap().queue,
                 key,
                 tile,
                 revision,

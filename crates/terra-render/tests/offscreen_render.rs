@@ -12,7 +12,7 @@
 //! test rather than adding another that pushes error scopes.
 
 use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
-use terra_render::{TerrainRenderer, ViewportRendererMode};
+use terra_render::{GpuContext, TerrainRenderer, ViewportRendererMode};
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const W: u32 = 64;
@@ -52,8 +52,15 @@ fn raster_frame_covers_offscreen_target() {
         return;
     };
 
-    let mut renderer =
-        TerrainRenderer::new_headless(gpu.device.clone(), gpu.queue.clone(), FORMAT, W, H);
+    // Same GpuContext path the app takes: hand the renderer the device/queue,
+    // never source them back through it. Cloning shares the harness's one device,
+    // so the validation error scopes below still target the renderer's device.
+    let ctx = GpuContext {
+        device: gpu.device.clone(),
+        queue: gpu.queue.clone(),
+        surface_format: FORMAT,
+    };
+    let mut renderer = TerrainRenderer::new_headless(&ctx, W, H);
     // Raster is already the default; pin it so a future default change cannot
     // silently turn this into a path-tracer test — only the RasterLit backend
     // clears every pixel with the opaque atmosphere colour.

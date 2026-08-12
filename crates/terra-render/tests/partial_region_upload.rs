@@ -18,7 +18,7 @@
 
 use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
 use terra_core::tiling::SampleRect;
-use terra_render::{TerrainRenderer, ViewportRendererMode};
+use terra_render::{GpuContext, TerrainRenderer, ViewportRendererMode};
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const W: u32 = 128;
@@ -55,8 +55,14 @@ fn partial_upload_preserves_texels_outside_dirty_rect() {
         return;
     };
 
-    let mut renderer =
-        TerrainRenderer::new_headless(gpu.device.clone(), gpu.queue.clone(), FORMAT, W, H);
+    // Same GpuContext path the app takes: hand the renderer the device/queue
+    // rather than sourcing them back through it.
+    let ctx = GpuContext {
+        device: gpu.device.clone(),
+        queue: gpu.queue.clone(),
+        surface_format: FORMAT,
+    };
+    let mut renderer = TerrainRenderer::new_headless(&ctx, W, H);
     // Pin raster so a future default change can't turn this into a PT test.
     renderer.set_renderer_mode(ViewportRendererMode::Raster);
 
