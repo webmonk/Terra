@@ -1260,12 +1260,13 @@ pub(super) fn box_blur_height(input: &Heightfield, radius: u32) -> Heightfield {
 pub fn effect_filter(input: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     let filtered = match p.kind {
         EffectFilterKind::Smooth => {
-            // Edge-aware bilateral smoothing (Tomasi & Manduchi) with mild iteration.
+            // Low-pass (box) blur: attenuates high-frequency detail and isolated
+            // spikes alike. Edge-preserving smoothing lives in `Denoise`
+            // (bilateral) — which by design keeps sharp features, including a
+            // lone spike, intact and so is the wrong tool for reducing spikes.
             let mut h = input.clone();
-            let sigma_s = (p.radius.max(1) as f32) * 0.65;
-            let sigma_r = p.amount.max(1.0);
             for _ in 0..p.iterations.max(1).min(4) {
-                h = filter_kernels::bilateral(&h, p.radius.max(1), sigma_s, sigma_r);
+                h = filter_kernels::box_blur(&h, p.radius.max(1));
             }
             h
         }
