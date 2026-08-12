@@ -134,16 +134,6 @@ impl EvalContext {
     }
 }
 
-pub trait LayerProcessor: Send + Sync {
-    fn id(&self) -> &'static str;
-    fn evaluate(
-        &self,
-        ctx: &EvalContext,
-        input: &Heightfield,
-        layer: &Layer,
-    ) -> Result<Heightfield, EvalError>;
-}
-
 pub struct StackEvaluator {
     pub registry: ProcessorRegistry,
     pub cache: LayerCache,

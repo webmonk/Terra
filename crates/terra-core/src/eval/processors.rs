@@ -13,8 +13,15 @@ use crate::mask::{MaskField, MaskSource};
 use crate::surface;
 use crate::volumetric;
 
+/// Evaluates built-in layer kinds by matching on [`LayerKind`].
+///
+/// There is no processor registration and no pluggable seam: every built-in
+/// kind is dispatched by the single `match` in [`ProcessorRegistry::evaluate`],
+/// which keeps the set closed and serde-friendly. If a pluggable seam is ever
+/// wanted, it should arrive together with its first implementor rather than as
+/// an empty abstraction.
 pub struct ProcessorRegistry {
-    // Kind handled via match on LayerKind for serde-friendly built-ins.
+    // No state: built-in kinds are dispatched by the match in `evaluate`.
 }
 
 impl ProcessorRegistry {
@@ -22,6 +29,11 @@ impl ProcessorRegistry {
         Self {}
     }
 
+    /// Evaluate a single layer by matching on its [`LayerKind`].
+    ///
+    /// This `match` is the real dispatch mechanism — the one place every
+    /// built-in kind becomes a height contribution. Adding a kind means adding
+    /// an arm here.
     pub fn evaluate(
         &self,
         ctx: &mut EvalContext,

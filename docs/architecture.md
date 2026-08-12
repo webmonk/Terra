@@ -18,7 +18,7 @@
 
 **User-facing:** ordered layer stack (World Creator style). Groups nest; no node editor.
 
-**Internal:** each layer is a `LayerProcessor` producing a height contribution blended onto the accumulator. Masks and aux maps (erosion, flow, wetness) are cacheable artifacts. Dirty propagation invalidates from the earliest edited layer upward.
+**Internal:** each layer kind is evaluated by `ProcessorRegistry::evaluate` (a `match` on `LayerKind`), producing a height contribution blended onto the accumulator. Masks and aux maps (erosion, flow, wetness) are cacheable artifacts. Dirty propagation invalidates from the earliest edited layer upward.
 
 ## Evaluation
 
