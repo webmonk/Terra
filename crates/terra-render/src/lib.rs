@@ -313,92 +313,160 @@ impl Default for EnvironmentLighting {
     }
 }
 
-impl TerrainRenderer {
-    pub async fn new(window: std::sync::Arc<Window>) -> Result<Self, RenderError> {
-        let size = window.inner_size();
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
-            // Windows: DX12 avoids OBS/Overwolf/Medal Vulkan implicit layers that
-            // STATUS_STACK_OVERFLOW in vkCreateDevice (esp. debug + large shaders).
-            backends: preferred_backends(),
-            ..Default::default()
-        });
-        let surface = instance
-            .create_surface(window.clone())
-            .map_err(|e| RenderError::Msg(e.to_string()))?;
-        let adapter = instance
-            .request_adapter(&wgpu::RequestAdapterOptions {
-                power_preference: wgpu::PowerPreference::HighPerformance,
-                compatible_surface: Some(&surface),
-                force_fallback_adapter: false,
-            })
-            .await
-            .ok_or_else(|| RenderError::Msg("no adapter".into()))?;
+/// Owned GPU handles shared across the whole app.
+///
+/// `wgpu::Device`/`Queue` are internally ref-counted (`Clone`), so cloning a
+/// `GpuContext` shares one device rather than creating another. The app hands
+/// clones to the tile atlas, terrain engine, and GUI so every consumer draws
+/// on the same device the renderer uses.
+#[derive(Clone)]
+pub struct GpuContext {
+    pub device: wgpu::Device,
+    pub queue: wgpu::Queue,
+    /// Swapchain color format negotiated for the window surface.
+    pub surface_format: wgpu::TextureFormat,
+}
 
-        let mut limits = wgpu::Limits::default();
-        let adapter_limits = adapter.limits();
-        // Path tracer uses 4 storage textures; request headroom when the adapter allows it.
-        limits.max_storage_textures_per_shader_stage = adapter_limits
-            .max_storage_textures_per_shader_stage
-            .max(4)
-            .min(16);
-        limits.max_storage_buffers_per_shader_stage = adapter_limits
-            .max_storage_buffers_per_shader_stage
-            .max(limits.max_storage_buffers_per_shader_stage);
-        limits.max_compute_workgroup_storage_size = adapter_limits
-            .max_compute_workgroup_storage_size
-            .max(limits.max_compute_workgroup_storage_size);
-        limits.max_compute_invocations_per_workgroup = adapter_limits
-            .max_compute_invocations_per_workgroup
-            .max(limits.max_compute_invocations_per_workgroup);
-        limits.max_compute_workgroups_per_dimension = adapter_limits
-            .max_compute_workgroups_per_dimension
-            .max(limits.max_compute_workgroups_per_dimension);
-        limits.max_buffer_size = adapter_limits
-            .max_buffer_size
-            .max(limits.max_buffer_size);
-        limits.max_texture_dimension_2d = adapter_limits
-            .max_texture_dimension_2d
-            .max(limits.max_texture_dimension_2d);
+/// The window surface plus its negotiated configuration, produced alongside a
+/// [`GpuContext`] by [`init_gpu`] and consumed by [`TerrainRenderer::new`].
+///
+/// Fields are crate-private: the surface can be handed *to* the renderer, never
+/// sourced back *through* it.
+pub struct SurfaceTarget {
+    surface: wgpu::Surface<'static>,
+    config: wgpu::SurfaceConfiguration,
+    size: winit::dpi::PhysicalSize<u32>,
+}
 
-        let (device, queue) = adapter
-            .request_device(
-                &wgpu::DeviceDescriptor {
-                    label: Some("terra-render"),
-                    required_features: gpu_timing::requested_timestamp_features(&adapter),
-                    required_limits: limits,
-                    memory_hints: Default::default(),
-                },
-                None,
+/// Bring up the instance → surface → adapter → device chain for `window`.
+///
+/// This is the app's single runtime GPU initialization and owns the only
+/// non-test `request_device` in the workspace. The returned [`GpuContext`] is
+/// the app's GPU handle; the [`SurfaceTarget`] is passed straight into
+/// [`TerrainRenderer::new`].
+pub async fn init_gpu(
+    window: std::sync::Arc<Window>,
+) -> Result<(GpuContext, SurfaceTarget), RenderError> {
+    let size = window.inner_size();
+    let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
+        // Windows: DX12 avoids OBS/Overwolf/Medal Vulkan implicit layers that
+        // STATUS_STACK_OVERFLOW in vkCreateDevice (esp. debug + large shaders).
+        backends: preferred_backends(),
+        ..Default::default()
+    });
+    let surface = instance
+        .create_surface(window.clone())
+        .map_err(|e| RenderError::Msg(e.to_string()))?;
+    let adapter = instance
+        .request_adapter(&wgpu::RequestAdapterOptions {
+            power_preference: wgpu::PowerPreference::HighPerformance,
+            compatible_surface: Some(&surface),
+            force_fallback_adapter: false,
+        })
+        .await
+        .ok_or_else(|| RenderError::Msg("no adapter".into()))?;
+
+    let mut limits = wgpu::Limits::default();
+    let adapter_limits = adapter.limits();
+    // Path tracer uses 4 storage textures; request headroom when the adapter allows it.
+    limits.max_storage_textures_per_shader_stage = adapter_limits
+        .max_storage_textures_per_shader_stage
+        .max(4)
+        .min(16);
+    limits.max_storage_buffers_per_shader_stage = adapter_limits
+        .max_storage_buffers_per_shader_stage
+        .max(limits.max_storage_buffers_per_shader_stage);
+    limits.max_compute_workgroup_storage_size = adapter_limits
+        .max_compute_workgroup_storage_size
+        .max(limits.max_compute_workgroup_storage_size);
+    limits.max_compute_invocations_per_workgroup = adapter_limits
+        .max_compute_invocations_per_workgroup
+        .max(limits.max_compute_invocations_per_workgroup);
+    limits.max_compute_workgroups_per_dimension = adapter_limits
+        .max_compute_workgroups_per_dimension
+        .max(limits.max_compute_workgroups_per_dimension);
+    limits.max_buffer_size = adapter_limits
+        .max_buffer_size
+        .max(limits.max_buffer_size);
+    limits.max_texture_dimension_2d = adapter_limits
+        .max_texture_dimension_2d
+        .max(limits.max_texture_dimension_2d);
+
+    let (device, queue) = adapter
+        .request_device(
+            &wgpu::DeviceDescriptor {
+                label: Some("terra-render"),
+                required_features: gpu_timing::requested_timestamp_features(&adapter),
+                required_limits: limits,
+                memory_hints: Default::default(),
+            },
+            None,
+        )
+        .await
+        .map_err(|e| RenderError::Msg(e.to_string()))?;
+
+    let caps = surface.get_capabilities(&adapter);
+    let format = caps
+        .formats
+        .iter()
+        .copied()
+        .find(|f| {
+            matches!(
+                f,
+                wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Rgba8Unorm
             )
-            .await
-            .map_err(|e| RenderError::Msg(e.to_string()))?;
+        })
+        .or_else(|| caps.formats.iter().copied().find(|f| !f.is_srgb()))
+        .unwrap_or(caps.formats[0]);
 
-        let caps = surface.get_capabilities(&adapter);
-        let format = caps
-            .formats
-            .iter()
-            .copied()
-            .find(|f| {
-                matches!(
-                    f,
-                    wgpu::TextureFormat::Bgra8Unorm | wgpu::TextureFormat::Rgba8Unorm
-                )
-            })
-            .or_else(|| caps.formats.iter().copied().find(|f| !f.is_srgb()))
-            .unwrap_or(caps.formats[0]);
+    let config = wgpu::SurfaceConfiguration {
+        usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
+        format,
+        width: size.width.max(1),
+        height: size.height.max(1),
+        present_mode: wgpu::PresentMode::AutoVsync,
+        alpha_mode: caps.alpha_modes[0],
+        view_formats: vec![],
+        desired_maximum_frame_latency: 2,
+    };
+    surface.configure(&device, &config);
+    Ok((
+        GpuContext {
+            device,
+            queue,
+            surface_format: format,
+        },
+        SurfaceTarget {
+            surface,
+            config,
+            size,
+        },
+    ))
+}
 
-        let config = wgpu::SurfaceConfiguration {
-            usage: wgpu::TextureUsages::RENDER_ATTACHMENT,
-            format,
-            width: size.width.max(1),
-            height: size.height.max(1),
-            present_mode: wgpu::PresentMode::AutoVsync,
-            alpha_mode: caps.alpha_modes[0],
-            view_formats: vec![],
-            desired_maximum_frame_latency: 2,
-        };
-        surface.configure(&device, &config);
-        Ok(Self::init(device, queue, Some(surface), config, size))
+impl TerrainRenderer {
+    /// Build the windowed renderer from the app-owned [`GpuContext`] and the
+    /// [`SurfaceTarget`] that [`init_gpu`] produced together. The device and
+    /// queue handles are cloned (cheap refcount bumps, shared not duplicated);
+    /// the surface is consumed.
+    pub fn new(ctx: &GpuContext, target: SurfaceTarget) -> Self {
+        Self::init(
+            ctx.device.clone(),
+            ctx.queue.clone(),
+            Some(target.surface),
+            target.config,
+            target.size,
+        )
+    }
+
+    /// Current swapchain dimensions in physical pixels (each always ≥ 1).
+    pub fn size(&self) -> (u32, u32) {
+        (self.config.width, self.config.height)
+    }
+
+    /// Swapchain color format the surface was configured with.
+    pub fn format(&self) -> wgpu::TextureFormat {
+        self.config.format
     }
 
     /// Construct a renderer with no window or surface, for offscreen rendering.

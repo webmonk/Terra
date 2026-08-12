@@ -249,13 +249,13 @@ impl TerraApp {
                 strata: self.scheduler.last_strata.clone(),
             },
         );
-        if let (Some(engine), Some(renderer)) =
-            (self.gpu_engine.as_mut(), self.renderer.as_ref())
+        if let (Some(engine), Some(gpu)) =
+            (self.gpu_engine.as_mut(), self.gpu.as_ref())
         {
             let (lo, hi) = out.min_max();
             engine.ingest_height(
-                &renderer.device,
-                &renderer.queue,
+                &gpu.device,
+                &gpu.queue,
                 id,
                 &out,
                 (lo, hi),
@@ -692,12 +692,12 @@ impl TerraApp {
         let mut used_gpu = false;
         let mut eval_completed = false;
         if token == self.eval_token {
-            if let (Some(engine), Some(renderer)) =
-                (self.gpu_engine.as_mut(), self.renderer.as_mut())
+            if let (Some(engine), Some(renderer), Some(gpu)) =
+                (self.gpu_engine.as_mut(), self.renderer.as_mut(), self.gpu.as_ref())
             {
                 match engine.evaluate(
-                    &renderer.device,
-                    &renderer.queue,
+                    &gpu.device,
+                    &gpu.queue,
                     &preview_stack,
                     &self.session.document.masks,
                     metrics,

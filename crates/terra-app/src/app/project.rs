@@ -386,8 +386,8 @@ impl TerraApp {
         ));
 
         if let Some(engine) = self.gpu_engine.as_mut() {
-            if let Some(renderer) = self.renderer.as_ref() {
-                engine.reset_project_state(&renderer.device, &renderer.queue);
+            if let Some(gpu) = self.gpu.as_ref() {
+                engine.reset_project_state(&gpu.device, &gpu.queue);
             }
         }
         if let Some(renderer) = self.renderer.as_mut() {

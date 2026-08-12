@@ -35,10 +35,12 @@ impl ApplicationHandler for TerraApp {
                 )
                 .expect("window"),
         );
-        let renderer = pollster::block_on(TerrainRenderer::new(window.clone())).expect("renderer");
+        let (gpu, target) =
+            pollster::block_on(terra_render::init_gpu(window.clone())).expect("gpu init");
+        let renderer = TerrainRenderer::new(&gpu, target);
         let tile_config = self.terrain_runtime.pyramid.config;
         let tile_atlas = match GpuTileAtlas::new(
-            &renderer.device,
+            &gpu.device,
             tile_config.tile_size,
             tile_config.halo,
             128,
@@ -50,11 +52,11 @@ impl ApplicationHandler for TerraApp {
             }
         };
 
-        let gpu_engine = GpuTerrainEngine::new(&renderer.device, 256);
-        let gui_renderer =
-            GuiRenderer::new(&renderer.device, &renderer.queue, renderer.config.format);
+        let gpu_engine = GpuTerrainEngine::new(&gpu.device, 256);
+        let gui_renderer = GuiRenderer::new(&gpu.device, &gpu.queue, gpu.surface_format);
         self.window = Some(window);
         self.renderer = Some(renderer);
+        self.gpu = Some(gpu);
         self.gpu_engine = Some(gpu_engine);
         self.tile_atlas = tile_atlas;
         self.gui_renderer = Some(gui_renderer);
@@ -543,8 +545,8 @@ impl ApplicationHandler for TerraApp {
                 self.last_height = Some((*height).clone());
                 // Ingest every CPU layer checkpoint so GPU can bake unsupported shapes
                 // and keep EffectFilters live on the next edit.
-                if let (Some(engine), Some(renderer)) =
-                    (self.gpu_engine.as_mut(), self.renderer.as_ref())
+                if let (Some(engine), Some(gpu)) =
+                    (self.gpu_engine.as_mut(), self.gpu.as_ref())
                 {
                     let preview = self.session.document.preview_eval_stack();
                     for layer in preview.flatten_layers() {
@@ -557,8 +559,8 @@ impl ApplicationHandler for TerraApp {
                             }
                             let (lo, hi) = cached.height.min_max();
                             engine.ingest_height(
-                                &renderer.device,
-                                &renderer.queue,
+                                &gpu.device,
+                                &gpu.queue,
                                 layer.id(),
                                 &cached.height,
                                 (lo, hi),

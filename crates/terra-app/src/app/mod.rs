@@ -121,6 +121,10 @@ pub(crate) struct LayerPointDrag {
 pub struct TerraApp {
     window: Option<Arc<Window>>,
     renderer: Option<TerrainRenderer>,
+    /// App-owned GPU handles. Every GPU consumer (renderer, tile atlas, terrain
+    /// engine, GUI) shares clones of this instead of sourcing device/queue
+    /// through the renderer.
+    gpu: Option<terra_render::GpuContext>,
     session: EditorSession,
     ui_state: UiState,
     scheduler: EvalScheduler,
@@ -269,6 +273,7 @@ impl Default for TerraApp {
         Self {
             window: None,
             renderer: None,
+            gpu: None,
             session,
             ui_state,
             scheduler: EvalScheduler::new(),

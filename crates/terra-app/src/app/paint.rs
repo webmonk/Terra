@@ -493,9 +493,10 @@ let Some(mask_id) = self.ui_state.paint_mask else {
         let renderer = self.renderer.as_ref()?;
         let window = self.window.as_ref()?;
         let ppp = window.scale_factor() as f32;
-        let screen_w = renderer.config.width as f32 / ppp;
-        let screen_h = renderer.config.height as f32 / ppp;
-        let aspect = renderer.config.width as f32 / renderer.config.height.max(1) as f32;
+        let (surface_w, surface_h) = renderer.size();
+        let screen_w = surface_w as f32 / ppp;
+        let screen_h = surface_h as f32 / ppp;
+        let aspect = surface_w as f32 / surface_h.max(1) as f32;
         pick_terrain_uv_on_surface(
             &renderer.camera,
             aspect,

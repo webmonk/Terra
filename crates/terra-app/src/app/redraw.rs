@@ -186,6 +186,9 @@ impl TerraApp {
             let Some(gui_renderer) = self.gui_renderer.as_mut() else {
                 return;
             };
+            let Some(gpu) = self.gpu.as_ref() else {
+                return;
+            };
 
             // Terrain pass — always draws last-good GPU textures (never waits on eval).
             let render_t0 = Instant::now();
@@ -337,8 +340,9 @@ impl TerraApp {
                 .texture
                 .create_view(&wgpu::TextureViewDescriptor::default());
 
-            let screen_w = renderer.config.width as f32 / pixels_per_point;
-            let screen_h = renderer.config.height as f32 / pixels_per_point;
+            let (surface_w, surface_h) = renderer.size();
+            let screen_w = surface_w as f32 / pixels_per_point;
+            let screen_h = surface_h as f32 / pixels_per_point;
 
             let ui_t0 = Instant::now();
             let hist_fp = self.session.history.ui_fingerprint();
@@ -439,13 +443,14 @@ impl TerraApp {
                 || self.layers_gui.drag_from.is_some();
             self.ui_state.profile.ui_us = ui_t0.elapsed().as_micros() as u64;
 
+            let (surface_w, surface_h) = renderer.size();
             gui_renderer.render(
-                &renderer.device,
-                &renderer.queue,
+                &gpu.device,
+                &gpu.queue,
                 &view,
                 &mut gui,
-                renderer.config.width,
-                renderer.config.height,
+                surface_w,
+                surface_h,
             );
             frame.present();
             (ui_out, home_actions, discard_choice, template_choice)
