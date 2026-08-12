@@ -281,16 +281,21 @@ fn max_local_slope(hf: &Heightfield, i: u32, j: u32) -> f32 {
     best.max(0.0)
 }
 
-/// Stream-power incision with Priority-Flood drainage (CPU oracle).
+/// Stream-power incision with Priority-Flood drainage (CPU oracle core).
 ///
 /// Each iteration: optional fill → D8/D∞ accumulation →
 /// \(z \mathrel{-}= K\,A^{m}\,S^{n}\,(1-K_{\mathrm{hard}})\,\Delta t\), then optional uplift.
 /// Interactive Draft may reuse drainage across iters (`drainage_reuse_stride`) and
 /// the GPU path runs an approximate multi-pass D8 solver (no Priority-Flood).
-pub fn stream_power_erode(
+///
+/// `soft_at(i, j, current_height)` yields the per-cell erodibility (1 = fully
+/// soft): constant/mask hardness for the plain oracle, depth-aware strata lookup
+/// for the strata oracle. This is the single incision loop behind both public
+/// entry points ([`stream_power_erode`], [`stream_power_erode_with_strata`]).
+fn stream_power_erode_impl(
     input: &Heightfield,
     p: &StreamPowerParams,
-    hardness: &MaskField,
+    soft_at: impl Fn(u32, u32, f32) -> f32,
 ) -> StreamPowerResult {
     let w = input.metrics.width as usize;
     let h = input.metrics.height as usize;
@@ -315,7 +320,7 @@ pub fn stream_power_erode(
 
     for iter in 0..iters {
         let refresh_drainage = iter == 0 || p.refill_each_iter || iter % drainage_stride == 0;
-        let (dirs, _flow_mask, acc_vec, route) = if refresh_drainage {
+        let (dirs, acc_vec, route) = if refresh_drainage {
             let filled = if iter == 0 || p.refill_each_iter {
                 fill_depressions(&out)
             } else {
@@ -330,20 +335,14 @@ pub fn stream_power_erode(
             };
             let graph = build_flow_graph(&filled, model);
             let dirs = graph.d8_dir.clone();
-            let flow_mask = graph.direction_mask.clone();
             let acc_vec = accumulate_drainage_area(&graph, &Precipitation::uniform(1.0));
             last_acc = acc_vec.clone();
-            last_flow_mask = flow_mask.clone();
+            last_flow_mask = graph.direction_mask.clone();
             last_dirs = dirs.clone();
-            (dirs, flow_mask, acc_vec, filled)
+            (dirs, acc_vec, filled)
         } else {
             // Cached drainage reuse across SPE iters (Draft preview; export keeps stride=1).
-            (
-                last_dirs.clone(),
-                last_flow_mask.clone(),
-                last_acc.clone(),
-                out.clone(),
-            )
+            (last_dirs.clone(), last_acc.clone(), out.clone())
         };
 
         // Cell area in world units² so K is resolution-aware enough for previews.
@@ -364,11 +363,11 @@ pub fn stream_power_erode(
                     }
                 }
                 .max(1e-6);
-                let soft = (1.0 - hardness.get(i, j).clamp(0.0, 1.0)).max(0.0);
+                let cur = out.get(i, j);
+                let soft = soft_at(i, j, cur);
                 let power = k * area.powf(m_exp) * slope.powf(n_exp) * soft * dt;
                 // Cap per-step incision to keep Draft previews stable.
                 let step = power.min(slope * 2.0).min(50.0);
-                let cur = out.get(i, j);
                 let next = (cur - step + p.uplift_rate).max(base);
                 incision[idx] += (cur - next).max(0.0);
                 out.set(i, j, next);
@@ -409,7 +408,24 @@ pub fn stream_power_erode(
     }
 }
 
+/// Stream-power incision with constant or mask-driven bedrock hardness (CPU oracle).
+///
+/// See [`stream_power_erode_impl`] for the shared algorithm; `hardness` supplies a
+/// per-cell \(K_{\mathrm{hard}} \in [0,1]\) (soft rock incises faster).
+pub fn stream_power_erode(
+    input: &Heightfield,
+    p: &StreamPowerParams,
+    hardness: &MaskField,
+) -> StreamPowerResult {
+    stream_power_erode_impl(input, p, |i, j, _cur| {
+        (1.0 - hardness.get(i, j).clamp(0.0, 1.0)).max(0.0)
+    })
+}
+
 /// SPE with depth-aware strata hardness (soft cap strips before hard base resists).
+///
+/// See [`stream_power_erode_impl`] for the shared algorithm; erodibility is looked
+/// up per cell from `strata` at the depth already incised below `reference`.
 pub fn stream_power_erode_with_strata(
     input: &Heightfield,
     p: &StreamPowerParams,
@@ -417,112 +433,10 @@ pub fn stream_power_erode_with_strata(
     strata: &[Stratum],
     default_hardness: f32,
 ) -> StreamPowerResult {
-    let w = input.metrics.width as usize;
-    let h = input.metrics.height as usize;
-    let mut out = if p.dendritic_seed > 0.0 {
-        ridge_distance_valley_seed(input, p.dendritic_seed)
-    } else {
-        input.clone()
-    };
-
-    let mut incision = vec![0.0f32; w * h];
-    let iters = p.iterations.max(1);
-    let k = p.k.max(0.0);
-    let m_exp = p.m.max(0.0);
-    let n_exp = p.n.max(0.0);
-    let dt = p.dt.max(0.0);
-    let base = p.base_level;
-    let drainage_stride = p.drainage_reuse_stride.max(1);
-
-    let mut last_acc = vec![1.0f32; w * h];
-    let mut last_flow_mask = MaskField::zeros(input.metrics);
-    let mut last_dirs = vec![0u8; w * h];
-
-    for iter in 0..iters {
-        let refresh_drainage = iter == 0 || p.refill_each_iter || iter % drainage_stride == 0;
-        let (dirs, acc_vec, route) = if refresh_drainage {
-            let filled = if iter == 0 || p.refill_each_iter {
-                fill_depressions(&out)
-            } else {
-                out.clone()
-            };
-
-            let model = if p.use_dinfinity {
-                FlowModel::DInfinity
-            } else {
-                FlowModel::D8
-            };
-            let graph = build_flow_graph(&filled, model);
-            let dirs = graph.d8_dir.clone();
-            let acc_vec = accumulate_drainage_area(&graph, &Precipitation::uniform(1.0));
-            last_acc = acc_vec.clone();
-            last_flow_mask = graph.direction_mask.clone();
-            last_dirs = dirs.clone();
-            (dirs, acc_vec, filled)
-        } else {
-            (last_dirs.clone(), last_acc.clone(), out.clone())
-        };
-
-        let cell_area = (input.metrics.world_size_x / input.metrics.width.max(1) as f32)
-            * (input.metrics.world_size_z / input.metrics.height.max(1) as f32);
-        let cell_area = cell_area.max(1e-6);
-
-        for j in 0..h as u32 {
-            for i in 0..w as u32 {
-                let idx = j as usize * w + i as usize;
-                let area = (acc_vec[idx] * cell_area).max(cell_area);
-                let slope = {
-                    let s_flow = slope_along_d8(&route, i, j, dirs[idx]);
-                    if s_flow > 1e-8 {
-                        s_flow
-                    } else {
-                        max_local_slope(&route, i, j)
-                    }
-                }
-                .max(1e-6);
-                let cur = out.get(i, j);
-                let depth = (reference.get(i, j) - cur).max(0.0);
-                let soft = erodibility_at_strata_depth(strata, depth, default_hardness);
-                let power = k * area.powf(m_exp) * slope.powf(n_exp) * soft * dt;
-                let step = power.min(slope * 2.0).min(50.0);
-                let next = (cur - step + p.uplift_rate).max(base);
-                incision[idx] += (cur - next).max(0.0);
-                out.set(i, j, next);
-            }
-        }
-    }
-
-    let max_acc = last_acc.iter().cloned().fold(0.0f32, f32::max).max(1.0);
-    let mut acc_mask = MaskField::zeros(input.metrics);
-    for j in 0..h {
-        for i in 0..w {
-            acc_mask.set(i as u32, j as u32, last_acc[j * w + i] / max_acc);
-        }
-    }
-
-    let order = stream_order_log2(&last_acc, w, h, p.stream_threshold.max(1.0));
-    let max_order = order.iter().copied().max().unwrap_or(1).max(1) as f32;
-    let mut order_mask = MaskField::zeros(input.metrics);
-    for j in 0..h {
-        for i in 0..w {
-            order_mask.set(i as u32, j as u32, order[j * w + i] as f32 / max_order);
-        }
-    }
-
-    let mut incision_mask = MaskField::zeros(input.metrics);
-    for j in 0..h {
-        for i in 0..w {
-            incision_mask.set(i as u32, j as u32, incision[j * w + i]);
-        }
-    }
-
-    StreamPowerResult {
-        height: out,
-        flow_direction: last_flow_mask,
-        flow_accumulation: acc_mask,
-        stream_order: order_mask,
-        spe_incision: incision_mask,
-    }
+    stream_power_erode_impl(input, p, |i, j, cur| {
+        let depth = (reference.get(i, j) - cur).max(0.0);
+        erodibility_at_strata_depth(strata, depth, default_hardness)
+    })
 }
 
 #[cfg(test)]
