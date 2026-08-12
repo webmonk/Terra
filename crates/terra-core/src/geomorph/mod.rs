@@ -18,7 +18,8 @@ pub use accumulation::{
 };
 pub use debug::{bake_debug_field, GeomorphDebugField};
 pub use depression::{
-    handle_depressions, BreachParams, DepressionMode, DepressionResult, PreserveBasinsParams,
+    handle_depressions, priority_flood_fill, BreachParams, DepressionMode, DepressionResult,
+    PreserveBasinsParams,
 };
 pub use derivatives::{
     aspect_radians, cavity_openness, convexity_concavity, gaussian_curvature, gradient_components,

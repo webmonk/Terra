@@ -4,7 +4,9 @@
 //! Hydraulic → Debris Flow → Thermal stacks can exchange real sediment fields.
 
 use crate::heightfield::{Heightfield, HeightfieldMetrics};
-use crate::hydro::{fill_depressions, flow_accumulation_d8, flow_direction_d8};
+use crate::geomorph::{
+    accumulate_drainage_area, build_flow_graph, priority_flood_fill, FlowModel, Precipitation,
+};
 use crate::layer::{DebrisFlowParams, ThermalErosionParams};
 use crate::mask::MaskField;
 
@@ -654,10 +656,10 @@ pub fn debris_flow_erode(
 
         // After deposition obstructs paths, refill depressions so fluvial routing continues.
         if refresh || p.refill_depressions {
-            let filled = fill_depressions(&surface_hf);
+            let filled = priority_flood_fill(&surface_hf);
             // Route on filled surface so deposition-obstructed rivers can spill.
-            let (dirs, _) = flow_direction_d8(&filled);
-            let acc = flow_accumulation_d8(&filled, &dirs);
+            let graph = build_flow_graph(&filled, FlowModel::D8);
+            let acc = accumulate_drainage_area(&graph, &Precipitation::uniform(1.0));
             last_acc = MaskField::from_raw(metrics, &acc);
             let surface = state.sync_surface();
             let mut discharge = acc.clone();
@@ -828,7 +830,6 @@ pub fn debris_flow_erode(
             }
             debris_flux = next_debris_flux;
             sediment_flux = next_sediment_flux;
-            let _ = dirs;
         } else {
             // Lightweight hop: reuse last accumulation without full refill.
             let surface = state.sync_surface();

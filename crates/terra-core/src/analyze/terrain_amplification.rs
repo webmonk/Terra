@@ -18,10 +18,10 @@
 //! deposition). Fine channels nest inside broader drainage organisation.
 
 use crate::geomorph::{
-    gradient_components, mean_curvature, ridge_valley_likelihood, slope_magnitude,
+    accumulate_drainage_area, build_flow_graph, gradient_components, mean_curvature,
+    priority_flood_fill, ridge_valley_likelihood, slope_magnitude, FlowModel, Precipitation,
 };
 use crate::heightfield::{Heightfield, HeightfieldMetrics};
-use crate::hydro;
 use crate::mask::MaskField;
 use crate::noise::value_noise2;
 
@@ -550,9 +550,9 @@ fn build_fine_flow(flow: &MaskField, valley: &MaskField, slope: &MaskField) -> M
 }
 
 fn compute_flow_norm(input: &Heightfield) -> MaskField {
-    let filled = hydro::fill_depressions(input);
-    let (dirs, _) = hydro::flow_direction_d8(&filled);
-    let acc = hydro::flow_accumulation_d8(&filled, &dirs);
+    let filled = priority_flood_fill(input);
+    let graph = build_flow_graph(&filled, FlowModel::D8);
+    let acc = accumulate_drainage_area(&graph, &Precipitation::uniform(1.0));
     let m = input.metrics;
     let mut field = MaskField::zeros(m);
     for j in 0..m.height {

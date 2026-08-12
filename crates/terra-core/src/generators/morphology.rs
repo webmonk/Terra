@@ -216,8 +216,9 @@ pub(super) fn talus_fill(input: &Heightfield, p: &EffectFilterParams) -> Heightf
 }
 
 pub(super) fn sediment_fill_soft(input: &Heightfield, p: &EffectFilterParams) -> Heightfield {
-    let (dirs, _) = crate::hydro::flow_direction_d8(input);
-    let flow = crate::hydro::flow_accumulation_d8(input, &dirs);
+    let graph = crate::geomorph::build_flow_graph(input, crate::geomorph::FlowModel::D8);
+    let flow =
+        crate::geomorph::accumulate_drainage_area(&graph, &crate::geomorph::Precipitation::uniform(1.0));
     let (filled, _) = crate::analyze::sediment_fill_soft_mass(
         input,
         p.amount,

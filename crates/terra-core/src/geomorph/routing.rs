@@ -388,6 +388,7 @@ fn topological_order(
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::geomorph::{accumulate_drainage_area, Precipitation};
     use crate::heightfield::HeightfieldMetrics;
 
     #[test]
@@ -402,5 +403,89 @@ mod tests {
         let b = build_flow_graph(&hf, FlowModel::D8);
         assert_eq!(a.d8_dir, b.d8_dir);
         assert_eq!(a.topo_order, b.topo_order);
+    }
+
+    #[test]
+    fn pyramid_flows_outward_down() {
+        let m = HeightfieldMetrics::new(9, 9, 9.0, 9.0);
+        let mut hf = Heightfield::zeros(m);
+        for j in 0..9 {
+            for i in 0..9 {
+                let d = (i as i32 - 4).abs() + (j as i32 - 4).abs();
+                hf.set(i, j, 10.0 - d as f32);
+            }
+        }
+        let g = build_flow_graph(&hf, FlowModel::D8);
+        let acc = accumulate_drainage_area(&g, &Precipitation::uniform(1.0));
+        // Corners seed at least their own cell; some path collects several upstream.
+        assert!(acc[0] >= 1.0);
+        assert!(acc.iter().any(|&a| a > 5.0));
+    }
+
+    #[test]
+    fn d8_marks_local_sink_as_no_flow() {
+        let m = HeightfieldMetrics::new(3, 3, 3.0, 3.0);
+        let mut hf = Heightfield::filled(m, 2.0);
+        hf.set(1, 1, 1.0);
+        let g = build_flow_graph(&hf, FlowModel::D8);
+        let acc = accumulate_drainage_area(&g, &Precipitation::uniform(1.0));
+        // Center pit has no lower neighbour → sink; all 8 neighbours drain into it.
+        assert_eq!(g.d8_dir[4], NO_FLOW);
+        assert_eq!(acc[4], 9.0);
+    }
+
+    #[test]
+    fn downhill_flow_single_outlet_sanity() {
+        let m = HeightfieldMetrics::new(9, 9, 90.0, 90.0);
+        let mut hf = Heightfield::zeros(m);
+        for j in 0..9 {
+            for i in 0..9 {
+                hf.set(i, j, 20.0 - j as f32);
+            }
+        }
+        let g = build_flow_graph(&hf, FlowModel::D8);
+        let acc = accumulate_drainage_area(&g, &Precipitation::uniform(1.0));
+        // Bottom row collects the most water on a south-draining plane.
+        let top: f32 = (0..9).map(|i| acc[i]).sum();
+        let bot: f32 = (0..9).map(|i| acc[8 * 9 + i]).sum();
+        assert!(bot > top);
+        // Interior cells flow south (dir index 2 = (0, 1)).
+        let south = g.d8_dir.iter().filter(|&&d| d == 2).count();
+        assert!(south > 20);
+    }
+
+    #[test]
+    fn dinfinity_routes_within_the_winning_facet() {
+        let m = HeightfieldMetrics::new(5, 5, 5.0, 5.0);
+        let mut hf = Heightfield::zeros(m);
+        for j in 0..5 {
+            for i in 0..5 {
+                hf.set(i, j, 100.0 - i as f32 - 0.5 * j as f32);
+            }
+        }
+        let routed = flow_direction_dinfinity(&hf);
+        let center = &routed[2 * 5 + 2];
+        assert_eq!(center.len(), 2);
+        assert!(center.iter().any(|d| (d.di, d.dj) == (1, 0)));
+        assert!(center.iter().any(|d| (d.di, d.dj) == (1, 1)));
+        let total: f32 = center.iter().map(|d| d.fraction).sum();
+        assert!((total - 1.0).abs() < 1e-6);
+        assert!(center.iter().all(|d| d.fraction > 0.0));
+    }
+
+    #[test]
+    fn dinfinity_cardinal_plane_does_not_split_sideways() {
+        let m = HeightfieldMetrics::new(5, 5, 5.0, 5.0);
+        let mut hf = Heightfield::zeros(m);
+        for j in 0..5 {
+            for i in 0..5 {
+                hf.set(i, j, 20.0 - i as f32);
+            }
+        }
+        let routed = flow_direction_dinfinity(&hf);
+        let center = &routed[2 * 5 + 2];
+        assert_eq!(center.len(), 1);
+        assert_eq!((center[0].di, center[0].dj), (1, 0));
+        assert!((center[0].fraction - 1.0).abs() < 1e-6);
     }
 }

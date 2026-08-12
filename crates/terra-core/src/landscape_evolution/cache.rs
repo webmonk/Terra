@@ -1,7 +1,9 @@
 //! Drainage topology cache for landscape evolution.
 
 use crate::heightfield::Heightfield;
-use crate::hydro::{fill_depressions, flow_accumulation_d8, flow_direction_d8};
+use crate::geomorph::{
+    accumulate_drainage_area, build_flow_graph, priority_flood_fill, FlowModel, Precipitation,
+};
 use crate::mask::MaskField;
 
 /// Cached drainage products shared across Fast / Accurate passes.
@@ -23,75 +25,28 @@ pub struct DrainageCache {
 impl DrainageCache {
     pub fn build(height: &Heightfield, use_fill: bool) -> Self {
         let filled = if use_fill {
-            fill_depressions(height)
+            priority_flood_fill(height)
         } else {
             height.clone()
         };
-        let w = filled.metrics.width as usize;
-        let h = filled.metrics.height as usize;
-        let n = w * h;
-        let (dirs, direction_mask) = flow_direction_d8(&filled);
-        let accumulation = flow_accumulation_d8(&filled, &dirs);
+        let graph = build_flow_graph(&filled, FlowModel::D8);
+        let n = graph.width * graph.height;
+        let accumulation = accumulate_drainage_area(&graph, &Precipitation::uniform(1.0));
 
+        // Single D8 receiver per cell (`usize::MAX` = outlet / sink).
         let mut receiver = vec![usize::MAX; n];
-        let mut donors = vec![Vec::new(); n];
-        const OFFSETS: [(i32, i32); 8] = [
-            (1, 0),
-            (1, 1),
-            (0, 1),
-            (-1, 1),
-            (-1, 0),
-            (-1, -1),
-            (0, -1),
-            (1, -1),
-        ];
-        for j in 0..h {
-            for i in 0..w {
-                let idx = j * w + i;
-                let d = dirs[idx];
-                if d as usize >= OFFSETS.len() {
-                    continue;
-                }
-                let (di, dj) = OFFSETS[d as usize];
-                let ni = i as i32 + di;
-                let nj = j as i32 + dj;
-                if ni < 0 || nj < 0 || ni >= w as i32 || nj >= h as i32 {
-                    continue;
-                }
-                let r = nj as usize * w + ni as usize;
+        for idx in 0..n {
+            if let Some(r) = graph.d8_receiver_index(idx) {
                 receiver[idx] = r;
-                donors[r].push(idx);
             }
         }
 
-        let mut topo_up_to_down = Vec::with_capacity(n);
-        let mut stack: Vec<usize> = (0..n).filter(|&i| donors[i].is_empty()).collect();
-        let mut remaining_donors: Vec<usize> = donors.iter().map(|d| d.len()).collect();
-        while let Some(i) = stack.pop() {
-            topo_up_to_down.push(i);
-            let r = receiver[i];
-            if r != usize::MAX {
-                remaining_donors[r] = remaining_donors[r].saturating_sub(1);
-                if remaining_donors[r] == 0 {
-                    stack.push(r);
-                }
-            }
-        }
-        if topo_up_to_down.len() < n {
-            let mut seen = vec![false; n];
-            for &i in &topo_up_to_down {
-                seen[i] = true;
-            }
-            for i in 0..n {
-                if !seen[i] {
-                    topo_up_to_down.push(i);
-                }
-            }
-        }
-
-        let mut topo_down_to_up = topo_up_to_down;
+        // The graph's topo order runs upstream → downstream; reverse it for the
+        // outlets-first order the analytical / iterative solvers consume.
+        let mut topo_down_to_up = graph.topo_order.clone();
         topo_down_to_up.reverse();
 
+        let direction_mask = graph.direction_mask.clone();
         let height_fingerprint = height.to_dense();
 
         Self {
