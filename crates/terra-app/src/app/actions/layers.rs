@@ -930,7 +930,7 @@ pub(crate) fn try_apply(
                     let mut create_ctx = CreateContext::from_document(
                         &app.session.document,
                         workspace_to_create(app.ui_state.active_workspace),
-                        app.ui_state.layout.auto_switch_workspace_on_create,
+                        app.ui_state.auto_switch_workspace_on_create,
                     )
                     .with_cursor(uv);
                     if let Some(o) = owner {

@@ -94,6 +94,7 @@ pub use workspace::{
     WorkspaceId, WorkspaceMode, WorkspaceState, WorkspaceToolFilter,
 };
 
+use serde::{Deserialize, Serialize};
 use terra_core::document::TerrainDocument;
 use terra_core::eval::PreviewQuality;
 use terra_core::layer::{LayerId, LayerKind};
@@ -228,6 +229,12 @@ pub struct UiState {
     pub brush_symmetry: bool,
     /// Dock layout (resizable / collapsible panels).
     pub layout: terra_gui::LayoutPrefs,
+    /// Preferred task workspace id (`sculpt`, `biomes`, …). Editor preference,
+    /// persisted in the app's editor prefs file (not the dock-geometry blob).
+    pub preferred_workspace: String,
+    /// When true, creating an entity may switch to its home workspace.
+    /// Default false — artists stay in the current workspace unless they opt in.
+    pub auto_switch_workspace_on_create: bool,
     /// Biome Focus — definition currently being polished (WHAT + WHERE).
     pub biome_focus: Option<terra_core::biome_definition::BiomeDefinitionId>,
     /// Bookmarks floating window visible.
@@ -238,7 +245,8 @@ pub struct UiState {
     pub pending_bookmark_save: Option<usize>,
     /// Pending camera bookmark recall slot (0..8), consumed by the app.
     pub pending_bookmark_recall: Option<usize>,
-    /// Dirty flag — layout should be written to disk.
+    /// Dirty flag — editor prefs (dock geometry + workspace + render settings)
+    /// should be written to disk.
     pub layout_dirty: bool,
     /// Snapshot of dirty tile IDs `(tx, tz)` for the dirty-tiles overlay.
     pub dirty_tile_ids: Vec<(u32, u32)>,
@@ -391,6 +399,114 @@ mod sun_dir_tests {
     }
 }
 
+/// Persisted, serde-stable form of the viewport render controls (user preference).
+///
+/// This is the on-disk vocabulary — render `mode`/`preset` are stored as strings so
+/// the editor prefs file does not depend on `terra_render`'s enums. The runtime source
+/// of truth is [`ViewportRenderSettings`]; convert with [`ViewportRenderSettings::from_prefs`]
+/// / [`ViewportRenderSettings::to_prefs`].
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ViewportRenderPrefs {
+    #[serde(default = "default_render_mode")]
+    pub mode: String,
+    #[serde(default = "default_render_preset")]
+    pub preset: String,
+    #[serde(default = "default_target_fps")]
+    pub target_fps: f32,
+    #[serde(default = "default_max_spp")]
+    pub max_spp: u32,
+    #[serde(default = "default_true")]
+    pub dynamic_resolution: bool,
+    #[serde(default = "default_true")]
+    pub denoise: bool,
+    #[serde(default = "default_interactive_spp")]
+    pub interactive_spp: u32,
+    #[serde(default = "default_settling_spp")]
+    pub settling_spp: u32,
+    #[serde(default = "default_refining_spp")]
+    pub refining_spp: u32,
+    #[serde(default = "default_bounces_interactive")]
+    pub max_bounces_interactive: u32,
+    #[serde(default = "default_bounces_refining")]
+    pub max_bounces_refining: u32,
+    #[serde(default = "default_min_scale")]
+    pub min_internal_scale: f32,
+    #[serde(default = "default_max_scale")]
+    pub max_internal_scale: f32,
+    #[serde(default = "default_history_clamp")]
+    pub history_clamp_k: f32,
+    #[serde(default = "default_converge")]
+    pub converge_fraction: f32,
+    #[serde(default)]
+    pub debug_viz_mode: u32,
+}
+
+fn default_render_mode() -> String {
+    "Raster".into()
+}
+fn default_render_preset() -> String {
+    "Balanced".into()
+}
+fn default_target_fps() -> f32 {
+    60.0
+}
+fn default_max_spp() -> u32 {
+    128
+}
+fn default_true() -> bool {
+    true
+}
+fn default_interactive_spp() -> u32 {
+    1
+}
+fn default_settling_spp() -> u32 {
+    2
+}
+fn default_refining_spp() -> u32 {
+    4
+}
+fn default_bounces_interactive() -> u32 {
+    2
+}
+fn default_bounces_refining() -> u32 {
+    4
+}
+fn default_min_scale() -> f32 {
+    0.5
+}
+fn default_max_scale() -> f32 {
+    1.0
+}
+fn default_history_clamp() -> f32 {
+    1.5
+}
+fn default_converge() -> f32 {
+    0.95
+}
+
+impl Default for ViewportRenderPrefs {
+    fn default() -> Self {
+        Self {
+            mode: default_render_mode(),
+            preset: default_render_preset(),
+            target_fps: default_target_fps(),
+            max_spp: default_max_spp(),
+            dynamic_resolution: true,
+            denoise: true,
+            interactive_spp: default_interactive_spp(),
+            settling_spp: default_settling_spp(),
+            refining_spp: default_refining_spp(),
+            max_bounces_interactive: default_bounces_interactive(),
+            max_bounces_refining: default_bounces_refining(),
+            min_internal_scale: default_min_scale(),
+            max_internal_scale: default_max_scale(),
+            history_clamp_k: default_history_clamp(),
+            converge_fraction: default_converge(),
+            debug_viz_mode: 0,
+        }
+    }
+}
+
 /// Primary viewport rendering controls (synced to [`terra_render::ViewportQualityManager`]).
 #[derive(Debug, Clone)]
 pub struct ViewportRenderSettings {
@@ -478,7 +594,7 @@ impl Default for ViewportRenderSettings {
 }
 
 impl ViewportRenderSettings {
-    pub fn from_prefs(prefs: &terra_gui::ViewportRenderPrefs) -> Self {
+    pub fn from_prefs(prefs: &ViewportRenderPrefs) -> Self {
         let mut s = Self::default();
         s.mode = match prefs.mode.as_str() {
             "Fast" => terra_render::ViewportRendererMode::Fast,
@@ -508,8 +624,8 @@ impl ViewportRenderSettings {
         s
     }
 
-    pub fn to_prefs(&self) -> terra_gui::ViewportRenderPrefs {
-        terra_gui::ViewportRenderPrefs {
+    pub fn to_prefs(&self) -> ViewportRenderPrefs {
+        ViewportRenderPrefs {
             mode: match self.mode {
                 terra_render::ViewportRendererMode::Fast => "Fast".into(),
                 terra_render::ViewportRendererMode::Raster => "Raster".into(),
@@ -683,7 +799,7 @@ impl UiState {
         ws.switch_workspace(id);
         self.apply_workspace_state(&ws);
         self.tool_drag = None;
-        self.layout.preferred_workspace = id.as_str().to_string();
+        self.preferred_workspace = id.as_str().to_string();
         self.layout_dirty = true;
         let def = workspace_definition(id);
         self.status = format!("Workspace: {} — {}", def.name, def.description);
@@ -709,9 +825,9 @@ impl UiState {
         workspace_definition(self.active_workspace)
     }
 
-    /// Apply persisted preferred workspace from layout prefs (editor-only).
+    /// Apply persisted preferred workspace from editor prefs (editor-only).
     pub fn apply_preferred_workspace_from_prefs(&mut self) {
-        if let Some(id) = WorkspaceId::parse(&self.layout.preferred_workspace) {
+        if let Some(id) = WorkspaceId::parse(&self.preferred_workspace) {
             // Direct field sync without re-dirtying layout on load.
             let mut ws = self.workspace_state();
             ws.switch_workspace(id);

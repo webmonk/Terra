@@ -16,3 +16,4 @@ serde = { workspace = true }
 
 [dev-dependencies]
 terra-test-gpu = { workspace = true }
+serde_json = { workspace = true }

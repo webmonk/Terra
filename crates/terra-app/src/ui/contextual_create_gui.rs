@@ -72,7 +72,7 @@ pub fn build_create_context(
     CreateContext::from_document(
         doc,
         workspace_to_create(ui.active_workspace),
-        ui.layout.auto_switch_workspace_on_create,
+        ui.auto_switch_workspace_on_create,
     )
     .with_cursor(menu.uv)
 }
@@ -288,7 +288,7 @@ pub fn hierarchy_add_actions(
     let mut ctx = CreateContext::from_document(
         doc,
         workspace_to_create(ui_state.active_workspace),
-        ui_state.layout.auto_switch_workspace_on_create,
+        ui_state.auto_switch_workspace_on_create,
     );
     match owner {
         CreateOwner::Biome(id) => {

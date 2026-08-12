@@ -754,7 +754,7 @@ fn pack_image_atlas(images: &[(u32, u32, Vec<u8>)]) -> (u32, u32, Vec<u8>, Vec<[
                     rgba: rgba.clone(),
                 };
             }
-            // Downscale oversized sources (terrain preview, etc.) for the atlas.
+            // Downscale oversized sources (large image previews, etc.) for the atlas.
             let scale = (MAX_DIM as f32 / w as f32)
                 .min(MAX_DIM as f32 / h as f32)
                 .min(1.0);

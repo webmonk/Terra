@@ -5,13 +5,14 @@ mod helpers;
 mod eval;
 mod lifecycle;
 mod paint;
+pub mod prefs;
 mod project;
 mod redraw;
 mod shapes;
 
 use std::collections::VecDeque;
 use std::path::PathBuf;
-use std::sync::{mpsc, Arc, OnceLock};
+use std::sync::Arc;
 use std::time::Instant;
 
 use terra_core::document::EditorSession;
@@ -255,13 +256,15 @@ pub struct TerraApp {
 impl Default for TerraApp {
     fn default() -> Self {
         let now = Instant::now();
-        let layout = load_layout_prefs();
+        let prefs = crate::app::prefs::load_editor_prefs();
         let mut gui_state = GuiState::default();
-        gui_state.layout = layout.clone();
+        gui_state.layout = prefs.layout.clone();
         let mut ui_state = UiState::default();
-        ui_state.layout = layout;
         ui_state.viewport_render =
-            crate::ui::ViewportRenderSettings::from_prefs(&ui_state.layout.viewport_render);
+            crate::ui::ViewportRenderSettings::from_prefs(&prefs.viewport_render);
+        ui_state.preferred_workspace = prefs.preferred_workspace;
+        ui_state.auto_switch_workspace_on_create = prefs.auto_switch_workspace_on_create;
+        ui_state.layout = prefs.layout;
         ui_state.apply_preferred_workspace_from_prefs();
         let session = EditorSession::new();
         let metrics = session.document.metrics;
@@ -357,28 +360,10 @@ impl Default for TerraApp {
     }
 }
 
-pub(crate) fn layout_prefs_path() -> PathBuf {
-    std::env::current_dir()
-        .unwrap_or_else(|_| PathBuf::from("."))
-        .join("terra_layout.json")
-}
-
 pub(crate) fn project_prefs_path() -> PathBuf {
     std::env::current_dir()
         .unwrap_or_else(|_| PathBuf::from("."))
         .join("terra_projects.json")
-}
-
-pub(crate) fn load_layout_prefs() -> terra_gui::LayoutPrefs {
-    let path = layout_prefs_path();
-    if let Ok(bytes) = std::fs::read(&path) {
-        if let Ok(prefs) = serde_json::from_slice::<terra_gui::LayoutPrefs>(&bytes) {
-            let mut prefs = prefs;
-            prefs.clamp_mut();
-            return prefs;
-        }
-    }
-    terra_gui::LayoutPrefs::default()
 }
 
 pub(crate) fn load_project_prefs() -> ProjectPrefs {
@@ -396,31 +381,6 @@ pub(crate) fn save_project_prefs(prefs: &ProjectPrefs) {
     if let Ok(json) = serde_json::to_vec_pretty(prefs) {
         let _ = std::fs::write(path, json);
     }
-}
-
-/// Queue layout persistence without placing filesystem latency on the render/UI thread.
-/// The worker drains queued snapshots before each write so splitter drags coalesce naturally.
-pub(crate) fn save_layout_prefs(prefs: &terra_gui::LayoutPrefs) {
-    static TX: OnceLock<mpsc::Sender<terra_gui::LayoutPrefs>> = OnceLock::new();
-    let tx = TX.get_or_init(|| {
-        let (tx, rx) = mpsc::channel::<terra_gui::LayoutPrefs>();
-        std::thread::Builder::new()
-            .name("terra-layout-save".into())
-            .spawn(move || {
-                while let Ok(mut latest) = rx.recv() {
-                    while let Ok(newer) = rx.try_recv() {
-                        latest = newer;
-                    }
-                    let path = layout_prefs_path();
-                    if let Ok(json) = serde_json::to_vec_pretty(&latest) {
-                        let _ = std::fs::write(path, json);
-                    }
-                }
-            })
-            .expect("spawn layout save worker");
-        tx
-    });
-    let _ = tx.send(prefs.clone());
 }
 
 /// `Documents/Terra` (falls back to `./Terra` if Documents is unavailable).

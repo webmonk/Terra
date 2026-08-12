@@ -1,4 +1,4 @@
-//! Custom wgpu immediate-mode UI for Terra (no egui).
+//! Custom wgpu immediate-mode UI toolkit (no egui).
 
 mod context;
 mod draw;
@@ -21,7 +21,7 @@ pub use draw::{DrawCmd, DrawList};
 pub use icons::{Icon, ICON_PX};
 pub use id::Id;
 pub use layout::Layout;
-pub use layout_prefs::{LayoutPrefs, ViewportRenderPrefs, SPLITTER_HIT};
+pub use layout_prefs::{LayoutPrefs, SPLITTER_HIT};
 pub use renderer::GuiRenderer;
 pub use state::{GuiState, SplitterKind};
 pub use types::{Align, Color, Rect};

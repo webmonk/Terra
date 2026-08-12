@@ -12,7 +12,8 @@ use winit::event::MouseButton;
 use super::helpers::{
     aux_maps_fingerprint, mask_field_fingerprint, vegetation_instance_params,
 };
-use super::{save_layout_prefs, AppScreen, PendingProjectAction, TerraApp};
+use super::prefs::{save_editor_prefs, EditorPrefs};
+use super::{AppScreen, PendingProjectAction, TerraApp};
 impl TerraApp {
     pub(crate) fn redraw(&mut self) {
         let frame_t0 = Instant::now();
@@ -659,8 +660,13 @@ impl TerraApp {
         }
         if self.ui_state.layout_dirty {
             self.ui_state.layout.clamp_mut();
-            self.ui_state.layout.viewport_render = self.ui_state.viewport_render.to_prefs();
-            save_layout_prefs(&self.ui_state.layout);
+            let prefs = EditorPrefs {
+                layout: self.ui_state.layout.clone(),
+                preferred_workspace: self.ui_state.preferred_workspace.clone(),
+                auto_switch_workspace_on_create: self.ui_state.auto_switch_workspace_on_create,
+                viewport_render: self.ui_state.viewport_render.to_prefs(),
+            };
+            save_editor_prefs(&prefs);
             self.ui_state.layout_dirty = false;
             self.refresh_viewport_rect();
         }
