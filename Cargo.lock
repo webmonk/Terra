@@ -2754,6 +2754,7 @@ dependencies = [
  "terra-gui",
  "terra-io",
  "terra-render",
+ "terra-test-gpu",
  "wgpu",
  "winit",
 ]

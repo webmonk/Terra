@@ -2,6 +2,33 @@
 //!
 //! Long-term layout: [`frame_graph`], [`backends`].
 //! [`TerrainRenderer`] remains the strangler host until Phase E cleanup.
+//!
+//! # Frame seam
+//!
+//! Terrain + GUI compositing. A presented frame is composited by two crates
+//! writing the *same* swapchain texture in sequence, ordered only by queue
+//! submission. The protocol is:
+//!
+//! 1. [`TerrainRenderer::render_terrain`] acquires the swapchain frame in-crate
+//!    (the sole `get_current_texture`), records and submits the terrain encoder,
+//!    and returns the still-**un-presented** [`wgpu::SurfaceTexture`].
+//! 2. The app creates a [`wgpu::TextureView`] of *that returned frame* and
+//!    builds the GUI against it.
+//! 3. `terra_gui::GuiRenderer::render` records and submits a **second** encoder
+//!    whose pass uses `LoadOp::Load` — it composites over the terrain output
+//!    instead of clearing it.
+//! 4. The app presents (`SurfaceTexture::present`) — the sole present — only
+//!    *after* both encoders are submitted.
+//!
+//! Nothing in the type system enforces steps 2–4: a `LoadOp::Clear` in the GUI
+//! pass would erase the viewport, and a present before the GUI submit would show
+//! a stale frame, both without a compile error. Two tests stand in for that
+//! missing pushback — `terra-gui/tests/frame_seam.rs` locks the GUI pass's
+//! `LoadOp::Load` against a plain backdrop, and `terra-app/tests/`
+//! `frame_compositing.rs` drives the real terrain and GUI renderers into one
+//! offscreen target and asserts the GUI lands while the terrain outside it
+//! survives. Acquire-error semantics (`Lost`/`Outdated` recovery, `OutOfMemory`
+//! exit) are typed through [`RenderError::Surface`]; see `render_terrain`.
 
 pub mod adaptive_sampling;
 pub mod backends;
@@ -1700,6 +1727,27 @@ impl TerrainRenderer {
         self.last_tile_plan_missing = plan.missing_tiles;
     }
 
+    /// Acquire the swapchain frame, render terrain into it, and return it
+    /// **un-presented** for the caller to composite the GUI onto. This is the
+    /// windowed entry point; the terrain half of the [frame seam](crate#frame-seam).
+    ///
+    /// Caller obligations (nothing here enforces them):
+    /// - Build the GUI view from the returned frame's texture — the same frame,
+    ///   not a fresh `get_current_texture` — so both passes target one surface.
+    /// - Run exactly one GUI pass into that view with `LoadOp::Load`. Queue
+    ///   submission order is the only thing sequencing GUI-after-terrain, so the
+    ///   GUI encoder must be submitted after this call returns.
+    /// - Call [`wgpu::SurfaceTexture::present`] only after the GUI submit. The
+    ///   returned frame is not presented here.
+    ///
+    /// # Errors
+    ///
+    /// - [`RenderError::Surface`] wraps `wgpu::SurfaceError` unmapped so the app
+    ///   can match and recover: `Timeout` → skip the frame; `Outdated`/`Lost` →
+    ///   [`reconfigure`](Self::reconfigure) and repaint; `OutOfMemory` → exit;
+    ///   `Other` → skip.
+    /// - [`RenderError::Msg`] only when called on a headless renderer (no
+    ///   surface) — use [`render_to_view`](Self::render_to_view) instead.
     pub fn render_terrain(&mut self) -> Result<wgpu::SurfaceTexture, RenderError> {
         let Some(surface) = &self.surface else {
             return Err(RenderError::Msg(

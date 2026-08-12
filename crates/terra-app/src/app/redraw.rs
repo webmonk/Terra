@@ -295,6 +295,12 @@ impl TerraApp {
                 });
                 renderer.update_visible_tile_plan(&self.terrain_runtime.pyramid);
             }
+            // Frame seam (see TerrainRenderer::render_terrain's contract): this
+            // acquires + submits terrain and returns the un-presented frame. The
+            // block below must keep that order — build the GUI view from *this*
+            // frame, submit exactly one GUI pass (LoadOp::Load) over it, and
+            // present only after that submit. Reordering present before the GUI
+            // submit shows a stale frame; the compositing tests guard the rest.
             let frame = match renderer.render_terrain() {
                 Ok(f) => f,
                 // Exhaustive by design (A1-G2): no `_` arm, so a future

@@ -411,6 +411,13 @@ impl GuiRenderer {
         );
     }
 
+    /// Record and submit one GUI pass that composites **over** `view`.
+    ///
+    /// The pass loads the existing attachment (`LoadOp::Load` below), so in the
+    /// editor's frame seam this draws on top of the terrain already rendered
+    /// into the same surface — it must never clear. Flipping that load op blanks
+    /// the viewport with no compile error; `tests/frame_seam.rs` and terra-app's
+    /// `frame_compositing` test guard it.
     pub fn render(
         &mut self,
         device: &wgpu::Device,
