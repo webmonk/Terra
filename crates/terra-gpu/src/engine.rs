@@ -3165,7 +3165,6 @@ fn resample_height_nearest(src: &Heightfield, dst: HeightfieldMetrics) -> Vec<f3
 #[cfg(test)]
 mod smoke_tests {
     use super::*;
-    use crate::GpuContext;
     use terra_core::eval::PreviewQuality;
     use terra_core::heightfield::HeightfieldMetrics;
     use terra_core::layer::{
@@ -3176,7 +3175,7 @@ mod smoke_tests {
     /// even when blend and cache share one submit (each pass gets its own uniform buffer).
     #[test]
     fn draft_eval_composites_sculpt_and_noise() {
-        let Ok(ctx) = GpuContext::new() else {
+        let Some(gpu) = terra_test_gpu::headless() else {
             // Headless CI without a GPU adapter.
             return;
         };
@@ -3201,12 +3200,12 @@ mod smoke_tests {
             }),
         ));
 
-        let mut engine = GpuTerrainEngine::new(&ctx.device, metrics.width);
+        let mut engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
         engine.mark_dirty(base_id);
         let before = engine
             .evaluate(
-                &ctx.device,
-                &ctx.queue,
+                &gpu.device,
+                &gpu.queue,
                 &stack,
                 &[],
                 metrics,
@@ -3233,8 +3232,8 @@ mod smoke_tests {
         engine.mark_dirty_from(&stack, base_id);
         let after = engine
             .evaluate(
-                &ctx.device,
-                &ctx.queue,
+                &gpu.device,
+                &gpu.queue,
                 &stack,
                 &[],
                 metrics,
@@ -3253,7 +3252,7 @@ mod smoke_tests {
 
     #[test]
     fn draft_eval_applies_effect_filter() {
-        let Ok(ctx) = GpuContext::new() else {
+        let Some(gpu) = terra_test_gpu::headless() else {
             return;
         };
         let metrics = HeightfieldMetrics::new(64, 64, 64.0, 64.0);
@@ -3271,12 +3270,12 @@ mod smoke_tests {
         let filter_id = filter.id();
         stack.push(filter);
 
-        let mut engine = GpuTerrainEngine::new(&ctx.device, metrics.width);
+        let mut engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
         engine.mark_dirty(base_id);
         let before = engine
             .evaluate(
-                &ctx.device,
-                &ctx.queue,
+                &gpu.device,
+                &gpu.queue,
                 &stack,
                 &[],
                 metrics,
@@ -3296,8 +3295,8 @@ mod smoke_tests {
         engine.mark_dirty_from(&stack, base_id);
         let after = engine
             .evaluate(
-                &ctx.device,
-                &ctx.queue,
+                &gpu.device,
+                &gpu.queue,
                 &stack,
                 &[],
                 metrics,
@@ -3315,7 +3314,7 @@ mod smoke_tests {
 
     #[test]
     fn draft_eval_flat_survives_cache_copy_uniform() {
-        let Ok(ctx) = GpuContext::new() else {
+        let Some(gpu) = terra_test_gpu::headless() else {
             return;
         };
         let metrics = HeightfieldMetrics::new(32, 32, 32.0, 32.0);
@@ -3324,12 +3323,12 @@ mod smoke_tests {
         let id = layer.id();
         stack.push(layer);
 
-        let mut engine = GpuTerrainEngine::new(&ctx.device, metrics.width);
+        let mut engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
         engine.mark_dirty(id);
         let result = engine
             .evaluate(
-                &ctx.device,
-                &ctx.queue,
+                &gpu.device,
+                &gpu.queue,
                 &stack,
                 &[],
                 metrics,
