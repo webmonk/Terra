@@ -516,6 +516,14 @@ impl HydraulicErosionParams {
 pub struct StreamPowerParams {
     pub iterations: u32,
     /// Erodibility coefficient \(K\) in the stream-power law.
+    ///
+    /// Acts on **grid-relative** D8 slope (drop per 1 / √2 cells) and world-m²
+    /// drainage area — the convention baked into [`crate::hydro::spe_increment`]
+    /// on the `hydro` path. This is **not** numerically comparable with
+    /// [`crate::landscape_evolution::LandscapeEvolutionParams`]'s `k`, which acts
+    /// on world-metric slope and rain-scaled discharge. Do not silently unify the
+    /// two: it would retune every saved project and needs a versioned document
+    /// migration (station D1's territory).
     pub k: f32,
     /// Drainage-area exponent \(m\) (classic ~0.5).
     pub m: f32,

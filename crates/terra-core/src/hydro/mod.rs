@@ -281,6 +281,45 @@ fn max_local_slope(hf: &Heightfield, i: u32, j: u32) -> f32 {
     best.max(0.0)
 }
 
+/// Per-cell stream-power increment shared by the hydro oracles and the
+/// `landscape_evolution` iterative solver.
+///
+/// `rate = k · q_or_area^m · slope^n · soft`; `step = (rate · dt)` capped first by
+/// `slope_cap` then by `max_step`. Callers pass their own conventions explicitly,
+/// because the same K/m/n vocabulary encodes **different physics per module**:
+///
+/// - `hydro` (this module): `q_or_area` is world-m² drainage area from a
+///   Priority-Flood D8/D∞ accumulation; `slope` is grid-relative (drop per
+///   1 / √2 cells, via `slope_along_d8`); caps `slope * 2.0`, then `50.0`.
+/// - `landscape_evolution::iterative`: `q_or_area` is rain-scaled discharge Q;
+///   `slope` is world-metric (drop per dx/dz metres); caps
+///   `slope * ((dx + dz) / 2) * 4.0`, then `80.0`.
+///
+/// The two K's are therefore not interchangeable — see the notes on
+/// [`crate::layer::StreamPowerParams`] and
+/// [`crate::landscape_evolution::LandscapeEvolutionParams`]. The Tzathas analytical
+/// solver and the mass-wasting fluvial term are separate cited models that do not
+/// route through here; the GPU shader is a declared approximation (station C1).
+///
+/// Returns `(rate, step)`: the un-capped incision rate (for the erosion aux) and
+/// the capped per-step incision depth.
+#[allow(clippy::too_many_arguments)]
+pub fn spe_increment(
+    q_or_area: f32,
+    slope: f32,
+    k: f32,
+    m: f32,
+    n: f32,
+    soft: f32,
+    dt: f32,
+    slope_cap: f32,
+    max_step: f32,
+) -> (f32, f32) {
+    let rate = k * q_or_area.powf(m) * slope.powf(n) * soft;
+    let step = (rate * dt).min(slope_cap).min(max_step);
+    (rate, step)
+}
+
 /// Stream-power incision with Priority-Flood drainage (CPU oracle core).
 ///
 /// Each iteration: optional fill → D8/D∞ accumulation →
@@ -365,9 +404,9 @@ fn stream_power_erode_impl(
                 .max(1e-6);
                 let cur = out.get(i, j);
                 let soft = soft_at(i, j, cur);
-                let power = k * area.powf(m_exp) * slope.powf(n_exp) * soft * dt;
                 // Cap per-step incision to keep Draft previews stable.
-                let step = power.min(slope * 2.0).min(50.0);
+                let (_rate, step) =
+                    spe_increment(area, slope, k, m_exp, n_exp, soft, dt, slope * 2.0, 50.0);
                 let next = (cur - step + p.uplift_rate).max(base);
                 incision[idx] += (cur - next).max(0.0);
                 out.set(i, j, next);

@@ -80,10 +80,19 @@ pub fn evolve_iterative(
                 }
                 let soft = (1.0 - hardness.get(i as u32, j as u32).clamp(0.0, 1.0)).max(0.0);
                 let slope = slope_to_receiver(&z, i, j, &cache).max(1e-6);
-                let e =
-                    k * q[idx].powf(m_exp) * slope.powf(n_exp) * soft;
-                // Cap per-step incision relative to local relief for stability.
-                let e_step = (e * dt).min(slope * ((dx + dzm) * 0.5) * 4.0).min(80.0);
+                // Shared stream-power law (world-metric slope, discharge Q); the cap
+                // is relief-relative for stability. See crate::hydro::spe_increment.
+                let (e, e_step) = crate::hydro::spe_increment(
+                    q[idx],
+                    slope,
+                    k,
+                    m_exp,
+                    n_exp,
+                    soft,
+                    dt,
+                    slope * ((dx + dzm) * 0.5) * 4.0,
+                    80.0,
+                );
                 let u = uplift.get(i as u32, j as u32) * dt;
 
                 let mut dh = u - e_step;
