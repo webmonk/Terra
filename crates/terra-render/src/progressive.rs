@@ -715,28 +715,16 @@ impl ProgressiveRenderer {
 mod tests {
     use super::*;
 
-    /// Exercises the complete post stack on a real adapter. Ignored by default so
-    /// headless CI is not required to expose a GPU; run explicitly during renderer work.
+    /// Exercises the complete post stack on a real adapter through the shared
+    /// headless harness. Skips silently when no adapter is available, so the suite
+    /// stays green on machines without a GPU (the terra-test-gpu convention).
     #[test]
-    #[ignore = "requires a graphics adapter"]
     fn progressive_post_stack_executes() {
-        let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor::default());
-        let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
-            power_preference: wgpu::PowerPreference::LowPower,
-            compatible_surface: None,
-            force_fallback_adapter: false,
-        }))
-        .expect("graphics adapter");
-        let (device, queue) = pollster::block_on(adapter.request_device(
-            &wgpu::DeviceDescriptor {
-                label: Some("progressive-test"),
-                required_features: wgpu::Features::empty(),
-                required_limits: wgpu::Limits::default(),
-                memory_hints: Default::default(),
-            },
-            None,
-        ))
-        .expect("device");
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let device = gpu.device.clone();
+        let queue = gpu.queue.clone();
 
         let mut progressive =
             ProgressiveRenderer::new(&device, 32, 24, wgpu::TextureFormat::Rgba8Unorm);
