@@ -15,12 +15,22 @@ pub fn backend_for_mode(mode: ViewportRendererMode) -> PresentationBackendId {
     PresentationBackendId::from_mode(mode)
 }
 
-/// Build the frame schedule for the active mode.
-pub fn schedule_for_mode(mode: ViewportRendererMode, shadows: bool) -> FrameSchedule {
-    FrameSchedule::for_backend(backend_for_mode(mode), shadows)
+/// Build the frame schedule for the active mode. `pt_dispatch` is whether the
+/// path tracer samples this frame (ignored for raster modes).
+pub fn schedule_for_mode(
+    mode: ViewportRendererMode,
+    shadows: bool,
+    pt_dispatch: bool,
+) -> FrameSchedule {
+    FrameSchedule::for_backend(backend_for_mode(mode), shadows, pt_dispatch)
 }
 
 /// Helper used by the frame path to record the planned graph.
-pub fn begin_frame_graph(graph: &mut FrameGraph, mode: ViewportRendererMode, shadows: bool) {
-    graph.begin(schedule_for_mode(mode, shadows));
+pub fn begin_frame_graph(
+    graph: &mut FrameGraph,
+    mode: ViewportRendererMode,
+    shadows: bool,
+    pt_dispatch: bool,
+) {
+    graph.begin(schedule_for_mode(mode, shadows, pt_dispatch));
 }

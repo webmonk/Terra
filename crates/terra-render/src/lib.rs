@@ -1680,8 +1680,20 @@ impl TerrainRenderer {
             .set_enabled(self.lighting.shadow_strength > 1e-4);
         let shadows_for_schedule =
             self.shadow_map.enabled() && matches!(backend, PresentationBackendId::RasterLit);
-        self.frame_graph
-            .begin(FrameSchedule::for_backend(backend, shadows_for_schedule));
+        // Converged progressive frames (spp 0) present the last HDR without a new
+        // dispatch; the schedule records that so its plan matches what runs.
+        let pt_dispatch = self.quality.spp_this_frame > 0;
+        self.frame_graph.begin(FrameSchedule::for_backend(
+            backend,
+            shadows_for_schedule,
+            pt_dispatch,
+        ));
+        // The schedule is now the single source of truth for the frame path.
+        let backend = self
+            .frame_graph
+            .schedule
+            .backend
+            .expect("frame schedule always records a backend");
         let path_trace_mode = matches!(backend, PresentationBackendId::ProgressivePt);
         // Keep progressive post armed whenever the schedule expects it.
         if self.frame_graph.schedule.progressive_post && !self.progressive.enabled() {
@@ -1822,6 +1834,7 @@ impl TerrainRenderer {
 
         // Depth-only directional shadow pass (RasterLit only).
         if self.frame_graph.schedule.shadow {
+            self.frame_graph.mark(PassKind::Shadow);
             let shadow_ts = self
                 .gpu_timer
                 .as_mut()
@@ -1852,7 +1865,8 @@ impl TerrainRenderer {
         match backend {
             PresentationBackendId::ProgressivePt => {
                 // Converged ⇒ spp 0 still presents last HDR via progressive post.
-                if self.quality.spp_this_frame > 0 {
+                if self.frame_graph.schedule.pt_dispatch {
+                    self.frame_graph.mark(PassKind::ProgressivePt);
                     let mask = self.adaptive.prepare_all_active_mask();
                     self.path_tracer
                         .upload_sample_mask(&self.queue, &mask);
@@ -1953,6 +1967,7 @@ impl TerrainRenderer {
                 }
 
                 let color_view = view;
+                self.frame_graph.mark(PassKind::RasterLit);
                 let terrain_ts = self
                     .gpu_timer
                     .as_mut()
@@ -2019,70 +2034,76 @@ impl TerrainRenderer {
                     }
                 }
 
-                // Hole-free uniforms for ocean / overlays (shared main buffer).
-                {
-                    let mut uniforms = base_uniforms;
-                    uniforms.clipmap = [
-                        0.0,
-                        0.0,
-                        fallback_spacing,
-                        self.grid.resolution as f32,
-                    ];
-                    uniforms.viz[3] = 0.0;
-                    self.queue
-                        .write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
-                }
-                {
-                    let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                        label: Some("raster-lit-overlays"),
-                        color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                            view: color_view,
-                            resolve_target: None,
-                            ops: wgpu::Operations {
-                                load: wgpu::LoadOp::Load,
-                                store: wgpu::StoreOp::Store,
-                            },
-                        })],
-                        depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                            view: &self.depth,
-                            depth_ops: Some(wgpu::Operations {
-                                load: wgpu::LoadOp::Load,
-                                store: wgpu::StoreOp::Store,
-                            }),
-                            stencil_ops: None,
-                        }),
-                        timestamp_writes: None,
-                        occlusion_query_set: None,
-                    });
-                    if self.ocean_level.is_some() {
-                        pass.set_pipeline(&self.ocean_pipeline);
-                        pass.set_bind_group(0, &self.bind_group, &[]);
-                        pass.set_vertex_buffer(0, self.grid.vertex_buf.slice(..));
-                        pass.set_index_buffer(
-                            self.grid.index_buf.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
-                        pass.draw_indexed(0..self.grid.surface_index_count, 0, 0..1);
+                if self.frame_graph.schedule.overlays {
+                    self.frame_graph.mark(PassKind::Overlays);
+                    // Hole-free uniforms for ocean / overlays (shared main buffer).
+                    {
+                        let mut uniforms = base_uniforms;
+                        uniforms.clipmap = [
+                            0.0,
+                            0.0,
+                            fallback_spacing,
+                            self.grid.resolution as f32,
+                        ];
+                        uniforms.viz[3] = 0.0;
+                        self.queue
+                            .write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
                     }
-                    if self.display_aids.wireframe {
-                        pass.set_pipeline(&self.wireframe_pipeline);
-                        pass.set_bind_group(0, &self.bind_group, &[]);
-                        pass.set_vertex_buffer(0, self.grid.vertex_buf.slice(..));
-                        pass.set_index_buffer(
-                            self.grid.edge_index_buf.slice(..),
-                            wgpu::IndexFormat::Uint32,
-                        );
-                        pass.draw_indexed(0..self.grid.edge_index_count, 0, 0..1);
+                    {
+                        let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                            label: Some("raster-lit-overlays"),
+                            color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                                view: color_view,
+                                resolve_target: None,
+                                ops: wgpu::Operations {
+                                    load: wgpu::LoadOp::Load,
+                                    store: wgpu::StoreOp::Store,
+                                },
+                            })],
+                            depth_stencil_attachment: Some(
+                                wgpu::RenderPassDepthStencilAttachment {
+                                    view: &self.depth,
+                                    depth_ops: Some(wgpu::Operations {
+                                        load: wgpu::LoadOp::Load,
+                                        store: wgpu::StoreOp::Store,
+                                    }),
+                                    stencil_ops: None,
+                                },
+                            ),
+                            timestamp_writes: None,
+                            occlusion_query_set: None,
+                        });
+                        if self.ocean_level.is_some() {
+                            pass.set_pipeline(&self.ocean_pipeline);
+                            pass.set_bind_group(0, &self.bind_group, &[]);
+                            pass.set_vertex_buffer(0, self.grid.vertex_buf.slice(..));
+                            pass.set_index_buffer(
+                                self.grid.index_buf.slice(..),
+                                wgpu::IndexFormat::Uint32,
+                            );
+                            pass.draw_indexed(0..self.grid.surface_index_count, 0, 0..1);
+                        }
+                        if self.display_aids.wireframe {
+                            pass.set_pipeline(&self.wireframe_pipeline);
+                            pass.set_bind_group(0, &self.bind_group, &[]);
+                            pass.set_vertex_buffer(0, self.grid.vertex_buf.slice(..));
+                            pass.set_index_buffer(
+                                self.grid.edge_index_buf.slice(..),
+                                wgpu::IndexFormat::Uint32,
+                            );
+                            pass.draw_indexed(0..self.grid.edge_index_count, 0, 0..1);
+                        }
+                        self.vegetation.draw(&mut pass);
+                        self.overhang.draw(&mut pass);
+                        self.brush.draw(&mut pass);
+                        self.guides.draw(&mut pass);
                     }
-                    self.vegetation.draw(&mut pass);
-                    self.overhang.draw(&mut pass);
-                    self.brush.draw(&mut pass);
-                    self.guides.draw(&mut pass);
                 }
             }
         }
 
         if self.frame_graph.schedule.progressive_post {
+            self.frame_graph.mark(PassKind::ProgressivePost);
             let (temporal_ts, denoise_ts) = self
                 .gpu_timer
                 .as_mut()
@@ -2111,33 +2132,36 @@ impl TerrainRenderer {
                 denoise_ts,
                 self.debug_viz_mode,
             );
-            let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-                label: Some("progressive-overlay-pass"),
-                color_attachments: &[Some(wgpu::RenderPassColorAttachment {
-                    view,
-                    resolve_target: None,
-                    ops: wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
-                    },
-                })],
-                depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
-                    view: &self.depth,
-                    depth_ops: Some(wgpu::Operations {
-                        load: wgpu::LoadOp::Load,
-                        store: wgpu::StoreOp::Store,
+            if self.frame_graph.schedule.overlays {
+                self.frame_graph.mark(PassKind::Overlays);
+                let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
+                    label: Some("progressive-overlay-pass"),
+                    color_attachments: &[Some(wgpu::RenderPassColorAttachment {
+                        view,
+                        resolve_target: None,
+                        ops: wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        },
+                    })],
+                    depth_stencil_attachment: Some(wgpu::RenderPassDepthStencilAttachment {
+                        view: &self.depth,
+                        depth_ops: Some(wgpu::Operations {
+                            load: wgpu::LoadOp::Load,
+                            store: wgpu::StoreOp::Store,
+                        }),
+                        stencil_ops: None,
                     }),
-                    stencil_ops: None,
-                }),
-                timestamp_writes: None,
-                occlusion_query_set: None,
-            });
-            self.brush.draw(&mut pass);
-            self.guides.draw(&mut pass);
+                    timestamp_writes: None,
+                    occlusion_query_set: None,
+                });
+                self.brush.draw(&mut pass);
+                self.guides.draw(&mut pass);
+            }
         }
 
         self.frame_graph
-            .resolve_timestamps(self.gpu_timer.as_mut(), &mut encoder);
+            .end_frame(self.gpu_timer.as_mut(), &mut encoder);
         self.queue.submit(Some(encoder.finish()));
 
         let pixels = width as u64 * height as u64;

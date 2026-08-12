@@ -92,4 +92,17 @@ fn raster_frame_covers_offscreen_target() {
     let err = pollster::block_on(gpu.device.pop_error_scope());
     assert!(err.is_none(), "validation error with shadows enabled: {err:?}");
     assert_fully_overwritten(&gpu.read_rgba8(&target), "shadowed frame");
+
+    // Frame 4: switch to the progressive path tracer so the frame graph takes
+    // the ProgressivePt branch. This exercises the schedule's pt_dispatch gating
+    // and runs the end-of-frame debug_assert that the recorded passes match the
+    // plan for a non-raster backend. Pixel coverage is not asserted — only the
+    // RasterLit backend clears every pixel with the opaque atmosphere colour —
+    // but the frame must still record without validation errors.
+    renderer.set_renderer_mode(ViewportRendererMode::ProgressiveRayTraced);
+    gpu.fill(&target, MAGENTA);
+    gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+    renderer.render_to_view(&target.view, W, H);
+    let err = pollster::block_on(gpu.device.pop_error_scope());
+    assert!(err.is_none(), "validation error in path-traced frame: {err:?}");
 }
