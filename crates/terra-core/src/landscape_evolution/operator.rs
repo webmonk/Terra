@@ -284,7 +284,7 @@ fn finalize(
             discharge.set(i as u32, j as u32, a * rain);
         }
     }
-    let order = hydro::stream_order(
+    let order = hydro::stream_order_log2(
         &cache.accumulation,
         w,
         h,

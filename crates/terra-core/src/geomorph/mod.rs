@@ -35,7 +35,7 @@ pub use fixtures::{
     SyntheticKind,
 };
 pub use routing::{
-    build_flow_graph, flow_direction_d8, flow_direction_dinfinity, FlowDir, FlowGraph, FlowModel,
+    build_flow_graph, flow_direction_d8, flow_direction_dinfinity, FlowGraph, FlowModel,
     FlowReceiver, NO_FLOW, D8_OFFSETS,
 };
 pub use streams::{

@@ -36,9 +36,6 @@ pub struct FlowReceiver {
     pub fraction: f32,
 }
 
-/// Alias matching the historical hydro `FlowDir` name.
-pub type FlowDir = FlowReceiver;
-
 /// Complete routing graph for a DEM.
 #[derive(Debug, Clone)]
 pub struct FlowGraph {

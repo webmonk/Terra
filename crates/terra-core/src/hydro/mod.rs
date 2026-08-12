@@ -24,8 +24,12 @@ pub fn fill_depressions(hf: &Heightfield) -> Heightfield {
     priority_flood_fill(hf)
 }
 
-/// Strahler-like stream order from accumulation threshold.
-pub fn stream_order(acc: &[f32], w: usize, h: usize, threshold: f32) -> Vec<u32> {
+/// Log2 stream-order bucket for the published `STREAM_ORDER` aux overlay.
+///
+/// This is a visualisation bucketing, `1 + floor(log2(acc / threshold))`, **not**
+/// Horton–Strahler order — see [`crate::geomorph::strahler_order`] for the real
+/// donor-graph ordering carried by `analyze_terrain`'s `StreamNetwork`.
+pub fn stream_order_log2(acc: &[f32], w: usize, h: usize, threshold: f32) -> Vec<u32> {
     let mut order = vec![0u32; w * h];
     for j in 0..h {
         for i in 0..w {
@@ -380,7 +384,7 @@ pub fn stream_power_erode(
         }
     }
 
-    let order = stream_order(&last_acc, w, h, p.stream_threshold.max(1.0));
+    let order = stream_order_log2(&last_acc, w, h, p.stream_threshold.max(1.0));
     let max_order = order.iter().copied().max().unwrap_or(1).max(1) as f32;
     let mut order_mask = MaskField::zeros(input.metrics);
     for j in 0..h {
@@ -496,7 +500,7 @@ pub fn stream_power_erode_with_strata(
         }
     }
 
-    let order = stream_order(&last_acc, w, h, p.stream_threshold.max(1.0));
+    let order = stream_order_log2(&last_acc, w, h, p.stream_threshold.max(1.0));
     let max_order = order.iter().copied().max().unwrap_or(1).max(1) as f32;
     let mut order_mask = MaskField::zeros(input.metrics);
     for j in 0..h {
