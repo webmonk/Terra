@@ -297,7 +297,36 @@ impl TerraApp {
             }
             let frame = match renderer.render_terrain() {
                 Ok(f) => f,
-                Err(e) => {
+                // Exhaustive by design (A1-G2): no `_` arm, so a future
+                // wgpu::SurfaceError variant — or collapsing RenderError — fails
+                // to compile here instead of silently dropping frames forever.
+                Err(terra_render::RenderError::Surface(e)) => {
+                    match e {
+                        wgpu::SurfaceError::Timeout => {
+                            // Expected transient stall; present nothing this frame.
+                            log::debug!("render: surface acquire timeout; frame skipped");
+                        }
+                        wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost => {
+                            // Swap chain invalid (display re-plug, driver reset,
+                            // DPI/fullscreen change without a Resized event).
+                            // Reconfigure and schedule the recovery frame — the
+                            // on-demand loop won't repaint on its own.
+                            log::warn!("render: {e}; reconfiguring surface");
+                            renderer.reconfigure();
+                            window.request_redraw();
+                        }
+                        wgpu::SurfaceError::OutOfMemory => {
+                            // Unrecoverable; exit cleanly via about_to_wait.
+                            log::error!("render: {e}; exiting");
+                            self.pending_exit = true;
+                        }
+                        wgpu::SurfaceError::Other => {
+                            log::warn!("render: {e}; frame skipped");
+                        }
+                    }
+                    return;
+                }
+                Err(e @ terra_render::RenderError::Msg(_)) => {
                     log::warn!("render: {e}");
                     return;
                 }

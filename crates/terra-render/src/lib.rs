@@ -64,6 +64,11 @@ use winit::window::Window;
 
 #[derive(Debug, Error)]
 pub enum RenderError {
+    /// Surface acquire failed. Returned unmapped so the app can match on the
+    /// `wgpu::SurfaceError` variant and recover (reconfigure on Lost/Outdated,
+    /// exit on OutOfMemory) rather than only log a stringified message.
+    #[error(transparent)]
+    Surface(#[from] wgpu::SurfaceError),
     #[error("{0}")]
     Msg(String),
 }
@@ -1122,6 +1127,22 @@ impl TerrainRenderer {
         self.notify_invalidation(InvalidationReason::ViewportResized);
     }
 
+    /// Re-run `surface.configure` with the current config after the swap chain
+    /// was lost or invalidated (`SurfaceError::Lost` / `Outdated`).
+    ///
+    /// Unlike `resize`, the config is unchanged, so the depth buffer,
+    /// progressive history, and path-tracer targets are deliberately left
+    /// intact — `render_to_view`'s size/format contract still holds and
+    /// accumulation is preserved. Actual size changes route through `resize`
+    /// via `WindowEvent::Resized`; if an `Outdated` was caused by a resize
+    /// whose event has not arrived yet, reconfiguring at the current size is
+    /// idempotent and self-heals once `Resized` lands.
+    pub fn reconfigure(&mut self) {
+        if let Some(surface) = &self.surface {
+            surface.configure(&self.device, &self.config);
+        }
+    }
+
     pub fn scene_versions(&self) -> &SceneVersionRegistry {
         &self.scene_versions
     }
@@ -1685,9 +1706,7 @@ impl TerrainRenderer {
                 "headless renderer has no surface; render via render_to_view".into(),
             ));
         };
-        let frame = surface
-            .get_current_texture()
-            .map_err(|e| RenderError::Msg(e.to_string()))?;
+        let frame = surface.get_current_texture()?;
         let view = frame
             .texture
             .create_view(&wgpu::TextureViewDescriptor::default());
@@ -2522,5 +2541,23 @@ mod shader_tests {
             naga::front::wgsl::parse_str(source)
                 .unwrap_or_else(|error| panic!("{name} WGSL parse failed: {error}"));
         }
+    }
+}
+
+#[cfg(test)]
+mod render_error_tests {
+    use super::*;
+
+    // Guards the render seam (A1-G2): a surface acquire failure must cross
+    // `RenderError` as the typed `Surface(wgpu::SurfaceError)` variant so the
+    // app can match and recover. Collapsing the enum back to `Msg(String)`, or
+    // dropping the `Surface` variant, fails to compile here.
+    #[test]
+    fn surface_error_crosses_the_seam_typed() {
+        let err = RenderError::from(wgpu::SurfaceError::Lost);
+        assert!(matches!(
+            err,
+            RenderError::Surface(wgpu::SurfaceError::Lost)
+        ));
     }
 }
