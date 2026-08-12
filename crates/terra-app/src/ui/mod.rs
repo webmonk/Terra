@@ -715,6 +715,7 @@ impl UiState {
             viewport_mode: self.preview_mode,
             viewport_overlays: self.viewport_overlays,
             lighting_preset: self.lighting_preset,
+            lighting_customized: self.lighting_customized,
             inspector_advanced: self.inspector_advanced,
             brush: BrushWorkspaceState {
                 radius: self.sculpt_radius,
@@ -754,8 +755,10 @@ impl UiState {
         self.preview_mode = ws.viewport_mode;
         self.viewport_overlays = ws.viewport_overlays;
         self.lighting_preset = ws.lighting_preset;
-        // Applying a workspace re-selects its preset, so the lighting is not custom.
-        self.lighting_customized = false;
+        // Carry the customized flag with the preset so switching workspaces preserves
+        // an edited look, instead of clearing it and letting the redraw seed snap the
+        // viewport back to the preset (the "entering Sculpt resets lighting" bug).
+        self.lighting_customized = ws.lighting_customized;
         self.inspector_advanced = ws.inspector_advanced;
         self.sculpt_radius = ws.brush.radius;
         self.sculpt_strength = ws.brush.strength;

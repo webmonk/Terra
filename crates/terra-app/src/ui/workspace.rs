@@ -763,6 +763,10 @@ pub struct WorkspaceState {
     pub viewport_mode: Preview2dMode,
     pub viewport_overlays: ViewportOverlayFlags,
     pub lighting_preset: LightingPreset,
+    /// Whether the live lighting has been edited away from `lighting_preset`.
+    /// Carried alongside the preset so switching workspaces preserves a custom
+    /// look instead of snapping back to the preset on the next redraw.
+    pub lighting_customized: bool,
     pub inspector_advanced: bool,
     pub brush: BrushWorkspaceState,
     pub biome_paint_tool: BiomePaintTool,
@@ -795,6 +799,7 @@ impl Default for WorkspaceState {
             viewport_mode: Preview2dMode::Lit,
             viewport_overlays: ViewportOverlayFlags::default(),
             lighting_preset: LightingPreset::Studio,
+            lighting_customized: false,
             inspector_advanced: false,
             brush: BrushWorkspaceState::default(),
             biome_paint_tool: BiomePaintTool::default(),
@@ -837,6 +842,7 @@ impl WorkspaceState {
         let selected_mask = self.selected_mask;
         let paint_mask = self.paint_mask;
         let lighting = self.lighting_preset;
+        let lighting_customized = self.lighting_customized;
         let inspector_advanced = self.inspector_advanced;
 
         self.active = id;
@@ -882,6 +888,7 @@ impl WorkspaceState {
         self.selected_mask = selected_mask;
         self.paint_mask = paint_mask;
         self.lighting_preset = lighting;
+        self.lighting_customized = lighting_customized;
         self.inspector_advanced = inspector_advanced;
     }
 
