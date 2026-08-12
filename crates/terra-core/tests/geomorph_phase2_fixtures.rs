@@ -92,13 +92,25 @@ fn watershed_boundaries_follow_divides() {
 fn routing_is_deterministic() {
     let hf = noisy_mountain(metrics(32));
     let filled = handle_depressions(&hf, DepressionMode::Fill).height;
-    let a = build_flow_graph(&filled, FlowModel::D8);
-    let b = build_flow_graph(&filled, FlowModel::D8);
-    assert_eq!(a.d8_dir, b.d8_dir);
-    assert_eq!(a.topo_order, b.topo_order);
-    let acc_a = accumulate_drainage_area(&a, &Precipitation::uniform(1.0));
-    let acc_b = accumulate_drainage_area(&b, &Precipitation::uniform(1.0));
-    assert_eq!(acc_a, acc_b);
+    // A fixed (terrain, model) must yield bit-identical routing products so a
+    // project re-run reproduces its f32 drainage exactly. This determinism is
+    // what lets the single routing lineage (B2-D3 / #24) replace hydro's second
+    // copy without pinning a golden per call site; the D8 tie-break itself is
+    // pinned by geomorph::routing::tests::d8_deterministic_ties.
+    let bits = |v: &[f32]| v.iter().map(|x| x.to_bits()).collect::<Vec<_>>();
+    for model in [FlowModel::D8, FlowModel::DInfinity] {
+        let a = build_flow_graph(&filled, model);
+        let b = build_flow_graph(&filled, model);
+        assert_eq!(a.d8_dir, b.d8_dir, "d8_dir differs for {model:?}");
+        assert_eq!(a.topo_order, b.topo_order, "topo_order differs for {model:?}");
+        let acc_a = accumulate_drainage_area(&a, &Precipitation::uniform(1.0));
+        let acc_b = accumulate_drainage_area(&b, &Precipitation::uniform(1.0));
+        assert_eq!(
+            bits(&acc_a),
+            bits(&acc_b),
+            "accumulation not bit-identical for {model:?}"
+        );
+    }
 }
 
 #[test]
