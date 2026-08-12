@@ -12,6 +12,11 @@ use crate::mask::MaskField;
 #[derive(Debug, Clone)]
 pub struct MassWastingState {
     pub metrics: HeightfieldMetrics,
+    /// Immovable basement datum (meters, `<= 0`). The material layers above are
+    /// non-negative thicknesses, so sub-zero (underwater) terrain would collapse
+    /// to 0 without somewhere to live; `base` holds it. Surface is
+    /// `base + bedrock + debris + sediment`, which can be negative.
+    pub base: Vec<f32>,
     /// Hard substrate height (meters).
     pub bedrock: Vec<f32>,
     /// Loose debris / talus thickness (meters).
@@ -31,13 +36,18 @@ impl MassWastingState {
         let height = input.to_dense();
         let sed = initial_sediment.max(0.0);
         let deb = initial_debris.max(0.0);
+        let mut base = Vec::with_capacity(n);
         let mut bedrock = Vec::with_capacity(n);
         let mut debris = vec![deb; n];
         let mut sediment = vec![sed; n];
         for (i, &h) in height.iter().enumerate() {
-            bedrock.push((h - deb - sed).max(0.0));
-            // Absorb tiny negatives into debris if height was below stacked layers.
-            let surface = bedrock[i] + debris[i] + sediment[i];
+            // Sub-zero (underwater) terrain lives in the basement datum so the
+            // material layers above stay non-negative and bathymetry survives.
+            let b = h.min(0.0);
+            base.push(b);
+            bedrock.push((h - b - deb - sed).max(0.0));
+            // Absorb overshoot into debris/sediment if stacked layers exceed height.
+            let surface = base[i] + bedrock[i] + debris[i] + sediment[i];
             if surface > h + 1e-5 {
                 let excess = surface - h;
                 let take = excess.min(sediment[i]);
@@ -51,6 +61,7 @@ impl MassWastingState {
         }
         Self {
             metrics,
+            base,
             bedrock,
             debris,
             sediment,
@@ -63,8 +74,11 @@ impl MassWastingState {
         debris: Vec<f32>,
         sediment: Vec<f32>,
     ) -> Self {
+        // Explicit layers already carry their own reference; no sub-zero datum.
+        let base = vec![0.0; bedrock.len()];
         Self {
             metrics,
+            base,
             bedrock,
             debris,
             sediment,
@@ -72,7 +86,7 @@ impl MassWastingState {
     }
 
     pub fn surface_at(&self, idx: usize) -> f32 {
-        self.bedrock[idx] + self.debris[idx] + self.sediment[idx]
+        self.base[idx] + self.bedrock[idx] + self.debris[idx] + self.sediment[idx]
     }
 
     pub fn sync_surface(&self) -> Vec<f32> {
@@ -116,10 +130,11 @@ impl MassWastingState {
             return Self::from_height(input, default_debris, default_sediment);
         }
         // Clamp surface to input height by adjusting bedrock when layers were partial.
+        // `base` (from `from_height`) carries any sub-zero floor so bathymetry survives.
         let h = input.to_dense();
         for i in 0..n {
             let soft = state.debris[i] + state.sediment[i];
-            state.bedrock[i] = (h[i] - soft).max(0.0);
+            state.bedrock[i] = (h[i] - state.base[i] - soft).max(0.0);
         }
         state
     }
@@ -1010,6 +1025,39 @@ mod tests {
         assert!(r.height.get(12, 12) < 40.0);
         let loose: f32 = r.loose_debris.data().iter().sum();
         assert!(loose > 0.0, "should produce loose debris");
+    }
+
+    #[test]
+    fn layered_thermal_preserves_sub_zero_bathymetry() {
+        // Deep underwater basin with a raised rim. Thermal erosion must not
+        // flatten the seabed up to datum 0: the mass-wasting state keeps a
+        // basement datum below the non-negative material layers so sub-zero
+        // (underwater) terrain survives. Before this fix the -200 m floor
+        // collapsed to ~0.
+        let m = HeightfieldMetrics::new(24, 24, 48.0, 48.0);
+        let mut hf = Heightfield::filled(m, -200.0);
+        for j in 0..6 {
+            for i in 0..6 {
+                hf.set(i, j, 40.0); // rim above water → real slope to weather
+            }
+        }
+        let p = ThermalErosionParams {
+            talus_angle_deg: 30.0,
+            iterations: 30,
+            strength: 0.8,
+            weathering_rate: 1.0,
+            material_amount: 50.0,
+            ..ThermalErosionParams::default()
+        };
+        let k = MaskField::filled(m, 0.0);
+        let r = thermal_erode_layered(&hf, &p, &k, None);
+        let min = r
+            .height
+            .to_dense()
+            .iter()
+            .copied()
+            .fold(f32::INFINITY, f32::min);
+        assert!(min < -150.0, "thermal erosion flattened bathymetry: min={min}");
     }
 
     #[test]
