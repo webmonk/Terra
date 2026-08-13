@@ -39,18 +39,13 @@ pub enum OrganisationKind {
 }
 
 impl AddLayerEntry {
-    /// Create a layer via the shared [`LayerTypeRegistry`] when possible.
+    /// Create a layer from this entry's explicit preset.
     ///
-    /// Falls back to cloning the embedded default `kind` so curated menu entries
-    /// keep working even if a type is missing from the registry.
+    /// Registry factories are reserved for create-by-type-id flows; replacing this
+    /// embedded kind with a registry default would discard curated parameters.
     pub fn create_layer(&self) -> Option<Layer> {
         let kind = self.kind.as_ref()?;
-        let reg = LayerTypeRegistry::builtin();
-        if let Some(mut layer) = reg.create(kind.type_id()) {
-            layer.common.name = self.name.into();
-            return Some(layer);
-        }
-        Some(Layer::new(self.name, kind.clone()))
+        Some(create_layer_for_kind(self.name, kind))
     }
 }
 
@@ -59,15 +54,9 @@ pub fn create_layer_by_type_id(type_id: &str) -> Option<Layer> {
     LayerTypeRegistry::builtin().create(type_id)
 }
 
-/// Create a layer from a kind, preferring registry defaults for that type id.
+/// Create a fresh layer while preserving all parameters in an explicit kind preset.
 pub fn create_layer_for_kind(name: &str, kind: &LayerKind) -> Layer {
-    let reg = LayerTypeRegistry::builtin();
-    if let Some(mut layer) = reg.create(kind.type_id()) {
-        layer.common.name = name.into();
-        layer
-    } else {
-        Layer::new(name, kind.clone())
-    }
+    Layer::new(name, kind.clone())
 }
 
 /// WC-facing Add Layer groups (Shape / Filters / Sims / …).
@@ -1033,7 +1022,20 @@ pub fn all_add_layer_entries() -> Vec<AddLayerEntry> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use terra_core::layer::is_shape_kind;
+    use terra_core::layer::{is_shape_kind, EffectFilterKind};
+
+    #[test]
+    fn explicit_kind_creation_preserves_curated_parameters() {
+        let preset = LayerKind::EffectFilter(EffectFilterParams::rocky_plateaus());
+        let layer = create_layer_for_kind("Curated Plateaus", &preset);
+
+        assert_eq!(layer.common.name, "Curated Plateaus");
+        let LayerKind::EffectFilter(params) = layer.kind else {
+            panic!("expected an effect-filter layer");
+        };
+        assert_eq!(params.kind, EffectFilterKind::RockyPlateaus);
+        assert_ne!(params.kind, EffectFilterKind::Smooth);
+    }
 
     #[test]
     fn add_layer_menu_uses_wc_group_titles_not_generator_modifier() {

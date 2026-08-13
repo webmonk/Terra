@@ -1188,6 +1188,71 @@ pub fn draw_quick_add(
     actions
 }
 
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use terra_core::layer::{EffectFilterKind, Layer, LayerKind};
+
+    fn commit_catalog_layer(tool_id: &str) -> (LayerKind, Layer) {
+        let tool = quick_add_entries()
+            .into_iter()
+            .find(|tool| tool.id == tool_id)
+            .unwrap_or_else(|| panic!("Quick Add should expose {tool_id}"));
+        let ToolAction::AddLayer { name, kind } = &tool.action else {
+            panic!("{tool_id} should create a layer");
+        };
+        let expected_name = *name;
+        let expected_kind = kind.clone();
+        let item = PickerItem::Tool(tool);
+        let mut ui_state = UiState::default();
+        let mut state = QuickAddState::default();
+        let mut actions = Vec::new();
+
+        commit_item(&item, &mut ui_state, &mut state, &mut actions);
+
+        assert_eq!(actions.len(), 1);
+        let PanelAction::AddLayer(layer) = actions.remove(0) else {
+            panic!("generic Quick Add should emit AddLayer");
+        };
+        assert_eq!(layer.common.name, expected_name);
+        (expected_kind, layer)
+    }
+
+    fn assert_same_kind(expected: &LayerKind, actual: &LayerKind) {
+        assert_eq!(
+            serde_json::to_value(actual).expect("serialize created layer kind"),
+            serde_json::to_value(expected).expect("serialize catalog layer kind")
+        );
+    }
+
+    #[test]
+    fn quick_add_preserves_non_default_effect_filter_preset() {
+        let (expected, layer) = commit_catalog_layer("filter.arid.rocky_plateaus");
+
+        let LayerKind::EffectFilter(params) = &layer.kind else {
+            panic!("Rocky Plateaus should remain an effect filter");
+        };
+        assert_eq!(params.kind, EffectFilterKind::RockyPlateaus);
+        assert_ne!(params.kind, EffectFilterKind::Smooth);
+        assert_same_kind(&expected, &layer.kind);
+    }
+
+    #[test]
+    fn quick_add_preserves_non_default_vegetation_preset() {
+        let (expected, layer) = commit_catalog_layer("obj.rocks");
+
+        let LayerKind::Vegetation(params) = &layer.kind else {
+            panic!("Rocks should remain a vegetation preset");
+        };
+        assert_eq!(params.density, 0.22);
+        assert_eq!(params.min_distance, 5.0);
+        assert_eq!(params.min_slope_deg, 22.0);
+        assert_eq!(params.max_slope_deg, 90.0);
+        assert!(!params.coverage.nodes.is_empty());
+        assert_same_kind(&expected, &layer.kind);
+    }
+}
+
 fn draw_sidebar(ui: &mut GuiContext<'_>, sidebar: Rect, item: &PickerItem) {
     let mut y = sidebar.min_y + PAD;
     ui.label_at(

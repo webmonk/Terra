@@ -5,11 +5,11 @@
 //! in the Layers hierarchy / Inspector. Tools = pick / drag layer kinds and brushes.
 
 use crate::ui::actions::PanelAction;
+use crate::ui::add_layer_menu::create_layer_for_kind;
 use crate::ui::tool_catalog::{tools_for_workspace, ToolAction, ToolDef, ToolGroup};
 use crate::ui::workspace::{workspace_definition, WorkspaceId};
 use crate::ui::{EditorTool, UiState};
 use terra_core::document::TerrainDocument;
-use terra_core::layer::Layer;
 use terra_core::mask::{MaskAsset, MaskId};
 use crate::ui::style::{
     self, FONT_SCALE, MODE_ROW_H, PAD, TOOL_CARD_GAP, TOOL_CARD_H, TOOL_THUMB_SIZE, TYPE_CAPTION,
@@ -748,7 +748,7 @@ fn finish_tool_drag(
                 .pointer
                 .is_some_and(|(x, y)| ui.tool_panel_rect().contains(x, y));
             if over_vp || over_tools {
-                let layer = Layer::new(drag.name, drag.kind);
+                let layer = create_layer_for_kind(drag.name, &drag.kind);
                 if drag.force_shape_folder {
                     actions.push(PanelAction::AddLayerToCategory {
                         category: terra_core::layer::StackCategory::Shape,
