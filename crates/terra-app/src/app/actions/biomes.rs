@@ -1,4 +1,6 @@
-use crate::ui::PanelAction;
+use terra_core::layer::{StackCategory, StackNode};
+
+use crate::ui::{builtin_recipes, instantiate_recipe, PanelAction};
 
 use super::super::TerraApp;
 use super::ApplyCtx;
@@ -28,6 +30,40 @@ pub(crate) fn try_apply(
                     app.session.document.selected = Some(id);
                     app.ui_state.focus_created_biome();
                     // Structural biome create — full stack topology changed.
+                    app.mark_all_layers_dirty();
+                    app.request_rebuild();
+                    ctx.doc_mutated = true;
+                }
+                PanelAction::InstantiateRecipe { recipe_name } => {
+                    let Some(recipe) = builtin_recipes()
+                        .into_iter()
+                        .find(|recipe| recipe.name == recipe_name)
+                    else {
+                        app.ui_state.status = format!("Unknown recipe: {recipe_name}");
+                        return Ok(());
+                    };
+
+                    let group = instantiate_recipe(&recipe, &recipe_name);
+                    let id = group.id;
+                    let is_biome = group.is_biome();
+                    if is_biome {
+                        app.session.document.stack.ensure_category_folders();
+                        if let Some(folder) = app
+                            .session
+                            .document
+                            .stack
+                            .find_category_mut(StackCategory::Surface)
+                        {
+                            folder.children.push(StackNode::Group(group));
+                        } else {
+                            app.session.document.stack.push_group(group);
+                        }
+                        app.session.document.active_biome = Some(id);
+                        app.ui_state.focus_created_biome();
+                    } else {
+                        app.session.document.stack.push_group(group);
+                    }
+                    app.session.document.selected = Some(id);
                     app.mark_all_layers_dirty();
                     app.request_rebuild();
                     ctx.doc_mutated = true;
@@ -341,3 +377,133 @@ pub(crate) fn try_apply(
     Ok(())
 }
 
+#[cfg(test)]
+mod tests {
+    use terra_core::layer::{LayerGroup, StackNode};
+
+    use super::*;
+
+    #[derive(Debug, PartialEq)]
+    struct GroupSignature<'a> {
+        name: &'a str,
+        eval_mode: terra_core::layer::GroupEvalMode,
+        input_mode: &'a terra_core::layer::GroupInputMode,
+        group_kind: terra_core::layer::GroupKind,
+        children: Vec<NodeSignature<'a>>,
+    }
+
+    #[derive(Debug, PartialEq)]
+    enum NodeSignature<'a> {
+        Layer {
+            name: &'a str,
+            kind_json: String,
+        },
+        Group(GroupSignature<'a>),
+    }
+
+    fn group_signature(group: &LayerGroup) -> GroupSignature<'_> {
+        GroupSignature {
+            name: &group.name,
+            eval_mode: group.eval_mode,
+            input_mode: &group.input_mode,
+            group_kind: group.group_kind,
+            children: group
+                .children
+                .iter()
+                .map(|node| match node {
+                    StackNode::Layer(layer) => NodeSignature::Layer {
+                        name: &layer.common.name,
+                        kind_json: serde_json::to_string(&layer.kind)
+                            .expect("serialize recipe layer kind"),
+                    },
+                    StackNode::Group(group) => NodeSignature::Group(group_signature(group)),
+                })
+                .collect(),
+        }
+    }
+
+    #[test]
+    fn instantiate_recipe_adds_every_builtin_without_replacing_existing_biomes() {
+        for recipe in builtin_recipes() {
+            let mut app = TerraApp::default();
+            app.worker_mark_all_dirty = false;
+            let mut add_biome_reference = TerraApp::default();
+            add_biome_reference.apply_actions(vec![PanelAction::AddBiome {
+                name: "Reference Biome".into(),
+            }]);
+            let expected_status = add_biome_reference.ui_state.status;
+            let surface_before: Vec<String> = app
+                .session
+                .document
+                .stack
+                .find_category(StackCategory::Surface)
+                .expect("default document has Biomes category")
+                .children
+                .iter()
+                .map(|node| serde_json::to_string(node).expect("serialize existing biome"))
+                .collect();
+            let expected = instantiate_recipe(&recipe, &recipe.name);
+            let expected_signature = group_signature(&expected);
+            let token_before = app.eval_token;
+            let runtime_before = app.terrain_runtime.stats().revision;
+
+            app.apply_actions(vec![PanelAction::InstantiateRecipe {
+                recipe_name: recipe.name.clone(),
+            }]);
+
+            let surface = app
+                .session
+                .document
+                .stack
+                .find_category(StackCategory::Surface)
+                .expect("recipe insertion preserves Biomes category");
+            assert_eq!(surface.children.len(), surface_before.len() + 1, "{}", recipe.name);
+            let preserved: Vec<String> = surface.children[..surface_before.len()]
+                .iter()
+                .map(|node| serde_json::to_string(node).expect("serialize preserved biome"))
+                .collect();
+            assert_eq!(preserved, surface_before, "{}", recipe.name);
+            let StackNode::Group(actual) = surface.children.last().expect("appended recipe group")
+            else {
+                panic!("{} recipe did not append a group", recipe.name);
+            };
+            assert_eq!(group_signature(actual), expected_signature, "{}", recipe.name);
+            assert_eq!(app.session.document.selected, Some(actual.id), "{}", recipe.name);
+            assert_eq!(app.session.document.active_biome, Some(actual.id), "{}", recipe.name);
+            assert_eq!(app.ui_state.status, expected_status, "{}", recipe.name);
+            assert!(app.document_dirty, "{}", recipe.name);
+            assert_eq!(app.eval_token, token_before.wrapping_add(1), "{}", recipe.name);
+            assert_eq!(app.terrain_runtime.stats().revision, runtime_before + 1, "{}", recipe.name);
+            assert!(app.pending_eval, "{}", recipe.name);
+            assert!(app.worker_mark_all_dirty, "{}", recipe.name);
+        }
+    }
+
+    #[test]
+    fn unknown_recipe_is_consumed_without_mutating_or_rebuilding() {
+        let mut app = TerraApp::default();
+        app.worker_mark_all_dirty = false;
+        let document_before = app.session.document.to_json().expect("serialize document");
+        let token_before = app.eval_token;
+        let runtime_before = app.terrain_runtime.stats().revision;
+        let mut ctx = ApplyCtx::new();
+
+        let result = try_apply(
+            &mut app,
+            PanelAction::InstantiateRecipe {
+                recipe_name: "Missing Recipe".into(),
+            },
+            &mut ctx,
+        );
+
+        assert!(result.is_ok(), "unknown recipe action must be consumed");
+        assert_eq!(app.session.document.to_json().unwrap(), document_before);
+        assert!(!ctx.doc_mutated);
+        assert!(!app.document_dirty);
+        assert_eq!(app.eval_token, token_before);
+        assert_eq!(app.terrain_runtime.stats().revision, runtime_before);
+        assert!(!app.pending_eval);
+        assert!(!app.worker_mark_all_dirty);
+        assert_eq!(app.ui_state.status, "Unknown recipe: Missing Recipe");
+    }
+}
