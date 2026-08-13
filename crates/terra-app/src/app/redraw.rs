@@ -398,8 +398,11 @@ impl TerraApp {
                 ^ ((self.session.document.biome_library.definitions.len() as u64) << 16);
             if diag_fp != self.ui_soft_diag_fp {
                 self.ui_soft_diag_fp = diag_fp;
-                let diags =
-                    terra_core::domain::incomplete_project_diagnostics(&self.session.document);
+                let diags = terra_core::domain::incomplete_project_diagnostics(
+                    &self.session.document.stack,
+                    &self.session.document.biome_library,
+                    &self.session.document.biome_layers,
+                );
                 self.ui_state.soft_project_diag = diags.first().map(|d| d.message.clone());
             }
             self.gui_state.layout = self.ui_state.layout.clone();

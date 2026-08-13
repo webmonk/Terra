@@ -8,11 +8,11 @@
 //! Incomplete but valid projects produce empty outputs and soft diagnostics —
 //! never fatal errors solely because coverage is zero or a stage has no sources.
 
-use crate::biome_definition::BiomeDefinition;
-use crate::document::TerrainDocument;
+use crate::biome_definition::{BiomeDefinition, BiomeLibrary};
+use crate::biome_paint::BiomeLayer;
 use crate::domain::pipeline::TerrainPipelineStage;
 use crate::landscape_blueprint::EvalStage;
-use crate::layer::{LayerKind, WorkflowStage};
+use crate::layer::{LayerKind, LayerStack, WorkflowStage};
 
 /// Non-blocking diagnostic for an incomplete-but-valid project state.
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -64,32 +64,36 @@ pub fn workflow_stage_metadata_order() -> &'static [WorkflowStage] {
 }
 
 /// Actual height evaluation entry outline for a single terrain stack.
-pub fn world_eval_outline(_doc: &TerrainDocument) -> Vec<&'static str> {
+pub fn world_eval_outline() -> Vec<&'static str> {
     vec!["terrain_stack"]
 }
 
 /// Collect soft diagnostics for incomplete-but-valid project content.
 ///
 /// These never block evaluation or serialization.
-pub fn incomplete_project_diagnostics(doc: &TerrainDocument) -> Vec<SoftDiagnostic> {
+pub fn incomplete_project_diagnostics(
+    stack: &LayerStack,
+    biome_library: &BiomeLibrary,
+    biome_layers: &[BiomeLayer],
+) -> Vec<SoftDiagnostic> {
     let mut out = Vec::new();
 
-    if doc.stack.flatten_layers().is_empty() {
+    if stack.flatten_layers().is_empty() {
         out.push(SoftDiagnostic::new(
             "stack_without_shape_layers",
             "Terrain stack has no layers yet — evaluates as identity height.",
         ));
     }
 
-    for def in &doc.biome_library.definitions {
+    for def in &biome_library.definitions {
         diagnose_biome_definition(def, &mut out);
     }
 
-    for layer in doc.stack.flatten_layers() {
+    for layer in stack.flatten_layers() {
         diagnose_layer(layer, &mut out);
     }
 
-    for bl in &doc.biome_layers {
+    for bl in biome_layers {
         if bl.channels.is_empty() {
             out.push(SoftDiagnostic::new(
                 "empty_biome_coverage",

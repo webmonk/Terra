@@ -169,11 +169,6 @@ pub struct LayerInstanceMeta {
 }
 
 impl LayerKind {
-    /// Hierarchy role for Region / Shape / Biome migration (see `domain::classify`).
-    pub fn domain_role(&self) -> crate::domain::DomainRole {
-        crate::domain::classify_layer_kind(self)
-    }
-
     /// Stable type id for registry / metadata (serde variant name style).
     pub fn type_id(&self) -> &'static str {
         match self {

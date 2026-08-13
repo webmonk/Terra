@@ -80,7 +80,7 @@ fn evaluation_order_independent_of_authoring_chronology() {
     );
 
     let _hf = eval_doc(&mut doc);
-    let diags = incomplete_project_diagnostics(&doc);
+    let diags = incomplete_project_diagnostics(&doc.stack, &doc.biome_library, &doc.biome_layers);
     assert!(
         diags.iter().any(|d| {
             d.code == "materials_without_rules"
@@ -137,7 +137,7 @@ fn empty_biome_coverage_is_valid() {
     doc.biome_layers.push(BiomeLayer::new("No Strokes"));
     let hf = eval_doc(&mut doc);
     assert_eq!(hf.metrics.width, 64);
-    let diags = incomplete_project_diagnostics(&doc);
+    let diags = incomplete_project_diagnostics(&doc.stack, &doc.biome_library, &doc.biome_layers);
     assert!(diags.iter().any(|d| d.code == "empty_biome_coverage"));
 }
 
@@ -170,7 +170,7 @@ fn stack_without_shapes_evaluates() {
     let mut doc = TerrainDocument::new_default();
     // Clear the single terrain stack — empty stack is valid (identity height).
     doc.stack = terra_core::layer::LayerStack::new();
-    let diags = incomplete_project_diagnostics(&doc);
+    let diags = incomplete_project_diagnostics(&doc.stack, &doc.biome_library, &doc.biome_layers);
     assert!(
         diags
             .iter()
@@ -187,7 +187,7 @@ fn snow_rule_with_zero_coverage_is_valid() {
     snow.placement.rules = Some(DistNode::height(50_000.0, 60_000.0));
     doc.biome_library.definitions.push(snow);
     let _ = eval_doc(&mut doc);
-    let diags = incomplete_project_diagnostics(&doc);
+    let diags = incomplete_project_diagnostics(&doc.stack, &doc.biome_library, &doc.biome_layers);
     assert!(diags.iter().any(|d| d.code == "biome_unlinked"
         || d.code == "biome_empty_placement_rules"
         || d.code == "empty_biome_coverage"

@@ -239,15 +239,6 @@ impl StackEvaluator {
         self.evaluate_nodes(&stack.nodes, ctx, &seed)
     }
 
-    /// Document-level rebuild: single terrain stack.
-    pub fn rebuild_document(
-        &mut self,
-        doc: &crate::document::TerrainDocument,
-        ctx: &mut EvalContext,
-    ) -> Result<Heightfield, EvalError> {
-        self.rebuild_all(&doc.stack, ctx)
-    }
-
     /// Incremental rebuild from first dirty layer (Phase 4).
     ///
     /// Flat stacks use suffix-only evaluation from the first dirty layer. Scoped
