@@ -1,12 +1,12 @@
 //! Non-linear workspace system: presentation focus without project/eval mutation.
 
-use terra_core::document::TerrainDocument;
-use terra_core::eval::EvalScheduler;
-use terra_core::layer::{LayerKind, MaterialsParams};
 use terra_app::app::prefs::EditorPrefs;
 use terra_app::ui::{
     all_tools, tools_for_workspace, workspace_definition, UiState, WorkspaceId, WorkspaceMode,
 };
+use terra_core::document::TerrainDocument;
+use terra_core::eval::EvalScheduler;
+use terra_core::layer::{LayerKind, MaterialsParams};
 
 fn selection_snapshot(
     doc: &TerrainDocument,
@@ -74,6 +74,22 @@ fn preferred_workspace_persists_in_editor_prefs() {
     ui2.preferred_workspace = back.preferred_workspace;
     ui2.apply_preferred_workspace_from_prefs();
     assert_eq!(ui2.active_workspace, WorkspaceId::Simulation);
+}
+
+#[test]
+fn legacy_all_tools_preference_loads_as_objects() {
+    let prefs = EditorPrefs {
+        preferred_workspace: "all_tools".to_string(),
+        ..EditorPrefs::default()
+    };
+    let json = serde_json::to_string(&prefs).unwrap();
+    let loaded: EditorPrefs = serde_json::from_str(&json).unwrap();
+
+    let mut ui = UiState::default();
+    ui.preferred_workspace = loaded.preferred_workspace;
+    ui.apply_preferred_workspace_from_prefs();
+
+    assert_eq!(ui.active_workspace, WorkspaceId::Objects);
 }
 
 #[test]

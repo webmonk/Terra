@@ -1,5 +1,6 @@
 //! Central definition of editor commands and their default shortcuts.
 
+use crate::ui::workspace::{all_workspace_definitions, WorkspaceId};
 use terra_gui::Icon;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -36,13 +37,6 @@ pub struct CommandId;
 impl CommandId {
     pub const ADD_MOUNTAIN: &'static str = "layer.add_mountain";
     pub const ADD_HYDRAULIC_EROSION: &'static str = "layer.add_hydraulic_erosion";
-    pub const SCULPT: &'static str = "mode.sculpt";
-    pub const GENERATE: &'static str = "mode.generate";
-    pub const EROSION: &'static str = "mode.erosion";
-    pub const MASKS: &'static str = "mode.masks";
-    pub const PAINT: &'static str = "mode.paint";
-    pub const BIOMES: &'static str = "mode.biomes";
-    pub const SCATTER: &'static str = "mode.scatter";
     pub const FRAME_TERRAIN: &'static str = "viewport.frame_terrain";
     pub const TOP_VIEW: &'static str = "viewport.top_view";
     pub const FRAME_SELECTION: &'static str = "viewport.frame_selection";
@@ -63,15 +57,6 @@ impl CommandId {
     pub const TOGGLE_HISTORY: &'static str = "view.history";
     pub const TOGGLE_PIPELINE: &'static str = "view.pipeline";
     pub const CLEAR_GEOMORPH_DEBUG: &'static str = "debug.geomorph.clear";
-    pub const WORKSPACE_WORLD: &'static str = "workspace.world";
-    pub const WORKSPACE_SCULPT: &'static str = "workspace.sculpt";
-    pub const WORKSPACE_BIOMES: &'static str = "workspace.biomes";
-    pub const WORKSPACE_DEVELOP: &'static str = "workspace.develop";
-    pub const WORKSPACE_RULES: &'static str = "workspace.rules";
-    pub const WORKSPACE_SIMULATION: &'static str = "workspace.simulation";
-    pub const WORKSPACE_SURFACE: &'static str = "workspace.surface";
-    pub const WORKSPACE_OBJECTS: &'static str = "workspace.objects";
-    pub const WORKSPACE_ALL_TOOLS: &'static str = "workspace.all_tools";
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -81,6 +66,46 @@ pub struct CommandDef {
     pub category: CommandCategory,
     pub default_shortcut: Option<&'static str>,
     pub icon: Option<Icon>,
+}
+
+const LEGACY_WORKSPACE_COMMAND_ALIASES: &[(&str, WorkspaceId)] = &[
+    ("mode.sculpt", WorkspaceId::Sculpt),
+    ("mode.generate", WorkspaceId::Sculpt),
+    ("mode.erosion", WorkspaceId::Simulation),
+    ("mode.masks", WorkspaceId::Rules),
+    ("mode.paint", WorkspaceId::Surface),
+    ("mode.biomes", WorkspaceId::Biomes),
+    ("mode.scatter", WorkspaceId::Objects),
+    ("workspace.all_tools", WorkspaceId::AllTools),
+];
+
+/// Resolve canonical and legacy workspace command ids without exposing aliases
+/// in the visible command list.
+pub(crate) fn resolve_workspace_command(id: &str) -> Option<WorkspaceId> {
+    all_workspace_definitions()
+        .iter()
+        .find(|definition| definition.id.command_id() == Some(id))
+        .map(|definition| definition.id)
+        .or_else(|| {
+            LEGACY_WORKSPACE_COMMAND_ALIASES
+                .iter()
+                .find_map(|(alias, workspace)| (*alias == id).then_some(*workspace))
+        })
+}
+
+fn digit_shortcut_label(digit: u8) -> Option<&'static str> {
+    match digit {
+        1 => Some("1"),
+        2 => Some("2"),
+        3 => Some("3"),
+        4 => Some("4"),
+        5 => Some("5"),
+        6 => Some("6"),
+        7 => Some("7"),
+        8 => Some("8"),
+        9 => Some("9"),
+        _ => None,
+    }
 }
 
 /// Built-in commands presented by the command palette.
@@ -101,119 +126,25 @@ pub fn commands() -> Vec<CommandDef> {
             default_shortcut: None,
             icon: Some(Icon::Droplets),
         },
-        CommandDef {
-            id: CommandId::SCULPT,
-            name: "Switch Workspace: Sculpt",
+    ];
+
+    for definition in all_workspace_definitions() {
+        let (Some(id), Some(name)) = (definition.id.command_id(), definition.command_name) else {
+            continue;
+        };
+        out.push(CommandDef {
+            id,
+            name,
             category: Mode,
-            default_shortcut: Some("2"),
-            icon: Some(Icon::Pencil),
-        },
-        CommandDef {
-            id: CommandId::GENERATE,
-            name: "Switch Workspace: Sculpt",
-            category: Mode,
-            default_shortcut: Some("2"),
-            icon: Some(Icon::Mountain),
-        },
-        CommandDef {
-            id: CommandId::EROSION,
-            name: "Switch Workspace: Simulation",
-            category: Mode,
-            default_shortcut: Some("6"),
-            icon: Some(Icon::Droplets),
-        },
-        CommandDef {
-            id: CommandId::MASKS,
-            name: "Switch Workspace: Rules",
-            category: Mode,
-            default_shortcut: Some("5"),
-            icon: Some(Icon::CircleDot),
-        },
-        CommandDef {
-            id: CommandId::PAINT,
-            name: "Switch Workspace: Surface",
-            category: Mode,
-            default_shortcut: Some("7"),
-            icon: Some(Icon::Paintbrush),
-        },
-        CommandDef {
-            id: CommandId::BIOMES,
-            name: "Switch Workspace: Biomes",
-            category: Mode,
-            default_shortcut: Some("3"),
-            icon: Some(Icon::Layers),
-        },
-        CommandDef {
-            id: CommandId::SCATTER,
-            name: "Switch Workspace: Objects",
-            category: Mode,
-            default_shortcut: Some("8"),
-            icon: Some(Icon::Sparkles),
-        },
-        CommandDef {
-            id: CommandId::WORKSPACE_WORLD,
-            name: "Switch Workspace: World",
-            category: Mode,
-            default_shortcut: Some("1"),
-            icon: Some(Icon::Package),
-        },
-        CommandDef {
-            id: CommandId::WORKSPACE_SCULPT,
-            name: "Focus Sculpt Tools",
-            category: Mode,
-            default_shortcut: Some("2"),
-            icon: Some(Icon::Pencil),
-        },
-        CommandDef {
-            id: CommandId::WORKSPACE_BIOMES,
-            name: "Focus Biome Tools",
-            category: Mode,
-            default_shortcut: Some("3"),
-            icon: Some(Icon::Layers),
-        },
-        CommandDef {
-            id: CommandId::WORKSPACE_DEVELOP,
-            name: "Switch Workspace: Filters",
-            category: Mode,
-            default_shortcut: Some("4"),
-            icon: Some(Icon::SlidersHorizontal),
-        },
-        CommandDef {
-            id: CommandId::WORKSPACE_RULES,
-            name: "Focus Mask Tools",
-            category: Mode,
-            default_shortcut: Some("5"),
-            icon: Some(Icon::CircleDot),
-        },
-        CommandDef {
-            id: CommandId::WORKSPACE_SIMULATION,
-            name: "Focus Simulation Tools",
-            category: Mode,
-            default_shortcut: Some("6"),
-            icon: Some(Icon::Droplets),
-        },
-        CommandDef {
-            id: CommandId::WORKSPACE_SURFACE,
-            name: "Focus Surface Tools",
-            category: Mode,
-            default_shortcut: Some("7"),
-            icon: Some(Icon::Paintbrush),
-        },
-        CommandDef {
-            id: CommandId::WORKSPACE_OBJECTS,
-            name: "Focus Object Tools",
-            category: Mode,
-            default_shortcut: Some("8"),
-            icon: Some(Icon::Sparkles),
-        },
-        // All Tools removed from the TOOLS rail — keep CommandId for old keybinds (no-op / remaps).
-        CommandDef {
-            id: CommandId::WORKSPACE_ALL_TOOLS,
-            name: "Switch Workspace: Objects",
-            category: Mode,
-            default_shortcut: None,
-            icon: Some(Icon::Package),
-        },
+            default_shortcut: definition
+                .id
+                .digit_shortcut()
+                .and_then(digit_shortcut_label),
+            icon: Some(definition.icon),
+        });
+    }
+
+    out.extend([
         CommandDef {
             id: CommandId::FRAME_TERRAIN,
             name: "Frame Terrain",
@@ -354,7 +285,7 @@ pub fn commands() -> Vec<CommandDef> {
             default_shortcut: None,
             icon: Some(Icon::EyeOff),
         },
-    ];
+    ]);
 
     for field in terra_core::GeomorphDebugField::ALL {
         out.push(CommandDef {
@@ -384,6 +315,7 @@ pub fn fuzzy_match(query: &str, text: &str) -> bool {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashSet;
 
     #[test]
     fn fuzzy_match_handles_subsequences_and_case() {
@@ -395,5 +327,91 @@ mod tests {
     #[test]
     fn command_list_is_populated() {
         assert!(!commands().is_empty());
+    }
+
+    #[test]
+    fn visible_command_ids_and_default_shortcuts_are_unique() {
+        let commands = commands();
+        let mut ids = HashSet::new();
+        let mut shortcuts = HashSet::new();
+
+        for command in &commands {
+            assert!(
+                ids.insert(command.id),
+                "duplicate command id: {}",
+                command.id
+            );
+            if let Some(shortcut) = command.default_shortcut {
+                assert!(
+                    shortcuts.insert(shortcut),
+                    "duplicate default shortcut: {shortcut}"
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn visible_workspace_commands_come_from_workspace_metadata() {
+        let commands = commands();
+        let visible_definitions: Vec<_> = all_workspace_definitions()
+            .iter()
+            .filter(|definition| definition.id.command_id().is_some())
+            .collect();
+
+        for definition in &visible_definitions {
+            let id = definition.id.command_id().unwrap();
+            let command = commands
+                .iter()
+                .find(|command| command.id == id)
+                .unwrap_or_else(|| panic!("missing workspace command: {id}"));
+
+            assert_eq!(command.name, definition.command_name.unwrap());
+            assert_eq!(command.icon, Some(definition.icon));
+            assert_eq!(
+                command
+                    .default_shortcut
+                    .and_then(|value| value.parse().ok()),
+                definition.id.digit_shortcut()
+            );
+            assert_eq!(command.category, CommandCategory::Mode);
+        }
+
+        let mut targets = HashSet::new();
+        let visible_workspace_commands: Vec<_> = commands
+            .iter()
+            .filter_map(|command| {
+                resolve_workspace_command(command.id).map(|workspace| (command, workspace))
+            })
+            .collect();
+        for (command, workspace) in &visible_workspace_commands {
+            assert!(
+                targets.insert(*workspace),
+                "duplicate visible workspace target {:?} from command {}",
+                workspace,
+                command.id
+            );
+        }
+
+        assert_eq!(visible_workspace_commands.len(), visible_definitions.len());
+        assert_eq!(targets.len(), 8);
+    }
+
+    #[test]
+    fn legacy_workspace_aliases_resolve_but_are_not_visible() {
+        let commands = commands();
+
+        for &(alias, expected) in LEGACY_WORKSPACE_COMMAND_ALIASES {
+            assert_eq!(resolve_workspace_command(alias), Some(expected));
+            assert!(
+                commands.iter().all(|command| command.id != alias),
+                "legacy alias is visible: {alias}"
+            );
+        }
+
+        assert_eq!(
+            resolve_workspace_command("workspace.all_tools"),
+            Some(WorkspaceId::AllTools)
+        );
+        assert!(WorkspaceId::AllTools.command_id().is_none());
     }
 }
