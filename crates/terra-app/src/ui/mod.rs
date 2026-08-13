@@ -47,7 +47,8 @@ pub use chrome_gui::{
     draw_export_unsupported_modal, ChromeGuiState,
 };
 pub use command_palette::{draw_command_palette, CommandPaletteState, PaletteAction};
-pub use command_registry::{commands, fuzzy_match, CommandCategory, CommandDef, CommandId};
+pub(crate) use command_registry::resolve_workspace_command;
+pub use command_registry::{commands, format_shortcuts, fuzzy_match, resolve_shortcut, resolve_shortcut_for_input, BindingVisibility, CommandCategory, CommandDef, CommandId, ShortcutBinding, ShortcutChord, ShortcutModifiers};
 pub use contextual_create_gui::{
     create_to_workspace, draw_viewport_context_menu, hierarchy_add_actions, workspace_to_create,
     ViewportContextMenu,

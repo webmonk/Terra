@@ -3,7 +3,7 @@ use std::path::PathBuf;
 use terra_core::document::EditorSession;
 use terra_io::{save_project, ProjectIoResult};
 use crate::ui::{
-    project_template_by_id, CommandId, NewWorldSettings, ProjectHomeAction,
+    project_template_by_id, resolve_workspace_command, CommandId, NewWorldSettings, ProjectHomeAction,
 };
 
 use super::{
@@ -601,7 +601,15 @@ impl TerraApp {
     }
 
 
-    pub(crate) fn dispatch_shortcut(&mut self, command: &str) {
+    pub(crate) fn dispatch_command(&mut self, command: &str) {
+        if self.screen == AppScreen::Editor {
+            if let Some(workspace) = resolve_workspace_command(command) {
+                let previous = self.ui_state.biome_color_preview;
+                self.ui_state.switch_workspace(workspace);
+                if self.ui_state.biome_color_preview != previous || workspace == crate::ui::WorkspaceId::Biomes { self.placement_tint_dirty = true; self.preview_dirty = true; }
+                return;
+            }
+        }
         match command {
             CommandId::OPEN_COMMAND_PALETTE if self.screen == AppScreen::Editor => {
                 self.ui_state.show_command_palette = true
@@ -613,6 +621,7 @@ impl TerraApp {
             CommandId::REDO if self.screen == AppScreen::Editor => self.redo(),
             CommandId::SAVE if self.screen == AppScreen::Editor => self.save_current_project(),
             CommandId::SAVE_AS if self.screen == AppScreen::Editor => self.save_project_as(),
+            CommandId::FRAME_TERRAIN if self.screen == AppScreen::Editor => self.frame_terrain(),
             CommandId::NEW_PROJECT => self.request_project_action(PendingProjectAction::New),
             CommandId::OPEN_PROJECT => self.request_project_action(PendingProjectAction::Open),
             CommandId::CLOSE_PROJECT if self.screen == AppScreen::Editor => {
@@ -620,6 +629,10 @@ impl TerraApp {
             }
             _ => {}
         }
+    }
+
+    pub(crate) fn frame_terrain(&mut self) {
+        if let Some(renderer) = self.renderer.as_mut() { renderer.request_camera_reframe(); renderer.frame_camera_to_terrain(); }
     }
 
     pub(crate) fn save_camera_bookmark(&mut self, index: usize) {

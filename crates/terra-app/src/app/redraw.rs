@@ -609,10 +609,7 @@ impl TerraApp {
                 self.start_export();
             }
             if ui_out.camera_reset {
-                if let Some(r) = self.renderer.as_mut() {
-                    r.request_camera_reframe();
-                    r.frame_camera_to_terrain();
-                }
+                self.frame_terrain();
             }
             if ui_out.camera_top_view {
                 if let Some(r) = self.renderer.as_mut() {

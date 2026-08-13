@@ -6,7 +6,7 @@ use terra_core::eval::PreviewQuality;
 use terra_gpu::{GpuTerrainEngine, GpuTileAtlas};
 use terra_gui::GuiRenderer;
 use terra_render::TerrainRenderer;
-use crate::ui::{CommandId, PanelAction};
+use crate::ui::{resolve_shortcut_for_input, PanelAction, ShortcutChord, ShortcutModifiers};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
@@ -87,6 +87,7 @@ impl ApplicationHandler for TerraApp {
                 }
                 if event.state == ElementState::Pressed {
                     if let PhysicalKey::Code(code) = event.physical_key {
+                        let wants_chars = self.gui_state.wants_text_input() || self.ui_state.show_quick_add || self.ui_state.show_command_palette || self.inspector_gui.rename_buffer.is_some() || ui_tool_search_focused(&self.ui_state, &self.gui_state);
                         let bookmark = match code {
                             KeyCode::Digit1 => Some(0usize),
                             KeyCode::Digit2 => Some(1),
@@ -105,78 +106,12 @@ impl ApplicationHandler for TerraApp {
                                     self.save_camera_bookmark(index);
                                 } else if self.modifiers_alt {
                                     self.recall_camera_bookmark(index);
-                                } else if index < 9 {
-                                    // Workspace focus shortcuts 1â€“9 (not workflow steps).
-                                    let d = index as u8 + 1;
-                                    if let Some(id) = crate::ui::WorkspaceId::from_digit(d) {
-                                        // Presentation only â€” must not mutate project or rebuild.
-                                        let prev_preview = self.ui_state.biome_color_preview;
-                                        let cam = (
-                                            self.ui_state.camera_xz,
-                                            self.ui_state.camera_yaw,
-                                            self.ui_state.camera_pitch,
-                                        );
-                                        self.ui_state.switch_workspace(id);
-                                        // Camera must survive workspace switch.
-                                        debug_assert_eq!(self.ui_state.camera_xz, cam.0);
-                                        let _ = cam;
-                                        if self.ui_state.biome_color_preview != prev_preview
-                                            || id == crate::ui::WorkspaceId::Biomes
-                                        {
-                                            self.placement_tint_dirty = true;
-                                            self.preview_dirty = true;
-                                        }
-                                    }
                                 }
                             }
                         }
+                        let chord = ShortcutChord::new(code, ShortcutModifiers { ctrl: self.modifiers_ctrl, shift: self.modifiers_shift, alt: self.modifiers_alt, super_key: self.modifiers_super });
+                        if let Some(command) = resolve_shortcut_for_input(chord, wants_chars) { self.dispatch_command(command); }
                         match code {
-                            KeyCode::KeyP if self.modifiers_ctrl => {
-                                if self.screen == AppScreen::Editor {
-                                    self.dispatch_shortcut(CommandId::OPEN_COMMAND_PALETTE);
-                                }
-                            }
-                            KeyCode::KeyL if self.modifiers_ctrl => {
-                                if self.screen == AppScreen::Editor {
-                                    self.dispatch_shortcut(CommandId::OPEN_QUICK_ADD);
-                                }
-                            }
-                            KeyCode::Insert if self.screen == AppScreen::Editor => {
-                                self.dispatch_shortcut(CommandId::OPEN_QUICK_ADD)
-                            }
-                            KeyCode::KeyZ
-                                if self.modifiers_shift && self.screen == AppScreen::Editor =>
-                            {
-                                self.dispatch_shortcut(CommandId::REDO)
-                            }
-                            // Keep the original bare-key bindings while supporting standard Ctrl forms.
-                            KeyCode::KeyZ if self.screen == AppScreen::Editor => {
-                                self.dispatch_shortcut(CommandId::UNDO)
-                            }
-                            KeyCode::KeyY if self.screen == AppScreen::Editor => {
-                                self.dispatch_shortcut(CommandId::REDO)
-                            }
-                            KeyCode::KeyN if self.modifiers_ctrl => {
-                                self.dispatch_shortcut(CommandId::NEW_PROJECT);
-                            }
-                            KeyCode::KeyO if self.modifiers_ctrl => {
-                                self.dispatch_shortcut(CommandId::OPEN_PROJECT);
-                            }
-                            KeyCode::KeyS if self.modifiers_ctrl && self.modifiers_shift => {
-                                if self.screen == AppScreen::Editor {
-                                    self.dispatch_shortcut(CommandId::SAVE_AS);
-                                }
-                            }
-                            KeyCode::KeyS if self.modifiers_ctrl => {
-                                if self.screen == AppScreen::Editor {
-                                    self.dispatch_shortcut(CommandId::SAVE);
-                                }
-                            }
-                            KeyCode::KeyW if self.modifiers_ctrl => {
-                                if self.screen == AppScreen::Editor {
-                                    self.dispatch_shortcut(CommandId::CLOSE_PROJECT);
-                                }
-                            }
                             KeyCode::Backspace
                                 if self.gui_state.wants_text_input()
                                     || self.ui_state.show_quick_add
@@ -218,11 +153,6 @@ impl ApplicationHandler for TerraApp {
                             }
                             _ => {}
                         }
-                        let wants_chars = self.gui_state.wants_text_input()
-                            || self.ui_state.show_quick_add
-                            || self.ui_state.show_command_palette
-                            || self.inspector_gui.rename_buffer.is_some()
-                            || ui_tool_search_focused(&self.ui_state, &self.gui_state);
                         if !self.modifiers_ctrl && wants_chars {
                             if let Some(ch) = search_character(code, self.modifiers_shift) {
                                 self.gui_text.push(ch);
@@ -236,6 +166,7 @@ impl ApplicationHandler for TerraApp {
                 self.modifiers_shift = m.state().shift_key();
                 self.modifiers_alt = m.state().alt_key();
                 self.modifiers_ctrl = m.state().control_key();
+                self.modifiers_super = m.state().super_key();
                 self.ui_state.shift_context = self.modifiers_shift;
             }
             WindowEvent::MouseInput { state, button, .. } => {
@@ -826,4 +757,3 @@ impl TerraApp {
         true
     }
 }
-

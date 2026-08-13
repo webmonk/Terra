@@ -158,6 +158,7 @@ pub struct TerraApp {
     modifiers_shift: bool,
     modifiers_alt: bool,
     modifiers_ctrl: bool,
+    modifiers_super: bool,
     /// Held WASD/QE for continuous camera fly (game-engine viewport).
     camera_keys: CameraKeys,
     /// Last time WASD fly was applied (for dt).
@@ -299,6 +300,7 @@ impl Default for TerraApp {
             modifiers_shift: false,
             modifiers_alt: false,
             modifiers_ctrl: false,
+            modifiers_super: false,
             camera_keys: CameraKeys::default(),
             last_camera_move: now,
             needs_height_upload: false,
@@ -569,4 +571,3 @@ pub(crate) fn ensure_surface_processes(doc: &mut terra_core::document::TerrainDo
         ));
     }
 }
-
