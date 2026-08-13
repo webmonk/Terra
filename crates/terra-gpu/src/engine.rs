@@ -9,7 +9,7 @@
 //! prefer fully GPU stacks, never present an incomplete prefix as finished Draft.
 
 use crate::effect_filter::resolve_effect_mode;
-use crate::graph::{compile_gpu_graph, expand_dirty_rect, GpuComputeGraph};
+use crate::graph::{compile_gpu_graph, expand_dirty_rect, layer_gpu_supported, GpuComputeGraph};
 use crate::{readback_f32, GpuError};
 use bytemuck::{Pod, Zeroable};
 use std::collections::{HashMap, HashSet};
@@ -479,58 +479,6 @@ fn layer_input_independent(kind: &LayerKind) -> bool {
             | LayerKind::Canyons(_)
             | LayerKind::DomainWarp(_)
     )
-}
-
-/// Whether this layer kind can run fully on the GPU preview path.
-pub fn layer_gpu_supported(kind: &LayerKind) -> bool {
-    matches!(
-        kind,
-        LayerKind::SculptBase(_)
-            | LayerKind::Flat(_)
-            | LayerKind::Ramp(_)
-            | LayerKind::NoiseValue(_)
-            | LayerKind::NoisePerlin(_)
-            | LayerKind::Fbm(_)
-            | LayerKind::Ridged(_)
-            | LayerKind::ThermalErosion(_)
-            | LayerKind::HydraulicErosion(_)
-            | LayerKind::Blur(_)
-            | LayerKind::Terrace(_)
-            | LayerKind::EffectFilter(_)
-            | LayerKind::Mountains(_)
-            | LayerKind::Dunes(_)
-            | LayerKind::Canyons(_)
-            | LayerKind::DomainWarp(_)
-            | LayerKind::Mesa(_)
-            | LayerKind::Volcano(_)
-            | LayerKind::Uplift(_)
-            | LayerKind::Island(_)
-            | LayerKind::Plateau(_)
-            | LayerKind::Coastal(_)
-            | LayerKind::RiverCarve(_)
-            | LayerKind::Materials(_)
-            | LayerKind::Biomes(_)
-            | LayerKind::Vegetation(_)
-    )
-}
-
-fn gpu_mask_supported(layer: &Layer, assets: &[MaskAsset]) -> bool {
-    if !layer.common.masks.nodes.is_empty() {
-        return false;
-    }
-    layer.common.masks.iter().all(|entry| {
-        matches!(
-            assets
-                .iter()
-                .find(|asset| asset.id == entry.mask.id)
-                .map(|asset| &asset.source),
-            Some(MaskSource::Constant(_))
-                | Some(MaskSource::Height { .. })
-                | Some(MaskSource::Slope { .. })
-                | Some(MaskSource::Curvature { .. })
-                | Some(MaskSource::Noise { .. })
-        )
-    })
 }
 
 /// Result of a GPU preview evaluation.
@@ -1840,13 +1788,11 @@ impl GpuTerrainEngine {
             });
         }
 
-        let graph = compile_gpu_graph(stack);
+        let graph = compile_gpu_graph(stack, mask_assets);
         self.last_graph = graph;
 
-        let layer_unsupported = |layer: &Layer| {
-            layer.common.enabled
-                && (!layer_gpu_supported(&layer.kind) || !gpu_mask_supported(layer, mask_assets))
-        };
+        let layer_unsupported =
+            |layer: &Layer| layer.common.enabled && !layer_gpu_supported(layer, mask_assets);
 
         let first_dirty = layers
             .iter()
@@ -1893,7 +1839,7 @@ impl GpuTerrainEngine {
 
         let first_dirty = first_dirty.min(layers.len());
         // Hybrid resume point (first unsupported we could only passthrough).
-        let mut cpu_from: Option<usize> = None;
+        let mut cpu_from = self.last_graph.cpu_from;
         let mut hybrid = false;
 
         // Seed from previous layer cache when possible.
@@ -1977,7 +1923,7 @@ impl GpuTerrainEngine {
             // Prefix is GPU-supported: dirty from 0 and re-enter.
             let prefix_gpu = layers[..first_dirty]
                 .iter()
-                .all(|l| !l.common.enabled || layer_gpu_supported(&l.kind));
+                .all(|l| !l.common.enabled || layer_gpu_supported(l, mask_assets));
             if prefix_gpu && first_dirty > 0 {
                 drop(encoder);
                 self.dirty.extend(layers.iter().map(|l| l.id()));
@@ -2355,8 +2301,7 @@ impl GpuTerrainEngine {
                 );
             }
             LayerKind::Fbm(p) => {
-                let nt = Self::noise_type_u(p.noise)
-                    .ok_or_else(|| GpuError::Wgpu("OpenSimplex fBm not on GPU preview".into()))?;
+                let nt = Self::noise_type_u(p.noise).ok_or(GpuError::RequiresCpu)?;
                 self.gen_noise(device, queue, encoder, &p.base, nt, false);
                 self.expand_range(0.0, p.base.amplitude);
                 self.blend_into_current(
@@ -2368,7 +2313,7 @@ impl GpuTerrainEngine {
                 );
             }
             LayerKind::Ridged(p) => {
-                let nt = Self::noise_type_u(p.noise).unwrap_or(1);
+                let nt = Self::noise_type_u(p.noise).ok_or(GpuError::RequiresCpu)?;
                 self.gen_noise(device, queue, encoder, &p.base, nt, true);
                 self.expand_range(0.0, p.base.amplitude);
                 self.blend_into_current(
@@ -3017,24 +2962,10 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 );
             }
-            // Coastal filtering is approximated as a passthrough until a
-            // sea-level-aware GPU kernel is available.
-            LayerKind::Coastal(_) => {
-                let src = if self.current == 0 {
-                    TexSlot::Ping
-                } else {
-                    TexSlot::Pong
-                };
-                let dst = if self.current == 0 {
-                    TexSlot::Pong
-                } else {
-                    TexSlot::Ping
-                };
-                self.copy_slots(device, queue, encoder, src, dst);
-                self.swap_current();
-            }
-            // These layers populate CPU-side auxiliary textures; height passes through.
-            LayerKind::Materials(_) | LayerKind::Biomes(_) | LayerKind::Vegetation(_) => {}
+            LayerKind::Coastal(_)
+            | LayerKind::Materials(_)
+            | LayerKind::Biomes(_)
+            | LayerKind::Vegetation(_) => return Err(GpuError::RequiresCpu),
             LayerKind::Terrace(p) => {
                 let u = TerraceU {
                     width: self.metrics.width,
@@ -3188,9 +3119,10 @@ mod smoke_tests {
     use terra_core::eval::{EvalContext, PreviewQuality, StackEvaluator};
     use terra_core::heightfield::HeightfieldMetrics;
     use terra_core::layer::{
-        BlendMode, FlatParams, GroupInputMode, Layer, LayerGroup, LayerKind, LayerStack,
-        NoiseParams, SculptParams, StackNode,
+        BlendMode, CoastalParams, FbmParams, FlatParams, FractalNoiseType, GroupInputMode, Layer,
+        LayerGroup, LayerKind, LayerStack, MaterialsParams, NoiseParams, SculptParams, StackNode,
     };
+    use terra_core::mask::{MaskAsset, MaskId, MaskRef, MaskSource};
 
     fn cpu_oracle(stack: &LayerStack, metrics: HeightfieldMetrics) -> Heightfield {
         let mut evaluator = StackEvaluator::new();
@@ -3314,6 +3246,155 @@ mod smoke_tests {
         assert_eq!(result.resume_cpu_from, None);
         let actual = result.cpu.expect("GPU readback");
         assert!((actual.get(8, 8) - expected.get(8, 8)).abs() < 0.01);
+    }
+
+    /// Revert check for #48: Coastal must request CPU instead of completing as identity.
+    #[test]
+    fn coastal_marks_gpu_preview_incomplete() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let metrics = HeightfieldMetrics::new(16, 16, 160.0, 160.0);
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "Base",
+            LayerKind::Flat(FlatParams { height: 20.0 }),
+        ));
+        stack.push(Layer::new(
+            "Coastal",
+            LayerKind::Coastal(CoastalParams::default()),
+        ));
+
+        let mut engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
+        let result = engine
+            .evaluate(
+                &gpu.device,
+                &gpu.queue,
+                &stack,
+                &[],
+                metrics,
+                PreviewQuality::Draft,
+                false,
+                None,
+            )
+            .expect("unsupported layer should select fallback");
+        assert!(!result.fully_gpu);
+        assert_eq!(result.resume_cpu_from, Some(1));
+        assert_eq!(engine.last_graph.cpu_from, Some(1));
+    }
+
+    /// Revert check for #48: OpenSimplex fractals must not error or become Perlin.
+    #[test]
+    fn open_simplex_fractals_mark_gpu_preview_incomplete() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let metrics = HeightfieldMetrics::new(16, 16, 160.0, 160.0);
+        for kind in [
+            LayerKind::Fbm(FbmParams {
+                noise: FractalNoiseType::OpenSimplex,
+                ..FbmParams::default()
+            }),
+            LayerKind::Ridged(FbmParams {
+                noise: FractalNoiseType::OpenSimplex,
+                ..FbmParams::default()
+            }),
+        ] {
+            let mut stack = LayerStack::new();
+            stack.push(Layer::new("OpenSimplex", kind));
+            let mut engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
+            let result = engine
+                .evaluate(
+                    &gpu.device,
+                    &gpu.queue,
+                    &stack,
+                    &[],
+                    metrics,
+                    PreviewQuality::Draft,
+                    false,
+                    None,
+                )
+                .expect("unsupported noise should select fallback");
+            assert!(!result.fully_gpu);
+            assert_eq!(result.resume_cpu_from, Some(0));
+        }
+    }
+
+    /// A cached height does not make Materials' missing aux outputs GPU-complete.
+    #[test]
+    fn cached_materials_height_keeps_cpu_boundary() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let metrics = HeightfieldMetrics::new(16, 16, 160.0, 160.0);
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "Base",
+            LayerKind::Flat(FlatParams { height: 20.0 }),
+        ));
+        let materials = Layer::new(
+            "Materials",
+            LayerKind::Materials(MaterialsParams::default()),
+        );
+        let materials_id = materials.id();
+        stack.push(materials);
+        let mut upper = Layer::new("Upper", LayerKind::Flat(FlatParams { height: 2.0 }));
+        upper.common.blend = BlendMode::Add;
+        stack.push(upper);
+
+        let mut engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
+        let cached = Heightfield::filled(metrics, 20.0);
+        engine.ingest_height(&gpu.device, &gpu.queue, materials_id, &cached, (20.0, 20.0));
+        let result = engine
+            .evaluate(
+                &gpu.device,
+                &gpu.queue,
+                &stack,
+                &[],
+                metrics,
+                PreviewQuality::Draft,
+                false,
+                None,
+            )
+            .expect("cached unsupported height can be presented speculatively");
+        assert!(!result.fully_gpu);
+        assert_eq!(result.resume_cpu_from, Some(1));
+        assert_eq!(engine.last_graph.cpu_from, Some(1));
+    }
+
+    #[test]
+    fn materials_aux_affects_cpu_suffix_fixture() {
+        let metrics = HeightfieldMetrics::new(16, 16, 160.0, 160.0);
+        let hardness_id = MaskId::new();
+        let hardness_asset = MaskAsset::new(hardness_id, "Hardness", MaskSource::Hardness);
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "Base",
+            LayerKind::Flat(FlatParams { height: 20.0 }),
+        ));
+        stack.push(Layer::new(
+            "Materials",
+            LayerKind::Materials(MaterialsParams::default()),
+        ));
+        let mut upper = Layer::new("Upper", LayerKind::Flat(FlatParams { height: 10.0 }));
+        upper.common.blend = BlendMode::Add;
+        upper.common.masks.push(MaskRef::new(hardness_id));
+        stack.push(upper);
+
+        let graph = compile_gpu_graph(&stack, &[hardness_asset.clone()]);
+        assert_eq!(graph.cpu_from, Some(1));
+
+        let mut evaluator = StackEvaluator::new();
+        let mut ctx = EvalContext::new(metrics);
+        ctx.mask_assets = vec![hardness_asset];
+        let result = evaluator
+            .rebuild_all(&stack, &mut ctx)
+            .expect("CPU fallback oracle");
+        assert!(ctx.aux_maps.hardness.is_some());
+        assert!(
+            (result.get(8, 8) - 22.0).abs() < 0.1,
+            "downstream hardness mask must observe Materials aux"
+        );
     }
 
     /// Regression for uniform isolation via pool slots: Draft must composite layers
