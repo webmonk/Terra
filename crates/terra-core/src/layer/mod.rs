@@ -29,7 +29,8 @@ pub use metadata::{
     LayerTypeMeta, MaskCompatibility,
 };
 pub use operation::{FieldContract, OperationCategory};
-pub use output::{NamedOutputDecl, OutputId, OutputRef, PublishedOutput};
+pub use crate::ids::{LayerId, OutputId};
+pub use output::{NamedOutputDecl, OutputRef, PublishedOutput};
 pub use registry::LayerTypeRegistry;
 pub use scale::ScaleBand;
 pub use stack::{
@@ -40,28 +41,6 @@ pub use workflow::WorkflowStage;
 use crate::mask::Distribution;
 use crate::operation_placement::OperationPlacement;
 use serde::{Deserialize, Serialize};
-use uuid::Uuid;
-
-/// Stable layer identity for undo/reorder/caching.
-#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
-pub struct LayerId(pub Uuid);
-
-impl LayerId {
-    pub fn new() -> Self {
-        Self(Uuid::new_v4())
-    }
-
-    /// Stable sentinel id for UI virtual rows (not persisted as stack nodes).
-    pub fn from_u128(v: u128) -> Self {
-        Self(Uuid::from_u128(v))
-    }
-}
-
-impl Default for LayerId {
-    fn default() -> Self {
-        Self::new()
-    }
-}
 
 /// Parameters shared by every layer.
 #[derive(Debug, Clone, Serialize, Deserialize)]

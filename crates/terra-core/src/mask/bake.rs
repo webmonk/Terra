@@ -6,7 +6,7 @@ use crate::heightfield::{Heightfield, HeightfieldMetrics};
 use std::collections::HashMap;
 
 /// Bake all mask assets against a reference heightfield.
-use crate::layer::OutputId;
+use crate::ids::OutputId;
 ///
 /// If `reference` metrics differ from `target`, heights are sampled by normalized UV.
 pub fn bake_mask_assets(

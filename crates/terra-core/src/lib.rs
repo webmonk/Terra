@@ -22,6 +22,7 @@ pub mod generators;
 pub mod geomorph;
 pub mod heightfield;
 pub mod hydro;
+pub mod ids;
 pub mod landscape_blueprint;
 pub mod landscape_evolution;
 pub mod landscape_style;
