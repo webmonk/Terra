@@ -16,7 +16,6 @@ mod mode;
 mod operator;
 mod scale;
 mod tiling;
-mod world_space;
 
 pub use derived::{DerivedFieldCache, DerivedFieldCacheStats};
 pub use determinism::{layer_seed, sample_seed, tile_seed};
@@ -29,4 +28,4 @@ pub use operator::{
 };
 pub use scale::ScaleBand;
 pub use tiling::{TileEvalRequest, TileEvalSpec};
-pub use world_space::{metres_to_texels, texels_to_metres, world_radius_texels};
+pub use crate::heightfield::{metres_to_texels, texels_to_metres, world_radius_texels};

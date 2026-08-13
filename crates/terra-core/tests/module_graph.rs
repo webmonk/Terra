@@ -122,7 +122,6 @@ const CYCLIC_EDGES: &[(&str, &str)] = &[
     ("generators", "mask"),
     ("geomorph", "analyze"),
     ("geomorph", "mask"),
-    ("geomorph", "terrain_eval"),
     ("hydro", "fields"),
     ("hydro", "geomorph"),
     ("hydro", "layer"),

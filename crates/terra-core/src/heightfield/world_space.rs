@@ -1,6 +1,6 @@
 //! World-space parameterisation helpers (metres ↔ texels).
 
-use crate::heightfield::HeightfieldMetrics;
+use super::HeightfieldMetrics;
 
 /// Convert a world-space length (metres) to approximate texel distance on X.
 #[inline]

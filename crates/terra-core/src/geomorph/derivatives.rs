@@ -1,12 +1,11 @@
 //! Multi-scale terrain derivatives in world units.
 //!
 //! Finite differences use sampling radius expressed in metres (converted to
-//! texels via [`crate::terrain_eval::world_radius_texels`]). Profile / plan /
+//! texels via [`crate::heightfield::world_radius_texels`]). Profile / plan /
 //! mean / Gaussian curvatures follow Zevenbergen–Thorne / Evans forms.
 
-use crate::heightfield::Heightfield;
+use crate::heightfield::{world_radius_texels, Heightfield};
 use crate::mask::MaskField;
-use crate::terrain_eval::world_radius_texels;
 
 /// Sampling controls for derivative kernels.
 #[derive(Debug, Clone)]

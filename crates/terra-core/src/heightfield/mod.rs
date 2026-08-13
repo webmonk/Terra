@@ -2,9 +2,11 @@
 
 mod arena;
 mod tile;
+mod world_space;
 
 pub use arena::FloatArena;
 pub use tile::{HeightTile, TileId};
+pub use world_space::{metres_to_texels, texels_to_metres, world_radius_texels};
 
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
