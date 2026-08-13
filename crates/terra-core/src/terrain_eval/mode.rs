@@ -1,6 +1,6 @@
 //! Evaluation quality modes (algorithm family stays constant across modes).
 
-use crate::eval::PreviewQuality;
+use crate::quality::PreviewQuality;
 use serde::{Deserialize, Serialize};
 
 /// Conceptual evaluation quality. Maps onto the existing progressive ladder.

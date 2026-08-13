@@ -52,7 +52,6 @@ use std::sync::OnceLock;
 /// Exact set (Rule 2). Seeded to today's graph; each A3 fix deletes the edges it
 /// removes in the same commit. Sorted for readable diffs.
 const CYCLIC_EDGES: &[(&str, &str)] = &[
-    ("analyze", "eval"),
     ("analyze", "fields"),
     ("analyze", "generators"),
     ("analyze", "geomorph"),
@@ -133,7 +132,6 @@ const CYCLIC_EDGES: &[(&str, &str)] = &[
     ("surface", "mask"),
     ("surface", "scatter"),
     ("terrain_eval", "analyze"),
-    ("terrain_eval", "eval"),
     ("terrain_eval", "fields"),
     ("terrain_eval", "geomorph"),
     ("terrain_eval", "layer"),
@@ -153,9 +151,11 @@ const CLEAN_MODULES: &[&str] = &[
     "deps",
     "domain",
     "heightfield",
+    "ids",
     "landscape_blueprint",
     "landscape_style",
     "noise",
+    "quality",
     "realism_benchmark",
     "shape_history",
     "shape_object",

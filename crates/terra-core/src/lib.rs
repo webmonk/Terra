@@ -31,6 +31,7 @@ pub mod mask;
 pub mod matter_sim;
 pub mod noise;
 pub mod operation_placement;
+pub mod quality;
 pub mod realism_benchmark;
 pub mod rebuild_feedback;
 pub mod scatter;

@@ -8,7 +8,8 @@ mod worker;
 
 pub use cache::{CachedOutput, LayerCache};
 pub use processors::ProcessorRegistry;
-pub use scheduler::{EvalJob, EvalScheduler, PreviewQuality};
+pub use crate::quality::PreviewQuality;
+pub use scheduler::{EvalJob, EvalScheduler};
 pub use smart_cache::DiskSmartCache;
 pub use worker::{EvalWorkRequest, EvalWorkResult, EvalWorker};
 
