@@ -4,6 +4,7 @@ mod biomes;
 mod layers;
 mod masks;
 mod scenarios;
+mod settings;
 mod tools;
 mod world_rules;
 
@@ -59,6 +60,11 @@ impl TerraApp {
             };
             if ctx.continue_loop { continue; }
             let action = match scenarios::try_apply(self, action, &mut ctx) {
+                Ok(()) => continue,
+                Err(a) => a,
+            };
+            if ctx.continue_loop { continue; }
+            let action = match settings::try_apply(self, action, &mut ctx) {
                 Ok(()) => continue,
                 Err(a) => a,
             };

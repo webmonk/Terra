@@ -442,7 +442,7 @@ impl TerraApp {
             } else {
                 draw_editor_gui(
                     &mut gui,
-                    &mut self.session.document,
+                    &self.session.document,
                     &mut self.ui_state,
                     &mut self.chrome_gui,
                     &mut self.tools_gui,
@@ -638,12 +638,6 @@ impl TerraApp {
                 self.ui_state.build_progress = None;
                 self.ui_state.refining_layer_name = None;
                 self.ui_state.status = "Build cancelled".into();
-            }
-            if let Some(res) = self.ui_state.pending_preview_resolution.take() {
-                if self.session.document.preview_resolution != res {
-                    self.session.document.preview_resolution = res;
-                    self.request_rebuild();
-                }
             }
             if ui_out.request_save_bookmark {
                 let slot = self

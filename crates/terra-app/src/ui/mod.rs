@@ -70,7 +70,7 @@ pub use hierarchy::{
     LayersGuiState,
 };
 pub use panels::{draw_windows, WindowsGuiState};
-pub use actions::{MaskEditAction, PanelAction};
+pub use actions::{MaskEditAction, PanelAction, TerrainSettingsUpdate};
 pub use presets::{
     builtin_presets, contextual_presets, layers_from_preset, layers_from_project_template,
     project_template_by_id, project_templates, world_design_templates,
@@ -202,8 +202,6 @@ pub struct UiState {
     pub bookmarks: [Option<CameraBookmark>; 9],
     /// Read-only history labels supplied by the app, oldest to newest.
     pub history_descriptions: Vec<String>,
-    /// Pending preview resolution chosen from the top-bar dropdown.
-    pub pending_preview_resolution: Option<u32>,
     /// Environment lighting preset for the 3D viewport (presentation only).
     pub lighting_preset: LightingPreset,
     /// True when the lighting values have been edited away from `lighting_preset`,
@@ -1480,7 +1478,7 @@ pub struct FrameUiOutput {
 /// Draw all editor chrome with terra-gui.
 pub fn draw_editor_gui(
     ui: &mut GuiContext<'_>,
-    doc: &mut TerrainDocument,
+    doc: &TerrainDocument,
     ui_state: &mut UiState,
     chrome: &mut ChromeGuiState,
     tools: &mut ToolsGuiState,
