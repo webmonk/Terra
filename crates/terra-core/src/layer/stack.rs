@@ -567,6 +567,14 @@ impl LayerStack {
         walk(&self.nodes)
     }
 
+    /// Whether evaluation must preserve the stack tree instead of flattening leaves.
+    ///
+    /// Scoped groups compose their children as a unit, while solo mode filters sibling
+    /// nodes at each tree level. Neither contract can be represented by a flattened suffix.
+    pub fn requires_tree_evaluation(&self) -> bool {
+        self.has_scoped_groups() || self.flatten_layers().iter().any(|layer| layer.common.solo)
+    }
+
     pub fn index_of(&self, id: LayerId) -> Option<usize> {
         self.nodes.iter().position(|n| match n {
             StackNode::Layer(l) => l.id() == id,
@@ -1208,6 +1216,40 @@ mod tests {
         stack.ensure_category_folders();
         stack.ensure_default_biome();
         assert!(!stack.has_scoped_groups());
+        assert!(!stack.requires_tree_evaluation());
+    }
+
+    #[test]
+    fn tree_evaluation_requirement_tracks_scoped_solo_and_pass_through_stacks() {
+        let mut pass_through = LayerStack::new();
+        let mut folder = LayerGroup::new("Folder");
+        folder.children.push(StackNode::Layer(Layer::new(
+            "Child",
+            LayerKind::Flat(FlatParams { height: 1.0 }),
+        )));
+        pass_through.push_group(folder);
+        assert!(!pass_through.requires_tree_evaluation());
+
+        let mut scoped = LayerStack::new();
+        let mut group = LayerGroup::isolated("Scoped");
+        group.children.push(StackNode::Layer(Layer::new(
+            "Child",
+            LayerKind::Flat(FlatParams { height: 2.0 }),
+        )));
+        scoped.push_group(group);
+        assert!(scoped.requires_tree_evaluation());
+
+        let mut disabled_scoped = scoped.clone();
+        if let StackNode::Group(group) = &mut disabled_scoped.nodes[0] {
+            group.enabled = false;
+        }
+        assert!(!disabled_scoped.requires_tree_evaluation());
+
+        let mut solo = LayerStack::new();
+        let mut layer = Layer::new("Solo", LayerKind::Flat(FlatParams { height: 3.0 }));
+        layer.common.solo = true;
+        solo.push(layer);
+        assert!(solo.requires_tree_evaluation());
     }
 
     #[test]

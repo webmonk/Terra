@@ -1795,6 +1795,12 @@ impl GpuTerrainEngine {
         bridge_prefix: Option<&Heightfield>,
     ) -> Result<GpuEvalResult, GpuError> {
         profiling::scope!("gpu_stack_eval");
+        // Flattened GPU evaluation cannot preserve scoped-group composition or solo
+        // filtering. Leave all engine state and the last-good texture untouched so the
+        // app can route the complete tree to its asynchronous CPU worker.
+        if stack.requires_tree_evaluation() {
+            return Err(GpuError::RequiresCpu);
+        }
         self.ensure_size(device, metrics);
         self.uniform_pool.reset();
         let quality_changed = self.last_quality.replace(quality) != Some(quality);
@@ -3179,11 +3185,136 @@ fn resample_height_nearest(src: &Heightfield, dst: HeightfieldMetrics) -> Vec<f3
 #[cfg(test)]
 mod smoke_tests {
     use super::*;
-    use terra_core::eval::PreviewQuality;
+    use terra_core::eval::{EvalContext, PreviewQuality, StackEvaluator};
     use terra_core::heightfield::HeightfieldMetrics;
     use terra_core::layer::{
-        FlatParams, Layer, LayerKind, LayerStack, NoiseParams, SculptParams,
+        BlendMode, FlatParams, GroupInputMode, Layer, LayerGroup, LayerKind, LayerStack,
+        NoiseParams, SculptParams, StackNode,
     };
+
+    fn cpu_oracle(stack: &LayerStack, metrics: HeightfieldMetrics) -> Heightfield {
+        let mut evaluator = StackEvaluator::new();
+        let mut ctx = EvalContext::new(metrics);
+        evaluator
+            .rebuild_all(stack, &mut ctx)
+            .expect("CPU stack oracle")
+    }
+
+    /// Revert check for #47: scoped groups must never reach the flattened GPU evaluator.
+    #[test]
+    fn scoped_group_requires_cpu_tree_evaluation() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let metrics = HeightfieldMetrics::new(16, 16, 160.0, 160.0);
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "Base",
+            LayerKind::Flat(FlatParams { height: 10.0 }),
+        ));
+        let mut group = LayerGroup::isolated("Scoped");
+        group.input_mode = GroupInputMode::EmptyHeight;
+        group.opacity = 0.5;
+        group.children.push(StackNode::Layer(Layer::new(
+            "Feature",
+            LayerKind::Flat(FlatParams { height: 20.0 }),
+        )));
+        stack.push_group(group);
+
+        let expected = cpu_oracle(&stack, metrics);
+        assert!((expected.get(8, 8) - 15.0).abs() < 1.0e-4);
+
+        let mut engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
+        let result = engine.evaluate(
+            &gpu.device,
+            &gpu.queue,
+            &stack,
+            &[],
+            metrics,
+            PreviewQuality::Draft,
+            true,
+            None,
+        );
+        assert!(matches!(result, Err(GpuError::RequiresCpu)));
+        assert!(
+            engine.last_quality.is_none(),
+            "preflight must not mutate GPU state"
+        );
+    }
+
+    /// Revert check for #47: solo filtering is a tree operation, not a flat GPU stack.
+    #[test]
+    fn solo_stack_requires_cpu_tree_evaluation() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let metrics = HeightfieldMetrics::new(16, 16, 160.0, 160.0);
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "Base",
+            LayerKind::Flat(FlatParams { height: 100.0 }),
+        ));
+        let mut solo = Layer::new("Solo", LayerKind::Flat(FlatParams { height: 20.0 }));
+        solo.common.blend = BlendMode::Add;
+        solo.common.solo = true;
+        stack.push(solo);
+        let mut sibling = Layer::new("Sibling", LayerKind::Flat(FlatParams { height: 50.0 }));
+        sibling.common.blend = BlendMode::Add;
+        stack.push(sibling);
+
+        let expected = cpu_oracle(&stack, metrics);
+        assert!((expected.get(8, 8) - 20.0).abs() < 1.0e-4);
+
+        let mut engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
+        let result = engine.evaluate(
+            &gpu.device,
+            &gpu.queue,
+            &stack,
+            &[],
+            metrics,
+            PreviewQuality::Draft,
+            true,
+            None,
+        );
+        assert!(matches!(result, Err(GpuError::RequiresCpu)));
+    }
+
+    #[test]
+    fn pass_through_group_remains_fully_gpu() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let metrics = HeightfieldMetrics::new(16, 16, 160.0, 160.0);
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "Base",
+            LayerKind::Flat(FlatParams { height: 10.0 }),
+        ));
+        let mut folder = LayerGroup::new("Folder");
+        let mut child = Layer::new("Child", LayerKind::Flat(FlatParams { height: 5.0 }));
+        child.common.blend = BlendMode::Add;
+        folder.children.push(StackNode::Layer(child));
+        stack.push_group(folder);
+
+        let expected = cpu_oracle(&stack, metrics);
+        let mut engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
+        let result = engine
+            .evaluate(
+                &gpu.device,
+                &gpu.queue,
+                &stack,
+                &[],
+                metrics,
+                PreviewQuality::Draft,
+                true,
+                None,
+            )
+            .expect("pass-through folders are flattenable");
+        assert!(result.fully_gpu);
+        assert_eq!(result.resume_cpu_from, None);
+        let actual = result.cpu.expect("GPU readback");
+        assert!((actual.get(8, 8) - expected.get(8, 8)).abs() < 0.01);
+    }
 
     /// Regression for uniform isolation via pool slots: Draft must composite layers
     /// even when blend and cache share one submit (each pass gets its own uniform buffer).

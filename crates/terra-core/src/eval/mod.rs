@@ -251,12 +251,7 @@ impl StackEvaluator {
     ) -> Result<Heightfield, EvalError> {
         profiling::scope!("rebuild_incremental");
         let _ = self.compile_graph(stack, 0);
-        if stack.has_scoped_groups()
-            || stack
-                .flatten_layers()
-                .iter()
-                .any(|layer| layer.common.solo)
-        {
+        if stack.requires_tree_evaluation() {
             let seed = Heightfield::zeros(ctx.metrics);
             return self.evaluate_nodes(&stack.nodes, ctx, &seed);
         }
