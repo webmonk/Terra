@@ -5,13 +5,14 @@
 //! (`tool_thumbs` / `ToolDef.icon`) — not bespoke reference illustrations.
 
 use crate::ui::actions::PanelAction;
-use crate::ui::add_layer_menu::create_layer_for_kind;
 use crate::ui::command_registry::fuzzy_match;
 use crate::ui::dist_kinds::{
     dist_base_kinds, dist_effect_kinds, dist_kind_description, dist_kind_icon,
 };
 use crate::ui::hierarchy_view::ArtistConcept;
-use crate::ui::tool_catalog::{all_tools_cached, quick_add_entries, ToolAction, ToolDef};
+use crate::ui::tool_catalog::{
+    all_tools_cached, instantiate_layer_preset, quick_add_entries, ToolAction, ToolDef,
+};
 use crate::ui::UiState;
 use terra_core::document::TerrainDocument;
 use terra_core::layer::{
@@ -721,7 +722,7 @@ fn commit_item(
                 });
             }
             ToolAction::AddLayer { name, kind } => {
-                let layer = create_layer_for_kind(name, kind);
+                let layer = instantiate_layer_preset(name, kind);
                 let concept = ui_state.quick_add_concept;
                 if let Some(parent) = ui_state.quick_add_into {
                     actions.push(PanelAction::AddLayerInto { parent, layer });
@@ -1225,6 +1226,23 @@ mod tests {
         );
     }
 
+    fn commit_org(id: &'static str) -> PanelAction {
+        let item = PickerItem::Org {
+            id,
+            label: "Test organisation item",
+            description: "Test organisation item.",
+            icon: Icon::Folder,
+        };
+        let mut ui_state = UiState::default();
+        let mut state = QuickAddState::default();
+        let mut actions = Vec::new();
+
+        commit_item(&item, &mut ui_state, &mut state, &mut actions);
+
+        assert_eq!(actions.len(), 1, "{id} should emit exactly one action");
+        actions.remove(0)
+    }
+
     #[test]
     fn scoped_quick_add_includes_registry_derived_routes() {
         let mut shape_state = UiState::default();
@@ -1278,6 +1296,50 @@ mod tests {
         assert_eq!(params.max_slope_deg, 90.0);
         assert!(!params.coverage.nodes.is_empty());
         assert_same_kind(&expected, &layer.kind);
+    }
+
+    #[test]
+    fn quick_add_exposes_organisation_items_for_the_active_scope() {
+        let generic = UiState::default();
+        let generic_items = org_items(&generic);
+        let generic_ids: Vec<_> = generic_items.iter().map(PickerItem::id).collect();
+        assert_eq!(
+            generic_ids,
+            ["org.pass", "org.isolated", "org.biome", "org.hole"]
+        );
+
+        let mut biomes = UiState::default();
+        biomes.quick_add_concept = Some(ArtistConcept::Biomes);
+        let biome_items = org_items(&biomes);
+        let biome_ids: Vec<_> = biome_items.iter().map(PickerItem::id).collect();
+        assert_eq!(biome_ids, ["org.biome"]);
+
+        let mut biome_layers = UiState::default();
+        biome_layers.quick_add_concept = Some(ArtistConcept::BiomeLayers);
+        let biome_layer_items = org_items(&biome_layers);
+        let biome_layer_ids: Vec<_> = biome_layer_items
+            .iter()
+            .map(PickerItem::id)
+            .collect();
+        assert_eq!(biome_layer_ids, ["org.biome_paint"]);
+    }
+
+    #[test]
+    fn quick_add_commits_organisation_items_through_picker_item_org() {
+        assert!(matches!(commit_org("org.pass"), PanelAction::AddGroup { .. }));
+        assert!(matches!(
+            commit_org("org.isolated"),
+            PanelAction::AddIsolatedGroup { .. }
+        ));
+        assert!(matches!(commit_org("org.biome"), PanelAction::AddBiome { .. }));
+        assert!(matches!(
+            commit_org("org.hole"),
+            PanelAction::AddHoleLayer { .. }
+        ));
+        assert!(matches!(
+            commit_org("org.biome_paint"),
+            PanelAction::AddBiomePaintLayer { .. }
+        ));
     }
 }
 

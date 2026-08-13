@@ -1,6 +1,5 @@
 //! Terra product UI — editor chrome built on `terra-gui`.
 
-mod add_layer_menu;
 mod actions;
 mod bookmarks_gui;
 mod brand;
@@ -43,10 +42,6 @@ pub fn prefetch_tool_thumbnails() {
     tool_thumbs::prefetch_all();
 }
 
-pub use add_layer_menu::{
-    add_layer_menu, all_add_layer_entries, create_layer_by_type_id, create_layer_for_kind,
-    AddLayerEntry, OrganisationKind,
-};
 pub use chrome_gui::{
     apply_borderless_window_frame, caption_controls_width, draw_caption_controls,
     draw_export_unsupported_modal, ChromeGuiState,

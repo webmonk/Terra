@@ -10,7 +10,7 @@ use crate::ui::workspace::WorkspaceMode;
 use crate::ui::EditorTool;
 use terra_core::layer::{
     BedGeometry, DuneParams, EffectFilterParams, FluidSimParams, HydraulicErosionParams,
-    ImportHeightmapParams, LayerKind, LayerTypeRegistry, MaterialRule, MaterialsParams,
+    ImportHeightmapParams, Layer, LayerKind, LayerTypeRegistry, MaterialRule, MaterialsParams,
     ThermalErosionParams, VegetationParams,
 };
 use terra_core::mask::{DistNode, DistNodeKind, Distribution, MaskId, MaskSource};
@@ -70,6 +70,14 @@ impl ToolDef {
     pub fn is_sculpt(&self) -> bool {
         matches!(self.action, ToolAction::Sculpt(_))
     }
+}
+
+/// Create a fresh layer from an explicit catalog preset.
+///
+/// The supplied `LayerKind` is authoritative. Looking it up by type id in the
+/// registry would replace curated parameters with that type's default factory.
+pub(crate) fn instantiate_layer_preset(name: &str, kind: &LayerKind) -> Layer {
+    Layer::new(name, kind.clone())
 }
 
 /// Build an explicitly curated preset whose presentation and parameters may

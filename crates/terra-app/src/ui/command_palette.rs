@@ -2,8 +2,7 @@
 
 use crate::ui::command_registry::{commands, fuzzy_match, CommandId};
 use crate::ui::actions::PanelAction;
-use crate::ui::add_layer_menu::create_layer_for_kind;
-use crate::ui::tool_catalog::{all_tools_cached, ToolAction};
+use crate::ui::tool_catalog::{all_tools_cached, instantiate_layer_preset, ToolAction};
 use crate::ui::{AppWorkspace, Preview2dMode, UiState, WorkspaceId};
 use crate::ui::style::{self, FONT_SCALE, PAD, ROW_H};
 use terra_gui::{button_id, Color, GuiContext, Id, Rect};
@@ -232,7 +231,7 @@ fn add_catalog_layer(id: &str, actions: &mut Vec<PaletteAction>) {
     {
         match tool.action {
             ToolAction::AddLayer { name, kind } => {
-                let layer = create_layer_for_kind(name, &kind);
+                let layer = instantiate_layer_preset(name, &kind);
                 if id.starts_with("shape.") {
                     actions.push(PaletteAction::Panel(PanelAction::AddLayerToCategory {
                         category: terra_core::layer::StackCategory::Shape,
