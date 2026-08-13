@@ -1226,6 +1226,34 @@ mod tests {
     }
 
     #[test]
+    fn scoped_quick_add_includes_registry_derived_routes() {
+        let mut shape_state = UiState::default();
+        shape_state.quick_add_concept = Some(ArtistConcept::Shape);
+        assert!(catalog_for_modal(&shape_state)
+            .iter()
+            .any(|tool| tool.registry_type_id == Some("island")));
+
+        let mut simulation_state = UiState::default();
+        simulation_state.quick_add_category = Some(StackCategory::Simulation);
+        assert!(catalog_for_modal(&simulation_state)
+            .iter()
+            .any(|tool| tool.registry_type_id == Some("river_network")));
+
+        let mut filter_state = UiState::default();
+        filter_state.quick_add_into = Some(terra_core::layer::LayerId::new());
+        filter_state.quick_add_biome_section = Some(BiomeSection::Filters);
+        assert!(catalog_for_modal(&filter_state)
+            .iter()
+            .any(|tool| tool.registry_type_id == Some("blur")));
+    }
+
+    #[test]
+    fn quick_add_commits_direct_island_layer() {
+        let (_, layer) = commit_catalog_layer("gen.island");
+        assert!(matches!(layer.kind, LayerKind::Island(_)));
+    }
+
+    #[test]
     fn quick_add_preserves_non_default_effect_filter_preset() {
         let (expected, layer) = commit_catalog_layer("filter.arid.rocky_plateaus");
 

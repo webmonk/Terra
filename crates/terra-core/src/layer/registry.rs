@@ -133,8 +133,11 @@ impl LayerTypeRegistry {
                         mask_compatibility: MaskCompatibility::SupportsMasks,
                         capabilities: LayerCapabilities {
                             supports_thumbnails: true,
-                            supports_duplication: $creatable,
-                            can_reorder: $creatable,
+                            // Compatibility-only kinds may be hidden from create
+                            // surfaces while remaining fully editable in projects
+                            // that already contain them.
+                            supports_duplication: !kind.is_sculpt_base(),
+                            can_reorder: !kind.is_sculpt_base(),
                             can_contain_children: false,
                             user_creatable: $creatable,
                         },
@@ -295,9 +298,9 @@ impl LayerTypeRegistry {
             "mountain",
             "Large-scale ridge / corridor uplift.",
             || LayerKind::Uplift(UpliftParams::default()),
-            true,
+            false,
             &["shape"],
-            &["stream_power"]
+            &["landscape_evolution"]
         );
         entry!(
             "mountain",
@@ -583,6 +586,17 @@ mod tests {
         let meta = reg.get("sculpt_base").unwrap();
         assert!(!meta.capabilities.user_creatable);
         assert!(reg.create("sculpt_base").is_some()); // factory still works
+    }
+
+    #[test]
+    fn compatibility_uplift_is_editable_but_not_directly_creatable() {
+        let reg = LayerTypeRegistry::builtin();
+        let meta = reg.get("uplift").expect("uplift metadata");
+        assert!(!meta.capabilities.user_creatable);
+        assert!(meta.capabilities.supports_duplication);
+        assert!(meta.capabilities.can_reorder);
+        assert_eq!(meta.suggested_next, &["landscape_evolution"]);
+        assert!(reg.create("uplift").is_some());
     }
 
     #[test]
