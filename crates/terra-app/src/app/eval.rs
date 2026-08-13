@@ -1,11 +1,8 @@
-use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use terra_core::analyze::downsample_height;
 use terra_core::eval::{EvalWorkRequest, PreviewQuality};
-use terra_core::generators;
 use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
-use terra_core::layer::{blend_heights, LayerId, LayerKind};
+use terra_core::layer::{LayerId, LayerKind};
 use terra_core::mask::bake_mask_assets;
 use crate::ui::Preview2dMode;
 
@@ -40,9 +37,10 @@ impl TerraApp {
         self.ui_state.profile.gen_id = self.eval_token;
     }
 
-    /// Interactive structural edit (add filter/layer): keep current viewport resolution,
-    /// apply the change immediately. Prefer a single-filter CPU stamp onto last_height for
-    /// EffectFilters (guaranteed visible over shapes); otherwise GPU suffix eval.
+    /// Interactive structural edit (add filter/layer): keep current viewport resolution
+    /// and present supported work immediately through the GPU. Unsupported CPU work is
+    /// submitted to the existing eval worker, leaving last-good content on screen until
+    /// the worker publishes its result.
     pub(crate) fn request_rebuild_immediate(&mut self) {
         // Cancel any in-flight CPU job so a late Full result cannot pop the viewport.
         self.eval_token = self.eval_token.wrapping_add(1);
@@ -71,16 +69,6 @@ impl TerraApp {
             self.ui_state.quality = self.scheduler.quality;
         }
 
-        // Guaranteed interactive present for newly added layers (shapes + filters).
-        if let Some(id) = self.session.document.selected {
-            if self.try_present_new_layer_immediate(id) {
-                if let Some(w) = &self.window {
-                    w.request_redraw();
-                }
-                return;
-            }
-        }
-
         if self.gpu_engine.is_some() && self.renderer.is_some() {
             self.run_eval_step();
             self.last_refine = Instant::now();
@@ -104,182 +92,6 @@ impl TerraApp {
         if let Some(w) = &self.window {
             w.request_redraw();
         }
-    }
-
-    /// Bake a freshly added layer on the UI thread and upload.
-    ///
-    /// Covers ProceduralShape / Stamp / Path / EffectFilter — anything without a CPU
-    /// cache yet. Caps resolution so the frame stays interactive; async Draft may refine.
-    fn try_present_new_layer_immediate(&mut self, id: LayerId) -> bool {
-        let preview = self.session.document.preview_eval_stack();
-        let layers = preview.flatten_layers();
-        let Some(idx) = layers.iter().position(|l| l.id() == id) else {
-            return false;
-        };
-        let Some(layer) = preview.find(id) else {
-            return false;
-        };
-        if !layer.common.enabled {
-            return false;
-        }
-        // Freshly added only (no cache entry yet).
-        if self.scheduler.evaluator.cache.get(id).is_some() {
-            return false;
-        }
-
-        let Some(input) = (|| {
-            if idx > 0 {
-                let prev = layers[idx - 1].id();
-                if let Some(c) = self.scheduler.evaluator.cache.get(prev) {
-                    if !c.dirty && c.height.metrics.width > 0 {
-                        return Some(c.height.clone());
-                    }
-                }
-            }
-            self.last_height
-                .clone()
-                .or_else(|| self.scheduler.last_good.as_ref().map(|h| (**h).clone()))
-        })() else {
-            return false;
-        };
-
-        let t0 = Instant::now();
-        // Interactive bake: prefer ≤512 so ProceduralShape / stamps stay realtime.
-        let max_side = 512u32.min(
-            self.scheduler
-                .quality
-                .resolution(
-                    self.session.document.preview_resolution.min(INTERACTIVE_PREVIEW_CAP),
-                    self.session.document.export_resolution,
-                )
-                .max(256),
-        );
-        let work = if input.metrics.width > max_side || input.metrics.height > max_side {
-            downsample_height(&input, max_side)
-        } else {
-            input
-        };
-
-        // Fast path for EffectFilter (no full suffix walk / mask refresh).
-        if let LayerKind::EffectFilter(params) = &layer.kind {
-            let mut p = params.clone();
-            p.iterations = p.iterations.max(1).min(4);
-            let generated = generators::effect_filter(&work, &p);
-            let opacity = layer.common.opacity;
-            let blend = layer.common.blend;
-            let mut out = work.clone();
-            let w = work.metrics.width;
-            let h = work.metrics.height;
-            for j in 0..h {
-                for i in 0..w {
-                    let v = blend_heights(
-                        blend,
-                        work.get(i, j),
-                        generated.get(i, j),
-                        opacity,
-                        1.0,
-                    );
-                    out.set(i, j, v);
-                }
-            }
-            out.refresh_halos();
-            return self.finish_immediate_layer_present(id, &layer.common.name, out, t0);
-        }
-
-        let metrics = work.metrics;
-        let masks = self.session.document.masks.clone();
-        let name = layer.common.name.clone();
-        let layer_owned = layer.clone();
-        let mut ctx = terra_core::eval::EvalContext::new(metrics);
-        ctx.quality = PreviewQuality::Draft;
-        ctx.level_steps = self.session.document.level_steps.clone();
-        ctx.mask_assets = masks.clone();
-        ctx.set_aux_hashmap(self.scheduler.last_aux.clone());
-        if let Some(strata) = &self.scheduler.last_strata {
-            ctx.aux_maps.strata = Some(strata.clone());
-        }
-        let owned_zero;
-        let reference: &Heightfield = match self.scheduler.last_good.as_ref() {
-            Some(h) => h.as_ref(),
-            None => {
-                owned_zero = work.clone();
-                &owned_zero
-            }
-        };
-        ctx.masks = bake_mask_assets(
-            &masks,
-            reference,
-            metrics,
-            &self.scheduler.last_aux,
-        );
-
-        // Evaluate only this layer (avoid re-running Materials/Objects / biome suffix).
-        let mut mini = terra_core::layer::LayerStack::new();
-        mini.nodes
-            .push(terra_core::layer::StackNode::Layer(layer_owned));
-        match self
-            .scheduler
-            .evaluator
-            .evaluate_suffix(&mini, &mut ctx, 0, work)
-        {
-            Ok(out) => {
-                ctx.sync_aux_hashmap();
-                self.scheduler.last_aux = ctx.aux;
-                self.scheduler.last_strata = ctx.aux_maps.strata.clone();
-                self.finish_immediate_layer_present(id, &name, out, t0)
-            }
-            Err(_) => false,
-        }
-    }
-
-    fn finish_immediate_layer_present(
-        &mut self,
-        id: LayerId,
-        name: &str,
-        out: Heightfield,
-        t0: Instant,
-    ) -> bool {
-        self.scheduler.evaluator.cache.insert(
-            id,
-            terra_core::eval::CachedOutput {
-                height: out.clone(),
-                generation: self.scheduler.evaluator.cache.generation,
-                dirty: false,
-                aux: self.scheduler.last_aux.clone(),
-                strata: self.scheduler.last_strata.clone(),
-            },
-        );
-        if let (Some(engine), Some(gpu)) =
-            (self.gpu_engine.as_mut(), self.gpu.as_ref())
-        {
-            let (lo, hi) = out.min_max();
-            engine.ingest_height(
-                &gpu.device,
-                &gpu.queue,
-                id,
-                &out,
-                (lo, hi),
-            );
-        }
-
-        self.last_height = Some(out.clone());
-        self.scheduler.last_good = Some(Arc::new(out.clone()));
-        self.preview_dirty = true;
-        self.worker_dirty_from = None;
-        self.worker_mark_all_dirty = false;
-        if let Some(r) = self.renderer.as_mut() {
-            r.upload_heightfield(&out);
-        }
-        self.needs_height_upload = false;
-        self.ui_state.profile.path = "CPU layer";
-        self.ui_state.profile.eval_us = t0.elapsed().as_micros() as u64;
-        self.ui_state.profile.tex_w = out.metrics.width;
-        self.ui_state.profile.tex_h = out.metrics.height;
-        self.ui_state.quality = self.scheduler.quality;
-        self.ui_state.refining = false;
-        self.ui_state.build_progress = None;
-        self.ui_state.status = format!("Applied {name}");
-        true
     }
 
     /// Submit the current Medium/Full snapshot to the CPU worker without blocking the UI.
@@ -1177,5 +989,85 @@ impl TerraApp {
         self.ui_state.preview_rgba = Some((metrics.width, metrics.height, rgba));
         self.preview_dirty = false;
     }
+}
 
+#[cfg(test)]
+mod tests {
+    use std::sync::Arc;
+
+    use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
+    use terra_core::layer::{Layer, LayerKind, LayerStack, StreamPowerParams};
+
+    use super::TerraApp;
+
+    /// Revert check for #33: restoring a fresh-layer CPU shortcut in
+    /// `request_rebuild_immediate` will populate the cache and replace last-good before
+    /// this test reaches the worker assertions.
+    #[test]
+    fn add_layer_keeps_last_good_until_async_cpu_evaluation_publishes() {
+        let mut app = TerraApp::default();
+        app.session.document.stack = LayerStack::new();
+
+        let layer = Layer::new(
+            "Unsupported SPE",
+            LayerKind::StreamPowerErosion(StreamPowerParams::default()),
+        );
+        let layer_id = layer.id();
+        app.session.document.stack.push(layer);
+        app.session.document.selected = Some(layer_id);
+
+        let height = Heightfield::filled(HeightfieldMetrics::new(32, 32, 320.0, 320.0), 7.0);
+        let last_good = Arc::new(height.clone());
+        app.last_height = Some(height);
+        app.scheduler.last_good = Some(Arc::clone(&last_good));
+
+        app.request_rebuild_immediate();
+
+        assert!(
+            app.scheduler.evaluator.cache.get(layer_id).is_none(),
+            "the add-layer event path must not evaluate or cache CPU layer output"
+        );
+        assert!(
+            Arc::ptr_eq(
+                app.scheduler
+                    .last_good
+                    .as_ref()
+                    .expect("seeded last-good must remain available"),
+                &last_good,
+            ),
+            "last-good viewport content must remain authoritative while CPU work is pending"
+        );
+        assert!(
+            app.pending_eval,
+            "the add-layer edit must queue Draft evaluation"
+        );
+        assert!(
+            app.force_draft,
+            "the queued evaluation must start at Draft quality"
+        );
+
+        // This is the same non-blocking step the lifecycle runs after the edit debounce.
+        // With no GPU engine, it must submit the existing worker rather than evaluate here.
+        app.run_eval_step();
+
+        assert!(
+            app.worker_refine_pending,
+            "CPU fallback must be owned by EvalWorker"
+        );
+        assert_eq!(app.ui_state.profile.path, "async CPU");
+        assert!(
+            app.scheduler.evaluator.cache.get(layer_id).is_none(),
+            "submitting the worker must not synchronously mutate the UI-thread cache"
+        );
+        assert!(
+            Arc::ptr_eq(
+                app.scheduler
+                    .last_good
+                    .as_ref()
+                    .expect("last-good must remain while the worker runs"),
+                &last_good,
+            ),
+            "the viewport must retain last-good until the worker result is consumed"
+        );
+    }
 }
