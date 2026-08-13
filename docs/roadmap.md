@@ -4,7 +4,7 @@ Implemented incrementally in this repository. User-facing workflow remains a **l
 
 | Phase | Status | Summary |
 |------:|--------|---------|
-| 1 | Done | Heightfield tiles, layer stack, viewport, egui chrome |
+| 1 | Done | Heightfield tiles, layer stack, viewport, custom `terra-gui` editor chrome |
 | 2 | Done | Noise suite, fBm/ridged/warp, terrain shape generators |
 | 3 | Done | Mask fields, ops, analysis (slope/aspect/curvature/AO/JFA), mask editor |
 | 4 | Done | Dirty cache, incremental eval, progressive `EvalScheduler` |

@@ -1,6 +1,12 @@
-# Real-time Terrain Pipeline — Analysis & Migration
+# Real-time Terrain Pipeline — Historical Migration Snapshot
 
-## Current architecture (interactive path)
+> [!NOTE]
+> This document records the completed GPU/clipmap performance migration and is
+> retained for historical rationale. It is not current architecture guidance.
+> See [architecture.md](architecture.md) for authoritative crate boundaries and
+> frame composition, and [perf.md](perf.md) for current performance guidance.
+
+## Interactive path at the time of migration
 
 ```
 UI edit → mark_dirty_from → debounce → GpuTerrainEngine (WGSL)
@@ -12,7 +18,7 @@ CPU fallback when stack has unsupported layers / masks
 
 ### Responsiveness (event loop)
 
-- `ControlFlow::Wait` / `WaitUntil` — no busy-poll; redraw only on input, eval, or egui repaint
+- `ControlFlow::Wait` / `WaitUntil` — no busy-poll; redraw only on input, evaluation, or UI repaint
 - Eval skipped while orbiting / dragging UI; hybrid CPU + GPU readback only on Full
 - Draft/Medium skip sync mask readback (`Maintain::Wait`); camera not retargeted every present
 
