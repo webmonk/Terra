@@ -464,7 +464,7 @@ fn phasor_noise_raw(x: f32, z: f32, frequency: f32, seed: u64) -> f32 {
     for k in 0..4 {
         let sk = seed.wrapping_add(k as u64 * 9173);
         let theta = noise::sample_noise(
-            crate::layer::FractalNoiseType::OpenSimplex,
+            crate::noise::FractalNoiseType::OpenSimplex,
             x * freq * 0.15 + k as f32 * 3.1,
             z * freq * 0.15 - k as f32 * 1.7,
             sk,
@@ -472,7 +472,7 @@ fn phasor_noise_raw(x: f32, z: f32, frequency: f32, seed: u64) -> f32 {
         let (st, ct) = theta.sin_cos();
         let phase = (x * ct + z * st) * freq * TAU
             + noise::sample_noise(
-                crate::layer::FractalNoiseType::OpenSimplex,
+                crate::noise::FractalNoiseType::OpenSimplex,
                 x * freq * 0.07,
                 z * freq * 0.07,
                 sk ^ 0x51AF,
@@ -480,7 +480,7 @@ fn phasor_noise_raw(x: f32, z: f32, frequency: f32, seed: u64) -> f32 {
         let amp = 0.55
             + 0.45
                 * noise::sample_noise(
-                    crate::layer::FractalNoiseType::Value,
+                    crate::noise::FractalNoiseType::Value,
                     x * freq * 0.2,
                     z * freq * 0.2,
                     sk ^ 0xC0DE,
@@ -559,7 +559,7 @@ pub fn directional_phasor(
         let sk = seed.wrapping_add(k as u64 * 9173);
         let spread = (1.0 - lin) * 0.55;
         let yaw = noise::sample_noise(
-            crate::layer::FractalNoiseType::OpenSimplex,
+            crate::noise::FractalNoiseType::OpenSimplex,
             across * freq * 0.12 + k as f32 * 2.7,
             along * freq * 0.05,
             sk,
@@ -567,7 +567,7 @@ pub fn directional_phasor(
             * spread;
         let (st, ct) = (direction_rad + yaw).sin_cos();
         let warp = noise::sample_noise(
-            crate::layer::FractalNoiseType::OpenSimplex,
+            crate::noise::FractalNoiseType::OpenSimplex,
             x * freq * 0.08,
             z * freq * 0.08,
             sk ^ 0x51AF,
@@ -576,7 +576,7 @@ pub fn directional_phasor(
         let phase = (x * ct + z * st) * freq * TAU + warp;
         let amp = 0.6 + 0.4
             * noise::sample_noise(
-                crate::layer::FractalNoiseType::Value,
+                crate::noise::FractalNoiseType::Value,
                 across * freq * 0.18,
                 along * freq * 0.11,
                 sk ^ 0xC0DE,
@@ -596,14 +596,14 @@ pub fn directional_phasor(
 }
 
 /// Musgrave-style billow: absolute-value FBM centered to [-1, 1].
-pub fn billow_mf(x: f32, z: f32, params: &crate::layer::NoiseParams) -> f32 {
+pub fn billow_mf(x: f32, z: f32, params: &crate::noise::NoiseParams) -> f32 {
     let mut amp = 1.0f32;
     let mut freq = params.frequency;
     let mut sum = 0.0f32;
     let mut norm = 0.0f32;
     for o in 0..params.octaves.max(1) {
         let n = noise::sample_noise(
-            crate::layer::FractalNoiseType::Perlin,
+            crate::noise::FractalNoiseType::Perlin,
             (x + params.offset_x) * freq,
             (z + params.offset_z) * freq,
             params.seed.wrapping_add(o as u64 * 1301),

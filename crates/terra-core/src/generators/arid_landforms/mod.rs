@@ -22,7 +22,8 @@ use crate::geomorph::{
     Precipitation, StreamExtractParams,
 };
 use crate::heightfield::Heightfield;
-use crate::layer::{EffectFilterParams, FractalNoiseType, StreamPowerParams, WorleyMetric};
+use crate::layer::{EffectFilterParams, StreamPowerParams};
+use crate::noise::{FractalNoiseType, WorleyMetric};
 use crate::mask::MaskField;
 use crate::noise;
 
@@ -250,14 +251,14 @@ pub fn enhance_ridges(
     let amt = amount * if wide { 0.65 } else { 1.0 };
     let mut out = hf.clone();
 
-    let np = crate::layer::NoiseParams {
+    let np = crate::noise::NoiseParams {
         seed,
         frequency: freq,
         amplitude: 1.0,
         octaves: if wide { 3 } else { 4 },
         lacunarity: 2.0,
         persistence: 0.5,
-        ..crate::layer::NoiseParams::default()
+        ..crate::noise::NoiseParams::default()
     };
 
     for j in 0..m.height {

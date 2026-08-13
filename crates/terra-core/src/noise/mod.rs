@@ -1,16 +1,16 @@
 //! Deterministic CPU noise primitives.
 
+mod params;
 mod perlin;
 mod simplex;
 mod value;
 mod worley;
 
+pub use params::{FractalNoiseType, NoiseParams, WorleyFeature, WorleyMetric, WorleyParams};
 pub use perlin::perlin2;
 pub use simplex::open_simplex2;
 pub use value::value_noise2;
 pub use worley::{worley2, WorleyResult};
-
-use crate::layer::{FractalNoiseType, NoiseParams, WorleyFeature, WorleyParams};
 
 fn hash_u32(mut x: u32) -> u32 {
     x ^= x >> 16;

@@ -5,7 +5,7 @@
 //! quantisation; it never adds post-terrace vertical noise.
 
 use crate::heightfield::Heightfield;
-use crate::layer::{FractalNoiseType, WorleyMetric};
+use crate::noise::{FractalNoiseType, WorleyMetric};
 use crate::noise::{self, worley2};
 
 use super::super::filter_kernels::{gradient, phasor_noise, slope_deg};

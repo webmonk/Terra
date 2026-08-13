@@ -1,7 +1,7 @@
 //! Flow accumulation / discharge from precipitation fields.
 
 use crate::heightfield::HeightfieldMetrics;
-use crate::layer::{FractalNoiseType, NoiseParams};
+use crate::noise::{FractalNoiseType, NoiseParams};
 use crate::mask::MaskField;
 use crate::noise::fbm;
 

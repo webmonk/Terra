@@ -1,5 +1,5 @@
 use super::hash2;
-use crate::layer::WorleyMetric;
+use super::WorleyMetric;
 
 pub struct WorleyResult {
     pub f1: f32,
