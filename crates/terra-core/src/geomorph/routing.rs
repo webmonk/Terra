@@ -138,6 +138,144 @@ pub fn build_flow_graph(hf: &Heightfield, model: FlowModel) -> FlowGraph {
     }
 }
 
+/// Lean D8 drainage: one receiver per cell as a flat `Vec<usize>`, no per-cell
+/// `Vec`s.
+///
+/// Produces the same routed products the SPE oracle consumes — `d8_dir`, a flat
+/// receiver array, an upstream→downstream topo order, and the direction mask — as
+/// [`build_flow_graph`] with [`FlowModel::D8`], but without the general graph's
+/// `Vec<Vec<FlowReceiver>>` receivers, `Vec<Vec<usize>>` donor lists, or
+/// `Vec`-per-pop topological pass. [`Self::rebuild`] reuses its buffers so a
+/// per-iteration SPE refresh does not reallocate the graph each pass (issue #27).
+///
+/// This is a *consumer* of [`flow_direction_d8`], not a second copy of it: D8 has
+/// exactly one receiver per cell, so the general path's per-pop `nexts.sort` is
+/// vacuous and this flat Kahn walk yields a **bit-identical** topo order and
+/// accumulation. D∞ genuinely needs the multi-receiver [`FlowGraph`]; this is
+/// D8-only by construction.
+#[derive(Debug, Clone)]
+pub struct D8Drainage {
+    pub width: usize,
+    pub height: usize,
+    /// D8 direction index per cell (`NO_FLOW` = sink), from [`flow_direction_d8`].
+    pub d8_dir: Vec<u8>,
+    /// Flat downstream neighbour index (`usize::MAX` = sink / no receiver).
+    pub receiver: Vec<usize>,
+    /// Upstream → downstream order; bit-identical to [`FlowGraph::topo_order`].
+    pub topo_order: Vec<usize>,
+    /// Normalised D8 direction mask (same as [`FlowGraph::direction_mask`]).
+    pub direction_mask: MaskField,
+    /// Donor counts, reused as the mutable `remaining` counter during the walk.
+    indegree: Vec<u32>,
+    /// Kahn frontier, reused across rebuilds.
+    queue: VecDeque<usize>,
+}
+
+impl D8Drainage {
+    /// Build a fresh lean D8 drainage for `hf`.
+    pub fn build(hf: &Heightfield) -> Self {
+        let w = hf.metrics.width as usize;
+        let h = hf.metrics.height as usize;
+        let n = w * h;
+        let mut d = Self {
+            width: w,
+            height: h,
+            d8_dir: Vec::new(),
+            receiver: Vec::with_capacity(n),
+            topo_order: Vec::with_capacity(n),
+            direction_mask: MaskField::zeros(hf.metrics),
+            indegree: Vec::with_capacity(n),
+            queue: VecDeque::new(),
+        };
+        d.rebuild(hf);
+        d
+    }
+
+    /// Recompute in place for `hf`, reusing existing buffers.
+    ///
+    /// `hf` must share the resolution the cache was built at.
+    pub fn rebuild(&mut self, hf: &Heightfield) {
+        let w = hf.metrics.width as usize;
+        let h = hf.metrics.height as usize;
+        let n = w * h;
+        debug_assert_eq!(
+            (w, h),
+            (self.width, self.height),
+            "D8Drainage::rebuild resolution mismatch"
+        );
+        self.width = w;
+        self.height = h;
+
+        // Reuses the single-lineage kernel; freshly allocates dirs + mask.
+        let (dirs, mask) = flow_direction_d8(hf);
+
+        // Flat single receiver + donor count (indegree) in one pass. With one
+        // receiver per cell each donor is pushed once, so this indegree matches
+        // the general `build_donors` length after its (here no-op) dedup.
+        self.receiver.clear();
+        self.receiver.resize(n, usize::MAX);
+        self.indegree.clear();
+        self.indegree.resize(n, 0);
+        for idx in 0..n {
+            let d = dirs[idx];
+            if d == NO_FLOW || d as usize >= D8_OFFSETS.len() {
+                continue;
+            }
+            let (di, dj) = D8_OFFSETS[d as usize];
+            let i = (idx % w) as i32;
+            let j = (idx / w) as i32;
+            let ni = i + di;
+            let nj = j + dj;
+            if ni < 0 || nj < 0 || ni >= w as i32 || nj >= h as i32 {
+                continue;
+            }
+            let nidx = nj as usize * w + ni as usize;
+            self.receiver[idx] = nidx;
+            self.indegree[nidx] += 1;
+        }
+
+        // Kahn walk mirroring `topological_order`: seeds in ascending index
+        // order, and — because each cell frees at most one successor — that
+        // successor is appended directly (the general path's `nexts.sort` over a
+        // ≤1-element list is a no-op), so the emitted order is identical.
+        self.queue.clear();
+        for idx in 0..n {
+            if self.indegree[idx] == 0 {
+                self.queue.push_back(idx);
+            }
+        }
+        self.topo_order.clear();
+        // `indegree` doubles as the mutable `remaining` counter from here on.
+        while let Some(idx) = self.queue.pop_front() {
+            self.topo_order.push(idx);
+            let r = self.receiver[idx];
+            if r != usize::MAX && self.indegree[r] > 0 {
+                self.indegree[r] -= 1;
+                if self.indegree[r] == 0 {
+                    self.queue.push_back(r);
+                }
+            }
+        }
+
+        // Cycles / flats: append any unvisited cells in index order (matches
+        // `topological_order`'s tail).
+        if self.topo_order.len() < n {
+            let mut seen = vec![false; n];
+            for &idx in &self.topo_order {
+                seen[idx] = true;
+            }
+            for idx in 0..n {
+                if !seen[idx] {
+                    self.topo_order.push(idx);
+                }
+            }
+        }
+
+        self.d8_dir = dirs;
+        self.direction_mask = mask;
+    }
+}
+
 /// D8 steepest descent. No downhill neighbour → `NO_FLOW`.
 ///
 /// Ties break toward the lowest direction index for determinism.

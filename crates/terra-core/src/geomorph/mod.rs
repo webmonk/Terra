@@ -14,7 +14,8 @@ mod streams;
 mod watersheds;
 
 pub use accumulation::{
-    accumulate_discharge, accumulate_drainage_area, Precipitation, PrecipitationSource,
+    accumulate_discharge, accumulate_drainage_area, accumulate_drainage_area_d8, Precipitation,
+    PrecipitationSource,
 };
 pub use debug::{bake_debug_field, GeomorphDebugField};
 pub use depression::{
@@ -35,8 +36,8 @@ pub use fixtures::{
     SyntheticKind,
 };
 pub use routing::{
-    build_flow_graph, flow_direction_d8, flow_direction_dinfinity, FlowGraph, FlowModel,
-    FlowReceiver, NO_FLOW, D8_OFFSETS,
+    build_flow_graph, flow_direction_d8, flow_direction_dinfinity, D8Drainage, FlowGraph,
+    FlowModel, FlowReceiver, NO_FLOW, D8_OFFSETS,
 };
 pub use streams::{
     extract_streams, channel_width_estimate, distance_to_channel, strahler_order, StreamNetwork,

@@ -54,12 +54,19 @@ const ALLOWED_INERT: &[(&str, &str)] = &[];
 /// Kernel signatures that converged to a single lineage in B2-D3/D4 (flow
 /// routing on the geomorph `FlowGraph`, the shared stream-power increment).
 /// Each must have exactly one `fn NAME(` across `crates/*/src`.
+///
+/// `accumulate_drainage_area_d8` is the #27 lean flat-D8 accumulator: a second
+/// *consumer* of `flow_direction_d8`, not a re-fork of it. Pinning it single
+/// enforces #27's revert-check — there is exactly one flat D8 accumulation body,
+/// never a copy that could drift from the general path it must stay bit-identical
+/// to.
 const SINGLE_KERNELS: &[&str] = &[
     "flow_direction_d8",
     "flow_direction_dinfinity",
     "build_flow_graph",
     "priority_flood_fill",
     "accumulate_drainage_area",
+    "accumulate_drainage_area_d8",
     "accumulate_discharge",
     "spe_increment",
 ];

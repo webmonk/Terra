@@ -9,7 +9,8 @@ use std::collections::VecDeque;
 
 use crate::fields::erodibility_at_strata_depth;
 use crate::geomorph::{
-    accumulate_drainage_area, build_flow_graph, priority_flood_fill, FlowModel, Precipitation,
+    accumulate_drainage_area, accumulate_drainage_area_d8, build_flow_graph, priority_flood_fill,
+    D8Drainage, FlowModel, Precipitation,
 };
 use crate::heightfield::Heightfield;
 use crate::layer::{RiverCarveParams, Stratum, StreamPowerParams};
@@ -356,6 +357,11 @@ fn stream_power_erode_impl(
     let mut last_acc = vec![1.0f32; w * h];
     let mut last_flow_mask = MaskField::zeros(input.metrics);
     let mut last_dirs = vec![0u8; w * h];
+    // Reused across D8 refreshes so the drainage graph is not reallocated each
+    // SPE iteration (issue #27): flat receiver + topo arrays in place of the
+    // general graph's per-cell `Vec`s. D∞ still needs the multi-receiver
+    // `FlowGraph`, so it stays on `build_flow_graph` below.
+    let mut d8_cache: Option<D8Drainage> = None;
 
     for iter in 0..iters {
         let refresh_drainage = iter == 0 || p.refill_each_iter || iter % drainage_stride == 0;
@@ -367,16 +373,25 @@ fn stream_power_erode_impl(
                 out.clone()
             };
 
-            let model = if p.use_dinfinity {
-                FlowModel::DInfinity
+            let (dirs, acc_vec, flow_mask) = if p.use_dinfinity {
+                let graph = build_flow_graph(&filled, FlowModel::DInfinity);
+                let acc_vec = accumulate_drainage_area(&graph, &Precipitation::uniform(1.0));
+                (graph.d8_dir.clone(), acc_vec, graph.direction_mask.clone())
             } else {
-                FlowModel::D8
+                // Lean flat-D8 path: bit-identical to the general graph (guarded
+                // by `flat_d8_drainage_matches_flow_graph`), reusing buffers.
+                if d8_cache.is_none() {
+                    d8_cache = Some(D8Drainage::build(&filled));
+                } else {
+                    d8_cache.as_mut().unwrap().rebuild(&filled);
+                }
+                let cache = d8_cache.as_ref().unwrap();
+                let acc_vec = accumulate_drainage_area_d8(cache, &Precipitation::uniform(1.0));
+                (cache.d8_dir.clone(), acc_vec, cache.direction_mask.clone())
             };
-            let graph = build_flow_graph(&filled, model);
-            let dirs = graph.d8_dir.clone();
-            let acc_vec = accumulate_drainage_area(&graph, &Precipitation::uniform(1.0));
+
             last_acc = acc_vec.clone();
-            last_flow_mask = graph.direction_mask.clone();
+            last_flow_mask = flow_mask;
             last_dirs = dirs.clone();
             (dirs, acc_vec, filled)
         } else {
