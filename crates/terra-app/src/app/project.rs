@@ -393,9 +393,13 @@ impl TerraApp {
         if let Some(renderer) = self.renderer.as_mut() {
             renderer.reset_project_state(world_size, ocean_level);
         }
-        // Drop progressive tile residency; uploads rebuild for the new document.
-        self.tile_atlas = None;
-        self.pending_tile_uploads.clear();
+        // Preserve the GPU allocation, but make all previous-document pages unreachable.
+        if let (Some(atlas), Some(gpu)) = (self.tile_atlas.as_mut(), self.gpu.as_ref()) {
+            atlas.clear(&gpu.queue);
+            self.ui_state
+                .profile
+                .update_tile_cache(atlas.residency().stats(), 0);
+        }
     }
 
     pub(crate) fn close_project(&mut self) {
@@ -709,5 +713,111 @@ impl TerraApp {
         }
         self.mark_document_dirty();
         self.request_rebuild();
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use terra_core::{FieldId, Heightfield, HeightfieldMetrics, TerrainTileKey};
+    use terra_gpu::GpuTileAtlas;
+    use terra_render::{GpuContext, TerrainRenderer};
+
+    /// Revert check for #34: document reset must retain an empty atlas and the
+    /// existing upload/sync path must make it streamable again.
+    #[test]
+    fn reset_then_upload_preserves_atlas_and_invalidates_old_page() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let context = GpuContext {
+            device: gpu.device.clone(),
+            queue: gpu.queue.clone(),
+            surface_format: wgpu::TextureFormat::Rgba8Unorm,
+        };
+        let mut app = TerraApp::default();
+        app.renderer = Some(TerrainRenderer::new_headless(&context, 64, 64));
+        app.gpu = Some(context);
+        let config = app.terrain_runtime.pyramid.config;
+        app.tile_atlas = Some(
+            GpuTileAtlas::new(&gpu.device, config.tile_size, config.halo, 4).expect("test atlas"),
+        );
+
+        let metrics = HeightfieldMetrics {
+            width: config.tile_size,
+            height: config.tile_size,
+            world_size_x: 1000.0,
+            world_size_z: 1000.0,
+            tile_size: config.tile_size,
+            halo: config.halo,
+        };
+        app.last_height = Some(Heightfield::filled(metrics, 1.0));
+        app.queue_final_tile_uploads();
+        let (_, old_level, old_tile) = *app
+            .pending_tile_uploads
+            .front()
+            .expect("old document upload queued");
+        assert_eq!(app.upload_pending_terrain_tiles(), 1);
+        let old_key = TerrainTileKey {
+            layer: None,
+            field: FieldId::Height,
+            level: old_level,
+            tile: old_tile,
+        };
+        let old_handle = app
+            .tile_atlas
+            .as_mut()
+            .expect("atlas before reset")
+            .lookup(&old_key)
+            .expect("old page resident");
+        assert!(app
+            .renderer
+            .as_ref()
+            .expect("renderer")
+            .tile_stream_enabled());
+        let atlas_config = {
+            let atlas = app.tile_atlas.as_ref().unwrap();
+            (atlas.tile_size(), atlas.halo(), atlas.max_pages())
+        };
+
+        app.reset_runtime_for_document((1000.0, 1000.0), None);
+
+        let atlas = app.tile_atlas.as_ref().expect("reset must retain atlas");
+        assert_eq!(
+            (atlas.tile_size(), atlas.halo(), atlas.max_pages()),
+            atlas_config
+        );
+        assert_eq!(atlas.residency().stats().resident_tiles, 0);
+        assert_eq!(atlas.residency().resolve_handle(old_handle), None);
+        assert!(app.pending_tile_uploads.is_empty());
+        assert!(!app
+            .renderer
+            .as_ref()
+            .expect("renderer")
+            .tile_stream_enabled());
+
+        app.last_height = Some(Heightfield::filled(metrics, 2.0));
+        app.queue_final_tile_uploads();
+        let (_, new_level, new_tile) = *app
+            .pending_tile_uploads
+            .front()
+            .expect("new document upload queued");
+        assert_eq!(app.upload_pending_terrain_tiles(), 1);
+        let new_key = TerrainTileKey {
+            layer: None,
+            field: FieldId::Height,
+            level: new_level,
+            tile: new_tile,
+        };
+        let atlas = app.tile_atlas.as_mut().expect("atlas after upload");
+        let new_handle = atlas.lookup(&new_key).expect("new page resident");
+        assert_eq!(new_handle.slot, old_handle.slot);
+        assert_ne!(new_handle.generation, old_handle.generation);
+        assert_eq!(atlas.residency().resolve_handle(old_handle), None);
+        assert!(app
+            .renderer
+            .as_ref()
+            .expect("renderer")
+            .tile_stream_enabled());
     }
 }

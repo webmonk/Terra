@@ -1584,6 +1584,10 @@ impl TerrainRenderer {
         }
     }
 
+    pub fn tile_stream_enabled(&self) -> bool {
+        self.use_tile_stream
+    }
+
     pub fn set_shadows_enabled(&mut self, enable: bool) {
         self.shadow_map.set_enabled(enable);
         self.notify_invalidation(InvalidationReason::LightingChanged);
@@ -1638,6 +1642,7 @@ impl TerrainRenderer {
 
     /// Clear viewport GPU state that belongs to the previous document.
     pub fn reset_project_state(&mut self, world_size: (f32, f32), ocean_level: Option<f32>) {
+        self.use_tile_stream = false;
         self.heights
             .reset_project_state(&self.device, &self.queue, world_size);
         // Empty vegetation overlay (no density → clear instances).
