@@ -22,6 +22,10 @@ use terra_core::layer::{
 };
 use terra_core::mask::{MaskAsset, MaskSource};
 use terra_core::tiling::{SampleRect, TileScheduler};
+
+/// Small resident texture extent used while no project is active.
+/// `ensure_size` restores the next evaluation's document dimensions.
+const PROJECT_RESET_TEXTURE_EXTENT: u32 = 8;
 #[repr(C)]
 #[derive(Clone, Copy, Pod, Zeroable)]
 struct NoiseU {
@@ -598,7 +602,7 @@ pub struct GpuTerrainEngine {
 
 impl GpuTerrainEngine {
     pub fn new(device: &wgpu::Device, initial: u32) -> Self {
-        let w = initial.max(8);
+        let w = initial.max(PROJECT_RESET_TEXTURE_EXTENT);
         let fill_bgl = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
             label: Some("fill-bgl"),
             entries: &[uniform_entry(0), storage_write_entry(1)],
@@ -1044,7 +1048,8 @@ impl GpuTerrainEngine {
         }
     }
 
-    /// Drop all project-owned GPU caches so a new/opened document starts clean.
+    /// Drop all project-owned GPU caches and replace project-sized working textures
+    /// with the small resident baseline so a new/opened document starts clean.
     pub fn reset_project_state(&mut self, device: &wgpu::Device, queue: &wgpu::Queue) {
         self.layer_cache.clear();
         self.layer_contrib.clear();
@@ -1056,6 +1061,15 @@ impl GpuTerrainEngine {
         self.approx_range = (0.0, 1.0);
         self.current = 0;
         self.uniform_pool.reset();
+        let baseline_metrics = HeightfieldMetrics {
+            width: PROJECT_RESET_TEXTURE_EXTENT,
+            height: PROJECT_RESET_TEXTURE_EXTENT,
+            world_size_x: self.metrics.world_size_x,
+            world_size_z: self.metrics.world_size_z,
+            tile_size: PROJECT_RESET_TEXTURE_EXTENT,
+            halo: 0,
+        };
+        self.ensure_size(device, baseline_metrics);
         let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("gpu-project-reset"),
         });
@@ -1089,8 +1103,8 @@ impl GpuTerrainEngine {
     }
 
     fn ensure_size(&mut self, device: &wgpu::Device, metrics: HeightfieldMetrics) {
-        let w = metrics.width.max(8);
-        let h = metrics.height.max(8);
+        let w = metrics.width.max(PROJECT_RESET_TEXTURE_EXTENT);
+        let h = metrics.height.max(PROJECT_RESET_TEXTURE_EXTENT);
         if self.ping.width == w
             && self.ping.height == h
             && self.metrics.world_size_x == metrics.world_size_x
@@ -3343,5 +3357,90 @@ mod smoke_tests {
             (mid - 50.0).abs() < 0.01,
             "Flat blend must not be clobbered by cache CopyU; got {mid}"
         );
+    }
+
+    fn assert_working_texture_dimensions(engine: &GpuTerrainEngine, width: u32, height: u32) {
+        for texture in [
+            &engine.ping,
+            &engine.pong,
+            &engine.layer_tex,
+            &engine.mask_ones,
+            &engine.hardness,
+            &engine.water_a,
+            &engine.water_b,
+            &engine.delta,
+            &engine.sed_a,
+            &engine.sed_b,
+            &engine.rainfall,
+            &engine.loose_sediment,
+        ] {
+            assert_eq!((texture.width, texture.height), (width, height));
+            assert_eq!(
+                (texture.texture.width(), texture.texture.height()),
+                (width, height)
+            );
+        }
+        assert_eq!(
+            (
+                engine.outflow._texture.width(),
+                engine.outflow._texture.height()
+            ),
+            (width, height)
+        );
+    }
+
+    /// Revert check for #35: reset must release project-sized evaluator textures,
+    /// and the existing evaluation size check must restore the next document size.
+    #[test]
+    fn project_reset_shrinks_working_set_and_evaluate_restores_size() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let mut engine = GpuTerrainEngine::new(&gpu.device, 64);
+        let cached_layer = Layer::new("Cached", LayerKind::Flat(FlatParams { height: 1.0 }));
+        let cached_id = cached_layer.id();
+        engine.layer_cache.insert(
+            cached_id,
+            HeightTex::new(&gpu.device, "reset-test-cache", 64, 64),
+        );
+        engine.layer_contrib.insert(
+            cached_id,
+            HeightTex::new(&gpu.device, "reset-test-contrib", 64, 64),
+        );
+        engine.mark_dirty(cached_id);
+
+        engine.reset_project_state(&gpu.device, &gpu.queue);
+
+        assert_working_texture_dimensions(
+            &engine,
+            PROJECT_RESET_TEXTURE_EXTENT,
+            PROJECT_RESET_TEXTURE_EXTENT,
+        );
+        assert_eq!(
+            (engine.metrics.width, engine.metrics.height),
+            (PROJECT_RESET_TEXTURE_EXTENT, PROJECT_RESET_TEXTURE_EXTENT)
+        );
+        assert!(engine.layer_cache.is_empty());
+        assert!(engine.layer_contrib.is_empty());
+        assert!(engine.dirty.is_empty());
+        assert!(engine.dirty_tiles().is_empty());
+        assert_eq!(engine.current, 0);
+
+        let next_metrics = HeightfieldMetrics::new(32, 48, 320.0, 480.0);
+        let result = engine
+            .evaluate(
+                &gpu.device,
+                &gpu.queue,
+                &LayerStack::new(),
+                &[],
+                next_metrics,
+                PreviewQuality::Draft,
+                false,
+                None,
+            )
+            .expect("empty evaluation after reset");
+
+        assert_eq!((result.width, result.height), (32, 48));
+        assert_working_texture_dimensions(&engine, 32, 48);
     }
 }
