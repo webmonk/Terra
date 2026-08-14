@@ -17,7 +17,8 @@ use crate::mask::{MaskAsset, MaskId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-pub const DOCUMENT_VERSION: u32 = 1;
+/// Highest persisted document version ever emitted. This value is monotonic.
+pub const DOCUMENT_VERSION: u32 = 2;
 
 /// Presentation lighting for the 3D viewport, saved with the project so a custom
 /// look is restored on load. Angles are degrees; strengths are renderer multipliers.
@@ -409,9 +410,9 @@ impl TerrainDocument {
 
     pub fn from_json(s: &str) -> Result<Self, serde_json::Error> {
         let mut doc: Self = serde_json::from_str(s)?;
-        if doc.version != DOCUMENT_VERSION {
+        if doc.version > DOCUMENT_VERSION {
             return Err(serde::de::Error::custom(format!(
-                "unsupported document version {} (expected {})",
+                "unsupported document version {} (latest supported {})",
                 doc.version, DOCUMENT_VERSION
             )));
         }

@@ -1,4 +1,3 @@
-
 use super::*;
 
 #[test]
@@ -166,13 +165,18 @@ fn alpine_demo_roundtrip() {
 }
 
 #[test]
-fn older_version_json_is_rejected() {
+fn future_version_json_is_rejected() {
     let mut doc = TerrainDocument::new_default();
-    doc.version = 3;
+    doc.version = DOCUMENT_VERSION + 1;
     let mut value = serde_json::to_value(&doc).unwrap();
-    value["version"] = serde_json::json!(3);
+    value["version"] = serde_json::json!(DOCUMENT_VERSION + 1);
     let err = TerrainDocument::from_json(&serde_json::to_string(&value).unwrap()).unwrap_err();
-    assert!(err.to_string().contains("unsupported document version"));
+    let message = err.to_string();
+    assert!(message.contains(&format!(
+        "unsupported document version {}",
+        DOCUMENT_VERSION + 1
+    )));
+    assert!(message.contains(&format!("latest supported {DOCUMENT_VERSION}")));
 }
 
 #[test]
