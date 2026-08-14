@@ -26,6 +26,7 @@ use std::sync::OnceLock;
 pub struct TestGpu {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
+    pub adapter_info: wgpu::AdapterInfo,
 }
 
 /// An offscreen colour target: texture, view, and its dimensions.
@@ -75,27 +76,45 @@ impl Pixels {
     }
 }
 
-static GPU: OnceLock<Option<TestGpu>> = OnceLock::new();
+static GPU: OnceLock<Result<TestGpu, String>> = OnceLock::new();
 
 /// Shared headless GPU, or `None` when the machine has no usable adapter.
 ///
 /// Callers should skip rather than fail so the suite stays green without a GPU.
 pub fn headless() -> Option<&'static TestGpu> {
-    GPU.get_or_init(create_gpu).as_ref()
+    GPU.get_or_init(create_gpu).as_ref().ok()
 }
 
-fn create_gpu() -> Option<TestGpu> {
+/// Shared headless GPU for tests that are explicitly required to execute GPU
+/// work. Unlike [`headless`], adapter absence is a test failure.
+pub fn headless_required() -> &'static TestGpu {
+    match GPU.get_or_init(create_gpu) {
+        Ok(gpu) => gpu,
+        Err(reason) => panic!("GPU-required test could not create an adapter: {reason}"),
+    }
+}
+
+fn create_gpu() -> Result<TestGpu, String> {
     let instance = wgpu::Instance::new(&wgpu::InstanceDescriptor {
         backends: preferred_backends(),
         ..Default::default()
     });
+    let force_fallback_adapter = std::env::var("TERRA_TEST_GPU_FORCE_FALLBACK")
+        .is_ok_and(|value| matches!(value.as_str(), "1" | "true" | "yes"));
     let adapter = pollster::block_on(instance.request_adapter(&wgpu::RequestAdapterOptions {
         // Tests are tiny; prefer the low-power adapter and leave the discrete
         // GPU free. `compatible_surface: None` is what makes this headless.
         power_preference: wgpu::PowerPreference::LowPower,
         compatible_surface: None,
-        force_fallback_adapter: false,
-    }))?;
+        force_fallback_adapter,
+    }))
+    .ok_or_else(|| {
+        format!(
+            "no adapter for backends {:?} (force_fallback_adapter={force_fallback_adapter})",
+            preferred_backends()
+        )
+    })?;
+    let adapter_info = adapter.get_info();
     let (device, queue) = pollster::block_on(adapter.request_device(
         &wgpu::DeviceDescriptor {
             label: Some("terra-test-gpu"),
@@ -105,8 +124,12 @@ fn create_gpu() -> Option<TestGpu> {
         },
         None,
     ))
-    .ok()?;
-    Some(TestGpu { device, queue })
+    .map_err(|error| format!("request_device failed for {adapter_info:?}: {error}"))?;
+    Ok(TestGpu {
+        device,
+        queue,
+        adapter_info,
+    })
 }
 
 /// Mirrors the application's backend choice so tests exercise the same path.
@@ -295,7 +318,9 @@ impl TestGpu {
             let _ = tx.send(r);
         });
         self.device.poll(wgpu::Maintain::Wait);
-        rx.recv().expect("map channel").expect("map readback buffer");
+        rx.recv()
+            .expect("map channel")
+            .expect("map readback buffer");
 
         let mapped = slice.get_mapped_range();
         let mut data = Vec::with_capacity((target.width * target.height) as usize);
@@ -334,7 +359,9 @@ mod tests {
     fn empty_pass(gpu: &TestGpu, target: &TestTarget, load: wgpu::LoadOp<wgpu::Color>) {
         let mut encoder = gpu
             .device
-            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: Some("empty") });
+            .create_command_encoder(&wgpu::CommandEncoderDescriptor {
+                label: Some("empty"),
+            });
         {
             let _pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
                 label: Some("empty-pass"),
@@ -368,7 +395,11 @@ mod tests {
         let pixels = gpu.read_rgba8(&target);
         assert_eq!(pixels.width(), 37);
         assert_eq!(pixels.height(), 9);
-        assert_eq!(pixels.get(36, 8), [255, 0, 0, 255], "last texel of last row");
+        assert_eq!(
+            pixels.get(36, 8),
+            [255, 0, 0, 255],
+            "last texel of last row"
+        );
         assert!(pixels.all([255, 0, 0, 255]), "every texel should be red");
     }
 

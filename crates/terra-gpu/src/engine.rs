@@ -10,7 +10,8 @@
 
 use crate::effect_filter::resolve_effect_mode;
 use crate::graph::{
-    compile_gpu_graph, expand_dirty_rect, gpu_blend_mode, layer_gpu_supported, GpuComputeGraph,
+    compile_gpu_graph, expand_dirty_rect, gpu_blend_mode, gpu_plan_for_layer, layer_gpu_supported,
+    GpuComputeGraph, GpuKernel,
 };
 use crate::{readback_f32, GpuError};
 use bytemuck::{Pod, Zeroable};
@@ -2051,7 +2052,9 @@ impl GpuTerrainEngine {
                         label: Some("gpu-stack-sculpt"),
                     });
                 }
-                self.eval_layer(device, queue, &mut encoder, layer, quality)?;
+                let plan = gpu_plan_for_layer(layer, mask_assets)
+                    .expect("supported layer must retain an executable GPU plan");
+                self.eval_layer(device, queue, &mut encoder, layer, plan.kernel, quality)?;
                 if layer_input_independent(&layer.kind) {
                     let needs_new = self
                         .layer_contrib
@@ -2229,10 +2232,11 @@ impl GpuTerrainEngine {
         queue: &wgpu::Queue,
         encoder: &mut wgpu::CommandEncoder,
         layer: &Layer,
+        kernel: GpuKernel,
         quality: PreviewQuality,
     ) -> Result<(), GpuError> {
-        match &layer.kind {
-            LayerKind::SculptBase(p) => {
+        match (kernel, &layer.kind) {
+            (GpuKernel::Sculpt, LayerKind::SculptBase(p)) => {
                 // `layer_tex` was filled by `upload_sculpt_to_layer` just before this call.
                 let (lo, hi) = p.sample_range();
                 self.expand_range(lo, hi);
@@ -2244,7 +2248,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::Flat(p) => {
+            (GpuKernel::Fill, LayerKind::Flat(p)) => {
                 self.fill_slot(device, queue, encoder, TexSlot::Layer, p.height);
                 self.expand_range(p.height, p.height);
                 self.blend_into_current(
@@ -2255,7 +2259,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::Ramp(p) => {
+            (GpuKernel::Ramp, LayerKind::Ramp(p)) => {
                 let u = RampU {
                     width: self.metrics.width,
                     height: self.metrics.height,
@@ -2303,7 +2307,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::NoiseValue(p) => {
+            (GpuKernel::Noise, LayerKind::NoiseValue(p)) => {
                 self.gen_noise(device, queue, encoder, p, 0, false);
                 self.expand_range(0.0, p.amplitude);
                 self.blend_into_current(
@@ -2314,7 +2318,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::NoisePerlin(p) => {
+            (GpuKernel::Noise, LayerKind::NoisePerlin(p)) => {
                 self.gen_noise(device, queue, encoder, p, 1, false);
                 self.expand_range(0.0, p.amplitude);
                 self.blend_into_current(
@@ -2325,7 +2329,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::Fbm(p) => {
+            (GpuKernel::Noise, LayerKind::Fbm(p)) => {
                 let nt = Self::noise_type_u(p.noise).ok_or(GpuError::RequiresCpu)?;
                 self.gen_noise(device, queue, encoder, &p.base, nt, false);
                 self.expand_range(0.0, p.base.amplitude);
@@ -2337,7 +2341,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::Ridged(p) => {
+            (GpuKernel::Noise, LayerKind::Ridged(p)) => {
                 let nt = Self::noise_type_u(p.noise).ok_or(GpuError::RequiresCpu)?;
                 self.gen_noise(device, queue, encoder, &p.base, nt, true);
                 self.expand_range(0.0, p.base.amplitude);
@@ -2350,7 +2354,7 @@ impl GpuTerrainEngine {
                 )?;
             }
             // Dedicated range-mask / dune asymmetry / canyon meander kernels.
-            LayerKind::Mountains(p) => {
+            (GpuKernel::Shape, LayerKind::Mountains(p)) => {
                 let u = ShapeU {
                     width: self.metrics.width,
                     height: self.metrics.height,
@@ -2385,7 +2389,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::Dunes(p) => {
+            (GpuKernel::Shape, LayerKind::Dunes(p)) => {
                 let u = ShapeU {
                     width: self.metrics.width,
                     height: self.metrics.height,
@@ -2420,7 +2424,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::Canyons(p) => {
+            (GpuKernel::Shape, LayerKind::Canyons(p)) => {
                 let u = ShapeU {
                     width: self.metrics.width,
                     height: self.metrics.height,
@@ -2455,7 +2459,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::DomainWarp(p) => {
+            (GpuKernel::Noise, LayerKind::DomainWarp(p)) => {
                 self.gen_noise(device, queue, encoder, &p.base, 1, false);
                 self.expand_range(0.0, p.base.amplitude);
                 self.blend_into_current(
@@ -2466,7 +2470,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::ThermalErosion(p) => {
+            (GpuKernel::Thermal, LayerKind::ThermalErosion(p)) => {
                 let talus = p.talus_angle_deg.to_radians().tan() * self.metrics.dx();
                 let iters = Self::scale_iters(quality, p.iterations).min(match quality {
                     PreviewQuality::Draft => self.max_sim_iters_per_tick.max(1),
@@ -2574,7 +2578,7 @@ impl GpuTerrainEngine {
                     self.swap_current();
                 }
             }
-            LayerKind::HydraulicErosion(p) => {
+            (GpuKernel::Hydraulic, LayerKind::HydraulicErosion(p)) => {
                 let p = apply_transport_model(p, p.transport_model);
                 self.fill_slot(device, queue, encoder, TexSlot::WaterA, 0.0);
                 self.fill_slot(device, queue, encoder, TexSlot::WaterB, 0.0);
@@ -2749,10 +2753,10 @@ impl GpuTerrainEngine {
                     water_flip = !water_flip;
                 }
             }
-            LayerKind::RiverCarve(p) => {
+            (GpuKernel::RiverCarve, LayerKind::RiverCarve(p)) => {
                 self.run_river_carve(device, queue, encoder, p, quality);
             }
-            LayerKind::Blur(p) => {
+            (GpuKernel::Blur, LayerKind::Blur(p)) => {
                 let iters = p.iterations.max(1).min(8);
                 for _ in 0..iters {
                     let u = BlurU {
@@ -2802,12 +2806,12 @@ impl GpuTerrainEngine {
                     self.swap_current();
                 }
             }
-            LayerKind::EffectFilter(p) => {
+            (GpuKernel::EffectFilter, LayerKind::EffectFilter(p)) => {
                 self.run_effect_filter(device, queue, encoder, p, quality);
                 let amp = p.amount.abs().max(1.0);
                 self.expand_range(self.approx_range.0 - amp, self.approx_range.1 + amp);
             }
-            LayerKind::Mesa(p) => {
+            (GpuKernel::Shape, LayerKind::Mesa(p)) => {
                 let u = ShapeU {
                     width: self.metrics.width,
                     height: self.metrics.height,
@@ -2842,7 +2846,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::Volcano(p) => {
+            (GpuKernel::Shape, LayerKind::Volcano(p)) => {
                 let u = ShapeU {
                     width: self.metrics.width,
                     height: self.metrics.height,
@@ -2877,7 +2881,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::Uplift(p) => {
+            (GpuKernel::Shape, LayerKind::Uplift(p)) => {
                 let u = ShapeU {
                     width: self.metrics.width,
                     height: self.metrics.height,
@@ -2912,7 +2916,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::Island(p) => {
+            (GpuKernel::Shape, LayerKind::Island(p)) => {
                 // Preview: volcano-like massif + soft shelf (full island profile remains CPU oracle).
                 let u = ShapeU {
                     width: self.metrics.width,
@@ -2948,7 +2952,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::Plateau(p) => {
+            (GpuKernel::Shape, LayerKind::Plateau(p)) => {
                 // Preview: hard height clamp via mesa-style flat top across the field.
                 let mid = (p.low + p.high) * 0.5;
                 let u = ShapeU {
@@ -2985,11 +2989,7 @@ impl GpuTerrainEngine {
                     layer.common.blend,
                 )?;
             }
-            LayerKind::Coastal(_)
-            | LayerKind::Materials(_)
-            | LayerKind::Biomes(_)
-            | LayerKind::Vegetation(_) => return Err(GpuError::RequiresCpu),
-            LayerKind::Terrace(p) => {
+            (GpuKernel::Terrace, LayerKind::Terrace(p)) => {
                 let u = TerraceU {
                     width: self.metrics.width,
                     height: self.metrics.height,
@@ -3040,8 +3040,10 @@ impl GpuTerrainEngine {
                 }
                 self.swap_current();
             }
-            _ => {
-                return Err(GpuError::Wgpu("unsupported layer".into()));
+            (planned, actual) => {
+                return Err(GpuError::Wgpu(format!(
+                    "GPU support plan {planned:?} does not match layer {actual:?}"
+                )));
             }
         }
         Ok(())
@@ -3352,10 +3354,7 @@ mod smoke_tests {
             "Island",
             LayerKind::Island(IslandParams::default()),
         ));
-        let mut upper = Layer::new(
-            "Land-only add",
-            LayerKind::Flat(FlatParams { height: 5.0 }),
-        );
+        let mut upper = Layer::new("Land-only add", LayerKind::Flat(FlatParams { height: 5.0 }));
         upper.common.blend = BlendMode::Add;
         upper.common.masks.push(MaskRef::new(land_mask.id));
         stack.push(upper);

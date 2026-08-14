@@ -3,7 +3,10 @@
 //! Artist UI remains layer-based; this IR is the internal execution plan for
 //! `GpuTerrainEngine` (deps, dirty policy, fusion hooks).
 
-use terra_core::layer::{BlendMode, FractalNoiseType, Layer, LayerId, LayerKind, LayerStack};
+use terra_core::layer::{
+    BlendMode, EffectFilterKind, IslandArchetype, Layer, LayerId, LayerKind, LayerStack,
+    TransportModel,
+};
 use terra_core::mask::{MaskAsset, MaskCombine, MaskSource};
 use terra_core::tiling::DirtyClass;
 
@@ -15,6 +18,60 @@ pub enum GpuPassKind {
     Simulation,
     MaskBake,
     Blend,
+}
+
+/// Concrete executable pipeline selected by the support planner. The engine
+/// consumes this value, so a configuration cannot be advertised merely because
+/// its broad layer family appears in a second, independent match table.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum GpuKernel {
+    Fill,
+    Ramp,
+    Noise,
+    Shape,
+    Sculpt,
+    Blur,
+    EffectFilter,
+    Terrace,
+    Thermal,
+    Hydraulic,
+    RiverCarve,
+}
+
+impl GpuKernel {
+    pub fn matches_layer_kind(self, kind: &LayerKind) -> bool {
+        matches!(
+            (self, kind),
+            (Self::Fill, LayerKind::Flat(_))
+                | (Self::Ramp, LayerKind::Ramp(_))
+                | (Self::Sculpt, LayerKind::SculptBase(_))
+                | (
+                    Self::Noise,
+                    LayerKind::NoiseValue(_)
+                        | LayerKind::NoisePerlin(_)
+                        | LayerKind::Fbm(_)
+                        | LayerKind::Ridged(_)
+                        | LayerKind::DomainWarp(_)
+                )
+                | (
+                    Self::Shape,
+                    LayerKind::Mountains(_)
+                        | LayerKind::Dunes(_)
+                        | LayerKind::Canyons(_)
+                        | LayerKind::Mesa(_)
+                        | LayerKind::Volcano(_)
+                        | LayerKind::Island(_)
+                        | LayerKind::Plateau(_)
+                        | LayerKind::Uplift(_)
+                )
+                | (Self::Blur, LayerKind::Blur(_))
+                | (Self::EffectFilter, LayerKind::EffectFilter(_))
+                | (Self::Terrace, LayerKind::Terrace(_))
+                | (Self::Thermal, LayerKind::ThermalErosion(_))
+                | (Self::Hydraulic, LayerKind::HydraulicErosion(_))
+                | (Self::RiverCarve, LayerKind::RiverCarve(_))
+        )
+    }
 }
 
 /// Dirty policy for a pass.
@@ -31,6 +88,7 @@ pub enum GpuDirtyPolicy {
 pub struct GpuPass {
     pub layer_id: LayerId,
     pub kind: GpuPassKind,
+    pub kernel: GpuKernel,
     pub dirty_policy: GpuDirtyPolicy,
     /// Flattened index into `stack.flatten_layers()`.
     pub flat_index: usize,
@@ -53,10 +111,11 @@ impl GpuComputeGraph {
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-struct GpuLayerPlan {
-    kind: GpuPassKind,
-    dirty_policy: GpuDirtyPolicy,
-    halo_texels: u32,
+pub(crate) struct GpuLayerPlan {
+    pub(crate) kind: GpuPassKind,
+    pub(crate) kernel: GpuKernel,
+    pub(crate) dirty_policy: GpuDirtyPolicy,
+    pub(crate) halo_texels: u32,
 }
 
 fn gpu_mask_supported(layer: &Layer, assets: &[MaskAsset]) -> bool {
@@ -111,48 +170,125 @@ fn inplace_composite_supported(layer: &Layer) -> bool {
         )
 }
 
-fn gpu_pass_for_layer(layer: &Layer, mask_assets: &[MaskAsset]) -> Option<GpuLayerPlan> {
+fn seed_supported(seed: u64) -> bool {
+    seed <= u64::from(u32::MAX)
+}
+
+fn thermal_config_supported(p: &terra_core::layer::ThermalErosionParams) -> bool {
+    !p.layered_materials
+        && p.weathering_rate == 0.0
+        && matches!(p.hardness_source, MaskSource::None)
+        && p.level_count == 0
+        && p.start_level == 0
+        && p.level_step_strength == 1.0
+        && p.level_step_curve.is_empty()
+}
+
+fn hydraulic_config_supported(p: &terra_core::layer::HydraulicErosionParams) -> bool {
+    !p.layered_materials
+        && p.particle_density == 0.0
+        && matches!(p.transport_model, TransportModel::Hydraulic)
+        && matches!(p.rainfall_source, MaskSource::None)
+        && matches!(p.protection_source, MaskSource::None)
+        && matches!(p.hardness_source, MaskSource::None)
+        && p.fan_boost == 0.0
+        && p.floodplain_bias == 0.0
+        && p.bank_slip == 0.0
+        && p.sediment_softness == 0.0
+        && p.level_count == 0
+        && p.start_level == 0
+        && p.level_step_strength == 1.0
+        && p.level_step_curve.is_empty()
+}
+
+pub(crate) fn gpu_plan_for_layer(layer: &Layer, mask_assets: &[MaskAsset]) -> Option<GpuLayerPlan> {
     use LayerKind::*;
     if !gpu_mask_supported(layer, mask_assets) {
         return None;
     }
-    let (kind, dirty_policy, halo_texels) = match &layer.kind {
-        Flat(_) | Ramp(_) | NoiseValue(_) | NoisePerlin(_) | Mountains(_) | Dunes(_)
-        | Canyons(_) | DomainWarp(_) | SculptBase(_) | Mesa(_) | Volcano(_) | Island(_)
-        | Plateau(_) | Uplift(_)
-            if gpu_blend_mode(layer.common.blend).is_some() =>
+    let (kernel, kind, dirty_policy, halo_texels) = match &layer.kind {
+        Flat(_) if gpu_blend_mode(layer.common.blend).is_some() => (
+            GpuKernel::Fill,
+            GpuPassKind::Generator,
+            GpuDirtyPolicy::Local,
+            0,
+        ),
+        Ramp(_) if gpu_blend_mode(layer.common.blend).is_some() => (
+            GpuKernel::Ramp,
+            GpuPassKind::Generator,
+            GpuDirtyPolicy::Local,
+            0,
+        ),
+        SculptBase(_) if gpu_blend_mode(layer.common.blend).is_some() => (
+            GpuKernel::Sculpt,
+            GpuPassKind::Generator,
+            GpuDirtyPolicy::Local,
+            0,
+        ),
+        NoiseValue(p) if seed_supported(p.seed) && gpu_blend_mode(layer.common.blend).is_some() => {
+            (
+                GpuKernel::Noise,
+                GpuPassKind::Generator,
+                GpuDirtyPolicy::Local,
+                2,
+            )
+        }
+        Island(p)
+            if p.archetype == IslandArchetype::VolcanicHighIsland
+                && seed_supported(p.seed)
+                && gpu_blend_mode(layer.common.blend).is_some() =>
         {
-            (GpuPassKind::Generator, GpuDirtyPolicy::Local, 2)
+            (
+                GpuKernel::Shape,
+                GpuPassKind::Generator,
+                GpuDirtyPolicy::Local,
+                2,
+            )
         }
         Flat(_) | Ramp(_) | NoiseValue(_) | NoisePerlin(_) | Mountains(_) | Dunes(_)
         | Canyons(_) | DomainWarp(_) | SculptBase(_) | Mesa(_) | Volcano(_) | Island(_)
         | Plateau(_) | Uplift(_) => return None,
-        Fbm(p) | Ridged(p)
-            if matches!(p.noise, FractalNoiseType::Value | FractalNoiseType::Perlin)
-                && gpu_blend_mode(layer.common.blend).is_some() =>
-        {
-            (GpuPassKind::Generator, GpuDirtyPolicy::Local, 2)
-        }
         Fbm(_) | Ridged(_) => return None,
         Blur(p) if inplace_composite_supported(layer) => (
+            GpuKernel::Blur,
             GpuPassKind::Filter,
             GpuDirtyPolicy::Local,
             p.radius.max(1).min(16),
         ),
-        EffectFilter(p) if inplace_composite_supported(layer) => (
-            GpuPassKind::Filter,
-            GpuDirtyPolicy::Local,
-            p.radius.max(1).min(16),
-        ),
-        Blur(_) | EffectFilter(_) => return None,
-        Terrace(_) if inplace_composite_supported(layer) => {
-            (GpuPassKind::Filter, GpuDirtyPolicy::Local, 4)
-        }
-        Terrace(_) => return None,
-        ThermalErosion(_) | HydraulicErosion(_) | RiverCarve(_)
-            if inplace_composite_supported(layer) =>
+        EffectFilter(p)
+            if matches!(p.kind, EffectFilterKind::Smooth | EffectFilterKind::Inflate)
+                && inplace_composite_supported(layer) =>
         {
-            (GpuPassKind::Simulation, GpuDirtyPolicy::FullField, 0)
+            (
+                GpuKernel::EffectFilter,
+                GpuPassKind::Filter,
+                GpuDirtyPolicy::Local,
+                p.radius.max(1).min(16),
+            )
+        }
+        Blur(_) | EffectFilter(_) => return None,
+        Terrace(_) if inplace_composite_supported(layer) => (
+            GpuKernel::Terrace,
+            GpuPassKind::Filter,
+            GpuDirtyPolicy::Local,
+            4,
+        ),
+        Terrace(_) => return None,
+        ThermalErosion(p) if thermal_config_supported(p) && inplace_composite_supported(layer) => (
+            GpuKernel::Thermal,
+            GpuPassKind::Simulation,
+            GpuDirtyPolicy::FullField,
+            0,
+        ),
+        HydraulicErosion(p)
+            if hydraulic_config_supported(p) && inplace_composite_supported(layer) =>
+        {
+            (
+                GpuKernel::Hydraulic,
+                GpuPassKind::Simulation,
+                GpuDirtyPolicy::FullField,
+                0,
+            )
         }
         ThermalErosion(_) | HydraulicErosion(_) | RiverCarve(_) => return None,
         // These CPU operations either modify height without a GPU kernel or publish
@@ -162,6 +298,7 @@ fn gpu_pass_for_layer(layer: &Layer, mask_assets: &[MaskAsset]) -> Option<GpuLay
     };
     Some(GpuLayerPlan {
         kind,
+        kernel,
         dirty_policy,
         halo_texels,
     })
@@ -169,7 +306,7 @@ fn gpu_pass_for_layer(layer: &Layer, mask_assets: &[MaskAsset]) -> Option<GpuLay
 
 /// Whether this complete layer configuration can run on the GPU preview path.
 pub fn layer_gpu_supported(layer: &Layer, mask_assets: &[MaskAsset]) -> bool {
-    gpu_pass_for_layer(layer, mask_assets).is_some()
+    gpu_plan_for_layer(layer, mask_assets).is_some()
 }
 
 /// Compile the preview stack into a GPU pass list.
@@ -182,13 +319,14 @@ pub fn compile_gpu_graph(stack: &LayerStack, mask_assets: &[MaskAsset]) -> GpuCo
         if !layer.common.enabled {
             continue;
         }
-        let Some(plan) = gpu_pass_for_layer(layer, mask_assets) else {
+        let Some(plan) = gpu_plan_for_layer(layer, mask_assets) else {
             graph.cpu_from = Some(flat_index);
             break;
         };
         graph.passes.push(GpuPass {
             layer_id: layer.id(),
             kind: plan.kind,
+            kernel: plan.kernel,
             dirty_policy: plan.dirty_policy,
             flat_index,
             halo_texels: plan.halo_texels,
@@ -225,10 +363,10 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use terra_core::layer::{
-        BiomesParams, BlurParams, CoastalParams, EffectFilterKind, EffectFilterParams, FbmParams,
-        FlatParams, HydraulicErosionParams, Layer, LayerKind, LayerStack, LayerTypeRegistry,
-        MaterialsParams, NoiseParams, RiverCarveParams, TerraceParams, ThermalErosionParams,
-        VegetationParams,
+        BiomesParams, BlurParams, CoastalParams, DomainWarpParams, DuneParams, EffectFilterKind,
+        EffectFilterParams, FbmParams, FlatParams, FractalNoiseType, HydraulicErosionParams, Layer,
+        LayerKind, LayerStack, LayerTypeRegistry, MaterialsParams, MountainParams, NoiseParams,
+        PlateauParams, RiverCarveParams, TerraceParams, ThermalErosionParams, VegetationParams,
     };
     use terra_core::mask::{
         bake_distribution, bake_mask_assets, DistributionEntry, MaskId, MaskOp, MaskRef,
@@ -256,25 +394,29 @@ mod tests {
             Layer::new("terrace", LayerKind::Terrace(TerraceParams::default())),
             Layer::new(
                 "thermal",
-                LayerKind::ThermalErosion(ThermalErosionParams::default()),
+                LayerKind::ThermalErosion(ThermalErosionParams {
+                    layered_materials: false,
+                    weathering_rate: 0.0,
+                    ..ThermalErosionParams::default()
+                }),
             ),
             Layer::new(
                 "hydraulic",
-                LayerKind::HydraulicErosion(HydraulicErosionParams::default()),
-            ),
-            Layer::new(
-                "river carve",
-                LayerKind::RiverCarve(RiverCarveParams::default()),
+                LayerKind::HydraulicErosion(HydraulicErosionParams {
+                    layered_materials: false,
+                    particle_density: 0.0,
+                    ..HydraulicErosionParams::default()
+                }),
             ),
         ]
     }
 
     #[test]
-    fn compiles_noise_filter_stack_as_fully_gpu() {
+    fn compiles_generator_filter_stack_as_fully_gpu() {
         let mut stack = LayerStack::new();
         stack.push(Layer::new(
-            "noise",
-            LayerKind::NoisePerlin(NoiseParams::default()),
+            "base",
+            LayerKind::Flat(FlatParams { height: 12.0 }),
         ));
         stack.push(Layer::new(
             "smooth",
@@ -309,10 +451,10 @@ mod tests {
             |params| LayerKind::Fbm(params),
             |params| LayerKind::Ridged(params),
         ] {
-            for (noise, supported) in [
-                (FractalNoiseType::Value, true),
-                (FractalNoiseType::Perlin, true),
-                (FractalNoiseType::OpenSimplex, false),
+            for noise in [
+                FractalNoiseType::Value,
+                FractalNoiseType::Perlin,
+                FractalNoiseType::OpenSimplex,
             ] {
                 let layer = Layer::new(
                     "fractal",
@@ -321,10 +463,10 @@ mod tests {
                         ..FbmParams::default()
                     }),
                 );
-                assert_eq!(layer_gpu_supported(&layer, &[]), supported);
+                assert!(!layer_gpu_supported(&layer, &[]));
                 let graph = single_layer_graph(layer);
-                assert_eq!(graph.fully_gpu(), supported);
-                assert_eq!(graph.cpu_from, (!supported).then_some(0));
+                assert!(!graph.fully_gpu());
+                assert_eq!(graph.cpu_from, Some(0));
             }
         }
     }
@@ -346,7 +488,7 @@ mod tests {
         ];
         for layer in layers {
             assert!(!layer_gpu_supported(&layer, &[]));
-            let graph = single_layer_graph(layer);
+            let graph = single_layer_graph(layer.clone());
             assert_eq!(graph.cpu_from, Some(0));
             assert!(graph.passes.is_empty());
         }
@@ -358,7 +500,7 @@ mod tests {
         for meta in registry.all() {
             let layer = registry.create(meta.type_id).expect("registered factory");
             let supported = layer_gpu_supported(&layer, &[]);
-            let graph = single_layer_graph(layer);
+            let graph = single_layer_graph(layer.clone());
             assert_eq!(
                 graph.fully_gpu(),
                 supported,
@@ -366,6 +508,69 @@ mod tests {
                 meta.type_id
             );
             assert_eq!(graph.cpu_from, (!supported).then_some(0));
+            if supported {
+                assert_eq!(graph.passes.len(), 1, "{}", meta.type_id);
+                assert!(
+                    graph.passes[0].kernel.matches_layer_kind(&layer.kind),
+                    "planner selected {:?} for {}",
+                    graph.passes[0].kernel,
+                    meta.type_id
+                );
+            }
+        }
+    }
+
+    #[test]
+    fn categorical_effect_filter_configs_are_explicitly_supported_or_exempted() {
+        for &kind in EffectFilterKind::ALL {
+            let layer = Layer::new(
+                kind.label(),
+                LayerKind::EffectFilter(EffectFilterParams {
+                    kind,
+                    ..EffectFilterParams::default()
+                }),
+            );
+            let supported = matches!(kind, EffectFilterKind::Smooth | EffectFilterKind::Inflate);
+            let plan = gpu_plan_for_layer(&layer, &[]);
+            assert_eq!(plan.is_some(), supported, "{}", kind.label());
+            if let Some(plan) = plan {
+                assert_eq!(plan.kernel, GpuKernel::EffectFilter, "{}", kind.label());
+                assert!(plan.kernel.matches_layer_kind(&layer.kind));
+            }
+        }
+    }
+
+    #[test]
+    fn ignored_or_truncated_generator_configs_force_cpu_fallback() {
+        let high_seed = NoiseParams {
+            seed: u64::from(u32::MAX) + 1,
+            ..NoiseParams::default()
+        };
+        let cases = [
+            Layer::new("high seed", LayerKind::NoisePerlin(high_seed)),
+            Layer::new(
+                "domain warp",
+                LayerKind::DomainWarp(DomainWarpParams::default()),
+            ),
+            Layer::new("mountains", LayerKind::Mountains(MountainParams::default())),
+            Layer::new("dunes", LayerKind::Dunes(DuneParams::default())),
+            Layer::new("plateau", LayerKind::Plateau(PlateauParams::default())),
+            Layer::new(
+                "D-infinity river",
+                LayerKind::RiverCarve(RiverCarveParams::default()),
+            ),
+            Layer::new(
+                "layered thermal",
+                LayerKind::ThermalErosion(ThermalErosionParams::default()),
+            ),
+            Layer::new(
+                "particle hydraulic",
+                LayerKind::HydraulicErosion(HydraulicErosionParams::default()),
+            ),
+        ];
+        for layer in cases {
+            assert!(!layer_gpu_supported(&layer, &[]), "{}", layer.common.name);
+            assert_eq!(single_layer_graph(layer).cpu_from, Some(0));
         }
     }
 
@@ -374,7 +579,7 @@ mod tests {
         let mut stack = LayerStack::new();
         stack.push(Layer::new(
             "noise",
-            LayerKind::NoisePerlin(NoiseParams::default()),
+            LayerKind::NoiseValue(NoiseParams::default()),
         ));
         stack.push(Layer::new(
             "materials",
