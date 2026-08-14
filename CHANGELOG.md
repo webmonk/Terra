@@ -6,6 +6,7 @@ All notable changes to Terra will be documented in this file.
 
 ### Fixed
 - Incremental dirty-tile synchronization now refreshes neighboring edge and corner ghosts, and seam metrics detect stale halos in both directions at every configured depth.
+- Layered hydraulic, debris-flow, and thermal stacks now preserve distinct canonical debris and fine-sediment inventories across aux and cache handoffs.
 
 ### Added
 - Phase 11 geological integration: shared typed AuxMaps (bedrock / sediment / soil /

@@ -51,7 +51,7 @@ impl ProcessorRegistry {
                         keys::SCULPT_PROTECTION,
                         keys::UPLIFT_RATE,
                         keys::HARDNESS,
-                        keys::SEDIMENT_DEPTH,
+                        keys::SEDIMENT_THICKNESS,
                         keys::EDIT_REGION,
                     ],
                 ))
@@ -170,8 +170,8 @@ impl ProcessorRegistry {
                 let hardness = ctx.aux_maps.hardness.clone();
                 let sediment = ctx
                     .aux_maps
-                    .get(keys::SEDIMENT_DEPTH)
-                    .cloned()
+                    .sediment_thickness
+                    .clone()
                     .or_else(|| ctx.aux_maps.sediment.clone());
                 Ok(publish_authoring(
                     ctx,
@@ -274,13 +274,9 @@ impl ProcessorRegistry {
                 if p.layered_materials {
                     let initial = analyze::MassWastingState::with_optional_layers(
                         input,
-                        ctx.aux.get(keys::BEDROCK_HEIGHT),
-                        ctx.aux
-                            .get(keys::DEBRIS_DEPTH)
-                            .or_else(|| ctx.aux.get(keys::LOOSE_SEDIMENT)),
-                        ctx.aux
-                            .get(keys::LOOSE_SEDIMENT)
-                            .or_else(|| ctx.aux.get(keys::SEDIMENT_DEPTH)),
+                        ctx.aux_maps.bedrock_height.as_ref(),
+                        ctx.aux_maps.get(keys::DEBRIS_DEPTH),
+                        ctx.aux_maps.sediment_thickness.as_ref(),
                         0.0,
                         0.0,
                     );
@@ -290,12 +286,9 @@ impl ProcessorRegistry {
                     ctx.aux_insert(keys::DEPOSITION, result.deposition.clone());
                     ctx.aux_insert(keys::DEBRIS_DEPTH, result.loose_debris.clone());
                     ctx.aux_insert(keys::BEDROCK_HEIGHT, result.bedrock);
-                    ctx.aux_insert(keys::LOOSE_SEDIMENT, result.loose_debris);
+                    ctx.aux_insert(keys::SEDIMENT_THICKNESS, result.sediment);
                     ctx.aux_insert(keys::TALUS_STABILITY, result.talus_stability);
                     ctx.aux_insert(keys::INSTABILITY, result.instability);
-                    if result.sediment.data().iter().any(|v| *v > 1e-6) {
-                        ctx.aux_insert(keys::SEDIMENT_DEPTH, result.sediment);
-                    }
                     ctx.ensure_derived_fields(&result.height);
                     return Ok(result.height);
                 }
@@ -315,13 +308,9 @@ impl ProcessorRegistry {
                 ctx.aux_insert(keys::HARDNESS, hardness.clone());
                 let initial = analyze::MassWastingState::with_optional_layers(
                     input,
-                    ctx.aux.get(keys::BEDROCK_HEIGHT),
-                    ctx.aux
-                        .get(keys::DEBRIS_DEPTH)
-                        .or_else(|| ctx.aux.get(keys::LOOSE_SEDIMENT)),
-                    ctx.aux
-                        .get(keys::SEDIMENT_DEPTH)
-                        .or_else(|| ctx.aux.get(keys::LOOSE_SEDIMENT)),
+                    ctx.aux_maps.bedrock_height.as_ref(),
+                    ctx.aux_maps.get(keys::DEBRIS_DEPTH),
+                    ctx.aux_maps.sediment_thickness.as_ref(),
                     p.initial_debris_thickness,
                     p.initial_sediment_thickness,
                 );
@@ -329,9 +318,8 @@ impl ProcessorRegistry {
                 ctx.aux_insert(keys::EROSION, result.erosion);
                 ctx.aux_insert(keys::DEPOSITION, result.deposition);
                 ctx.aux_insert(keys::BEDROCK_HEIGHT, result.bedrock);
-                ctx.aux_insert(keys::DEBRIS_DEPTH, result.debris.clone());
-                ctx.aux_insert(keys::LOOSE_SEDIMENT, result.debris);
-                ctx.aux_insert(keys::SEDIMENT_DEPTH, result.sediment);
+                ctx.aux_insert(keys::DEBRIS_DEPTH, result.debris);
+                ctx.aux_insert(keys::SEDIMENT_THICKNESS, result.sediment);
                 ctx.aux_insert(keys::SLIDE_PATH, result.slide_path);
                 ctx.aux_insert(keys::INSTABILITY, result.instability);
                 ctx.aux_insert(keys::FLOW_ACCUMULATION, result.flow_accumulation);
@@ -487,7 +475,7 @@ impl ProcessorRegistry {
                             ctx.aux_insert(keys::BEDROCK_HEIGHT, bedrock);
                         }
                         if let Some(loose) = outputs.loose_sediment {
-                            ctx.aux_insert(keys::LOOSE_SEDIMENT, loose);
+                            ctx.aux_insert(keys::SEDIMENT_THICKNESS, loose);
                         }
                     }
                 } else if p.output_water {

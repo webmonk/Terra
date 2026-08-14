@@ -98,6 +98,8 @@ impl MassWastingState {
     }
 
     /// Prefer prior bedrock / debris / sediment aux when present and sized correctly.
+    /// The residual datum is reconstructed from the authoritative input surface so
+    /// supplied material inventories survive unchanged, including below sea level.
     pub fn with_optional_layers(
         input: &Heightfield,
         bedrock: Option<&MaskField>,
@@ -108,31 +110,39 @@ impl MassWastingState {
     ) -> Self {
         let mut state = Self::from_height(input, default_debris, default_sediment);
         let n = state.bedrock.len();
+        let same_metrics = |field: &&MaskField| {
+            field.metrics.width == input.metrics.width
+                && field.metrics.height == input.metrics.height
+                && field.data().len() == n
+        };
+        let bedrock = bedrock.filter(same_metrics);
+        let debris = debris.filter(same_metrics);
+        let sediment = sediment.filter(same_metrics);
+        let has_bedrock = bedrock.is_some();
         if let Some(b) = bedrock {
-            if b.data().len() == n {
-                state.bedrock = b.data().to_vec();
-            }
+            state.bedrock = b.data().to_vec();
         }
         if let Some(d) = debris {
-            if d.data().len() == n {
-                state.debris = d.data().to_vec();
-            }
+            state.debris = d.data().to_vec();
         }
         if let Some(s) = sediment {
-            if s.data().len() == n {
-                state.sediment = s.data().to_vec();
-            }
+            state.sediment = s.data().to_vec();
         }
-        // Re-sync: if only height was authoritative and layers missing, keep from_height.
+        // If only height was authoritative, keep from_height's default-layer policy.
         if bedrock.is_none() && debris.is_none() && sediment.is_none() {
             return Self::from_height(input, default_debris, default_sediment);
         }
-        // Clamp surface to input height by adjusting bedrock when layers were partial.
-        // `base` (from `from_height`) carries any sub-zero floor so bathymetry survives.
+        // Preserve supplied bedrock exactly. If no bedrock inventory was supplied,
+        // derive it from the authoritative surface after applying the soft layers.
+        // Any residual datum needed below sea level lives in `base`.
         let h = input.to_dense();
         for i in 0..n {
-            let soft = state.debris[i] + state.sediment[i];
-            state.bedrock[i] = (h[i] - state.base[i] - soft).max(0.0);
+            if !has_bedrock {
+                state.base[i] = h[i].min(0.0);
+                state.bedrock[i] =
+                    (h[i] - state.base[i] - state.debris[i] - state.sediment[i]).max(0.0);
+            }
+            state.base[i] = h[i] - state.bedrock[i] - state.debris[i] - state.sediment[i];
         }
         state
     }
@@ -1051,6 +1061,39 @@ mod tests {
     const RECEIVER_SEED_SWEEP: u64 = 16_384;
     const RECEIVER_COUNT_TOLERANCE: usize = RECEIVER_SEED_SWEEP.div_ceil(100) as usize;
     const RECEIVER_INDICES: [usize; 4] = [3, 5, 1, 7];
+
+    #[test]
+    fn optional_layers_preserve_inventories_and_reconstruct_the_surface() {
+        let m = HeightfieldMetrics::new(2, 2, 2.0, 2.0);
+        let height = vec![-5.0, 0.0, 10.0, 2.0];
+        let bedrock = vec![0.0, 0.0, 6.0, 1.0];
+        let debris = vec![0.5, 0.25, 1.0, 0.25];
+        let sediment = vec![1.0, 0.5, 3.0, 0.5];
+        let hf = Heightfield::from_dense(m, &height);
+        let bedrock_field = MaskField::from_raw(m, &bedrock);
+        let debris_field = MaskField::from_raw(m, &debris);
+        let sediment_field = MaskField::from_raw(m, &sediment);
+
+        let state = MassWastingState::with_optional_layers(
+            &hf,
+            Some(&bedrock_field),
+            Some(&debris_field),
+            Some(&sediment_field),
+            0.0,
+            0.0,
+        );
+
+        assert_eq!(state.bedrock, bedrock);
+        assert_eq!(state.debris, debris);
+        assert_eq!(state.sediment, sediment);
+        for (actual, expected) in state.sync_surface().into_iter().zip(height) {
+            assert!((actual - expected).abs() < 1e-6, "{actual} != {expected}");
+        }
+        assert!(
+            state.base[0] < -5.0,
+            "sub-zero sediment needs a lower datum"
+        );
+    }
 
     fn receiver_surface(drops: [f32; 4]) -> Vec<f32> {
         let mut surface = vec![10.0; 9];

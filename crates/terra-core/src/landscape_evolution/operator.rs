@@ -55,7 +55,7 @@ impl LandscapeEvolutionOutput {
         fields.insert(keys::WATER_DISCHARGE, self.discharge);
         if let Some(d) = self.deposition {
             fields.insert(keys::DEPOSITION, d.clone());
-            fields.insert(keys::SEDIMENT_DEPTH, d);
+            fields.insert(keys::SEDIMENT_THICKNESS, d);
         }
         (self.elevation, fields)
     }

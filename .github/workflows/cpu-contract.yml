@@ -18,3 +18,4 @@ jobs:
         run: |
           cargo test -p terra-core --lib pick_receiver
           cargo test -p terra-core --test debris_flow_mass
+          cargo test -p terra-core --test erosion_state_handoff

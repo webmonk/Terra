@@ -2023,7 +2023,7 @@ mod tests {
             terra_core::fields::keys::REPAIR_REGION,
             terra_core::fields::keys::DETAIL_MASK,
             terra_core::fields::keys::ROOT_COHESION,
-            terra_core::fields::keys::SEDIMENT_DEPTH,
+            terra_core::fields::keys::SEDIMENT_THICKNESS,
         ] {
             assert!(
                 context.aux_maps.get(key).is_some(),

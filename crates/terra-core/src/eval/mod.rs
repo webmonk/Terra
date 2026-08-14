@@ -111,8 +111,13 @@ impl EvalContext {
     /// Insert an aux map into both typed and string stores.
     pub fn aux_insert(&mut self, key: impl Into<String>, field: MaskField) {
         let key = key.into();
-        self.aux_maps.insert(key.clone(), field.clone());
-        self.aux.insert(key, field);
+        let canonical = crate::fields::keys::canonical(&key).to_string();
+        self.aux_maps.insert(canonical.clone(), field.clone());
+        if canonical == crate::fields::keys::SEDIMENT_THICKNESS {
+            self.aux.remove(crate::fields::keys::SEDIMENT_DEPTH);
+            self.aux.remove(crate::fields::keys::LOOSE_SEDIMENT);
+        }
+        self.aux.insert(canonical, field);
     }
 
     /// Replace string aux and rebuild typed maps (worker / scheduler ingest).
@@ -120,7 +125,7 @@ impl EvalContext {
     pub fn set_aux_hashmap(&mut self, aux: HashMap<String, MaskField>) {
         let keep_strata = self.aux_maps.strata.take();
         self.aux_maps = AuxMaps::from_hashmap_preserving_strata(&aux, keep_strata);
-        self.aux = aux;
+        self.sync_aux_hashmap();
     }
 
     /// Push typed maps into the string HashMap adapter (strata stays on `aux_maps`).
@@ -687,7 +692,7 @@ fn sample_binding_source(ctx: &EvalContext, source: &crate::layer::BindingSource
         BindingSource::LayerOutput(id) | BindingSource::GroupOutput(id) => {
             mean_mask(ctx.published_outputs.get(id))
         }
-        BindingSource::Field(field) => mean_mask(ctx.aux.get(&field.cache_key())),
+        BindingSource::Field(field) => mean_mask(ctx.aux_maps.get(&field.cache_key())),
     }
 }
 
