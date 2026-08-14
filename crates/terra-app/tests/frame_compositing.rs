@@ -99,8 +99,10 @@ fn gui_composites_over_terrain_without_erasing_it() {
     let mut gui_renderer = GuiRenderer::new(&gpu.device, &gpu.queue, FORMAT);
     let mut gui_state = GuiState::default();
     let mut gui = GuiContext::begin(W as f32, H as f32, 1.0, GuiInput::default(), &mut gui_state);
-    gui.draw
-        .panel(Rect::from_min_max(0.0, 0.0, QUAD, QUAD), Color::rgb(1.0, 0.0, 1.0));
+    gui.draw.panel(
+        Rect::from_min_max(0.0, 0.0, QUAD, QUAD),
+        Color::rgb(1.0, 0.0, 1.0),
+    );
     gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
     gui_renderer.render(&gpu.device, &gpu.queue, &target.view, &mut gui, W, H);
     let err = pollster::block_on(gpu.device.pop_error_scope());

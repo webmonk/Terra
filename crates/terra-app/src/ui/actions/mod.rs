@@ -26,7 +26,6 @@ impl TerrainSettingsUpdate {
     }
 }
 
-
 #[derive(Debug, Clone, Copy)]
 pub enum MaskEditAction {
     Clear,

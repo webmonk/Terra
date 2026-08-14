@@ -6,9 +6,9 @@ mod scheduler;
 mod smart_cache;
 mod worker;
 
+pub use crate::quality::PreviewQuality;
 pub use cache::{CachedOutput, LayerCache};
 pub use processors::ProcessorRegistry;
-pub use crate::quality::PreviewQuality;
 pub use scheduler::{EvalJob, EvalScheduler};
 pub use smart_cache::DiskSmartCache;
 pub use worker::{EvalWorkRequest, EvalWorkResult, EvalWorker};
@@ -339,29 +339,25 @@ impl StackEvaluator {
                         let aux_snapshot = ctx.aux_maps.clone();
                         let aux_hash_snapshot = ctx.aux.clone();
                         let descendant_ids = collect_descendant_layer_ids(&group.children);
-                        let (group_out, child_aux) =
-                            if let Some((height, aux)) = self.try_reuse_group_cache(
+                        let (group_out, child_aux) = if let Some((height, aux)) = self
+                            .try_reuse_group_cache(group.id, ctx, &descendant_ids, &private_seed)
+                        {
+                            record_subtree_cache_hits(ctx, &group.children);
+                            (height, aux)
+                        } else {
+                            let group_out =
+                                self.evaluate_nodes(&group.children, ctx, &private_seed)?;
+                            let child_aux = ctx.aux_maps.clone();
+                            self.store_group_cached(
                                 group.id,
-                                ctx,
-                                &descendant_ids,
+                                &group_out,
+                                &child_aux,
                                 &private_seed,
-                            ) {
-                                record_subtree_cache_hits(ctx, &group.children);
-                                (height, aux)
-                            } else {
-                                let group_out =
-                                    self.evaluate_nodes(&group.children, ctx, &private_seed)?;
-                                let child_aux = ctx.aux_maps.clone();
-                                self.store_group_cached(
-                                    group.id,
-                                    &group_out,
-                                    &child_aux,
-                                    &private_seed,
-                                    ctx,
-                                    group.cache_policy.to_legacy_cached(),
-                                );
-                                (group_out, child_aux)
-                            };
+                                ctx,
+                                group.cache_policy.to_legacy_cached(),
+                            );
+                            (group_out, child_aux)
+                        };
                         // Restore parent aux, then selectively merge published child aux
                         // under the group mask after height composite.
                         ctx.aux_maps = aux_snapshot;
@@ -534,10 +530,7 @@ impl StackEvaluator {
         if self.cache.is_dirty(group_id) {
             return None;
         }
-        if descendant_ids
-            .iter()
-            .any(|&id| self.cache.is_dirty(id))
-        {
+        if descendant_ids.iter().any(|&id| self.cache.is_dirty(id)) {
             return None;
         }
         let cached = self.cache.get_or_load(group_id, ctx.metrics)?;

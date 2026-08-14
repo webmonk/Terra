@@ -1,10 +1,10 @@
 //! Floating editor windows (mask / content / export / preview / profiler).
 
 use crate::ui::presets::builtin_presets;
+use crate::ui::style::{self, GAP, PAD};
 use crate::ui::{FrameUiOutput, Preview2dMode, TerrainSettingsUpdate, UiState};
 use terra_core::document::TerrainDocument;
 use terra_core::mask::{MaskAsset, MaskId, MaskOp, MaskSource, PaintBuffer};
-use crate::ui::style::{self, GAP, PAD};
 use terra_gui::{
     button, button_id, checkbox, combo, label, label_dim, section_header, selectable, slider_f32,
     slider_f32_id, slider_i32, GuiContext, Id, Rect,

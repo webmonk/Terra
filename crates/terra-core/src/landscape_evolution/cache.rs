@@ -1,9 +1,9 @@
 //! Drainage topology cache for landscape evolution.
 
-use crate::heightfield::Heightfield;
 use crate::geomorph::{
     accumulate_drainage_area, build_flow_graph, priority_flood_fill, FlowModel, Precipitation,
 };
+use crate::heightfield::Heightfield;
 use crate::mask::MaskField;
 
 /// Cached drainage products shared across Fast / Accurate passes.

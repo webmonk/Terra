@@ -188,7 +188,9 @@ impl AuxMaps {
             keys::DEPOSITION => self.deposition = Some(field),
             keys::HARDNESS => self.hardness = Some(field),
             keys::BEDROCK_HEIGHT => self.bedrock_height = Some(field),
-            keys::SEDIMENT_THICKNESS | keys::LOOSE_SEDIMENT => self.sediment_thickness = Some(field),
+            keys::SEDIMENT_THICKNESS | keys::LOOSE_SEDIMENT => {
+                self.sediment_thickness = Some(field)
+            }
             keys::SOIL_DEPTH => self.soil_depth = Some(field),
             keys::LITHOLOGY => self.lithology = Some(field),
             keys::FLOW_DIRECTION => self.flow_direction = Some(field),

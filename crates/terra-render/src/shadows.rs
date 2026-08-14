@@ -96,7 +96,8 @@ impl ShadowMap {
             mapped_at_creation: false,
         });
 
-        let bind_group = make_shadow_bind_group(device, &bind_group_layout, &uniform_buf, height_view);
+        let bind_group =
+            make_shadow_bind_group(device, &bind_group_layout, &uniform_buf, height_view);
 
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("shadow-depth"),
@@ -159,8 +160,12 @@ impl ShadowMap {
     }
 
     pub fn recreate_bind_group(&mut self, device: &wgpu::Device, height_view: &wgpu::TextureView) {
-        self.bind_group =
-            make_shadow_bind_group(device, &self.bind_group_layout, &self.uniform_buf, height_view);
+        self.bind_group = make_shadow_bind_group(
+            device,
+            &self.bind_group_layout,
+            &self.uniform_buf,
+            height_view,
+        );
     }
 
     /// Fit an orthographic light frustum around the terrain AABB and upload it.
@@ -292,7 +297,10 @@ fn make_shadow_bind_group(
 }
 
 /// Atmosphere helpers derived from sun direction for clear colour / fog.
-pub fn atmosphere_from_sun(light_dir_from_light: [f32; 3], base_clear: [f32; 3]) -> ([f32; 3], [f32; 4]) {
+pub fn atmosphere_from_sun(
+    light_dir_from_light: [f32; 3],
+    base_clear: [f32; 3],
+) -> ([f32; 3], [f32; 4]) {
     let mut dir = Vec3::from_array(light_dir_from_light);
     if dir.length_squared() < 1e-6 {
         dir = Vec3::new(-0.35, -0.9, -0.2);

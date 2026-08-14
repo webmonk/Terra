@@ -14,8 +14,8 @@ pub mod tile_cache;
 pub use derivatives::{cpu_slope_oracle, run_derivative_gpu, GpuDerivativeMode};
 pub use engine::{GpuEvalResult, GpuTerrainEngine};
 pub use graph::{
-    compile_gpu_graph, expand_dirty_rect, layer_gpu_supported, GpuComputeGraph, GpuKernel,
-    GpuPass, GpuPassKind,
+    compile_gpu_graph, expand_dirty_rect, layer_gpu_supported, GpuComputeGraph, GpuKernel, GpuPass,
+    GpuPassKind,
 };
 pub use tile_cache::{GpuPageTableEntry, GpuTileAtlas, GpuTileCacheError, GpuTileUpload};
 

@@ -1,9 +1,12 @@
 //! Contextual viewport toolbar, brush bar, and view gizmo.
 
+use crate::ui::style::{self, FONT_SCALE, GAP, PAD, TYPE_BODY, TYPE_CAPTION, TYPE_LABEL};
 use crate::ui::{EditorTool, LightingPreset, Preview2dMode, UiState};
 use terra_core::document::TerrainDocument;
-use crate::ui::style::{self, FONT_SCALE, GAP, PAD, TYPE_BODY, TYPE_CAPTION, TYPE_LABEL};
-use terra_gui::{checkbox, combo, section_header, slider_f32, slider_i32, Color, DrawList, GuiContext, Icon, Id, Rect};
+use terra_gui::{
+    checkbox, combo, section_header, slider_f32, slider_i32, Color, DrawList, GuiContext, Icon, Id,
+    Rect,
+};
 use terra_render::{QualityPreset, ViewportRendererMode};
 
 /// Bottom viewport tool-mode buttons (legacy authoring modes; kept for tools rail).
@@ -41,7 +44,9 @@ impl ViewportToolMode {
         match self {
             Self::Move => tool.is_move(),
             Self::Measure => matches!(tool, EditorTool::Measure),
-            Self::Sculpt => tool.is_sculpt() || matches!(tool, EditorTool::PaintMask | EditorTool::PaintBiome),
+            Self::Sculpt => {
+                tool.is_sculpt() || matches!(tool, EditorTool::PaintMask | EditorTool::PaintBiome)
+            }
             Self::Mask => matches!(tool, EditorTool::PaintMask),
             Self::Biome => matches!(tool, EditorTool::PaintBiome),
         }
@@ -344,7 +349,11 @@ fn estimate_viewport_mode_bar_width(state: &UiState, vp: Rect) -> f32 {
     let lighting_w = (18.0
         + 4.0
         + DrawList::text_width(
-            if state.lighting_customized { "" } else { state.lighting_preset.label() },
+            if state.lighting_customized {
+                ""
+            } else {
+                state.lighting_preset.label()
+            },
             font_scale,
         )
         + 14.0
@@ -352,15 +361,8 @@ fn estimate_viewport_mode_bar_width(state: &UiState, vp: Rect) -> f32 {
         .max(72.0)
         .min(148.0);
     let render_w = (DrawList::text_width("Render", font_scale) + label_pad_x * 2.0).max(64.0);
-    let content_w = modes_w
-        + sep_gap
-        + 1.0
-        + sep_gap
-        + lighting_w
-        + sep_gap
-        + 1.0
-        + sep_gap
-        + render_w;
+    let content_w =
+        modes_w + sep_gap + 1.0 + sep_gap + lighting_w + sep_gap + 1.0 + sep_gap + render_w;
     (content_w + pad_x * 2.0).min(vp.width() - PAD * 2.0)
 }
 
@@ -416,13 +418,10 @@ fn draw_viewport_mode_bar(
     } else {
         state.lighting_preset.label()
     };
-    let lighting_w = (18.0
-        + 4.0
-        + DrawList::text_width(preset_label, font_scale)
-        + 14.0
-        + label_pad_x)
-        .max(72.0)
-        .min(148.0);
+    let lighting_w =
+        (18.0 + 4.0 + DrawList::text_width(preset_label, font_scale) + 14.0 + label_pad_x)
+            .max(72.0)
+            .min(148.0);
 
     let widths: Vec<f32> = items
         .iter()
@@ -447,10 +446,10 @@ fn draw_viewport_mode_bar(
         }
         let rect = Rect::from_pos_size(x, btn_y, width, btn_h);
         let active = match item {
-            ModeItem::Terrain => {
-                state.preview_mode == Preview2dMode::Lit && !state.is_mask_view()
+            ModeItem::Terrain => state.preview_mode == Preview2dMode::Lit && !state.is_mask_view(),
+            ModeItem::Height => {
+                state.preview_mode == Preview2dMode::Height && !state.is_mask_view()
             }
-            ModeItem::Height => state.preview_mode == Preview2dMode::Height && !state.is_mask_view(),
             ModeItem::Slope => state.preview_mode == Preview2dMode::Slope && !state.is_mask_view(),
             ModeItem::Flow => state.preview_mode == Preview2dMode::Flow && !state.is_mask_view(),
             ModeItem::Mask => state.is_mask_view(),
@@ -774,8 +773,12 @@ fn mode_button(
     };
     if dropdown {
         let chevron_slot = 16.0;
-        let label_rect =
-            Rect::from_min_max(rect.min_x, rect.min_y, rect.max_x - chevron_slot, rect.max_y);
+        let label_rect = Rect::from_min_max(
+            rect.min_x,
+            rect.min_y,
+            rect.max_x - chevron_slot,
+            rect.max_y,
+        );
         ui.label_centered_in_rect(label_rect, label, fg, font_scale);
         ui.icon_centered(
             Rect::from_pos_size(
@@ -793,7 +796,6 @@ fn mode_button(
     }
     clicked
 }
-
 
 fn draw_dirty_tiles_overlay(
     ui: &mut GuiContext<'_>,
@@ -885,7 +887,10 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
         &mut scroll,
     ) {
         let vr = &mut state.viewport_render;
-        let mode_labels: Vec<&str> = ViewportRendererMode::ALL.iter().map(|m| m.label()).collect();
+        let mode_labels: Vec<&str> = ViewportRendererMode::ALL
+            .iter()
+            .map(|m| m.label())
+            .collect();
         let mut mode_idx = ViewportRendererMode::ALL
             .iter()
             .position(|m| *m == vr.mode)
@@ -955,8 +960,20 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
             if slider_i32(ui, "Max bounces", &mut bounces, 1, 8) {
                 vr.max_bounces_refining = bounces as u32;
             }
-            slider_f32(ui, "Min internal scale", &mut vr.min_internal_scale, 0.25, 1.0);
-            slider_f32(ui, "Max internal scale", &mut vr.max_internal_scale, 0.25, 1.0);
+            slider_f32(
+                ui,
+                "Min internal scale",
+                &mut vr.min_internal_scale,
+                0.25,
+                1.0,
+            );
+            slider_f32(
+                ui,
+                "Max internal scale",
+                &mut vr.max_internal_scale,
+                0.25,
+                1.0,
+            );
             slider_f32(ui, "History clamp", &mut vr.history_clamp_k, 0.5, 3.0);
             slider_f32(ui, "Converge fraction", &mut vr.converge_fraction, 0.5, 1.0);
             let mut settling_spp = vr.settling_spp as i32;
@@ -964,13 +981,7 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
                 vr.settling_spp = settling_spp as u32;
             }
             section_header(ui, "Developer");
-            let debug_labels = [
-                "Final",
-                "Noisy",
-                "Variance",
-                "Samples",
-                "History",
-            ];
+            let debug_labels = ["Final", "Noisy", "Variance", "Samples", "History"];
             let mut debug_idx = vr.debug_viz_mode.min(4) as usize;
             if combo(ui, "Debug viz", &mut debug_idx, &debug_labels) {
                 vr.debug_viz_mode = debug_idx as u32;
@@ -1011,7 +1022,11 @@ fn button_toggle_advanced(ui: &mut GuiContext<'_>, open: &mut bool) -> bool {
     ui.label_at(
         row.min_x + 8.0,
         row.min_y + 4.0,
-        if *open { "Advanced ▲" } else { "Advanced ▼" },
+        if *open {
+            "Advanced ▲"
+        } else {
+            "Advanced ▼"
+        },
         style::TEXT_DIM,
         FONT_SCALE * TYPE_LABEL,
     );

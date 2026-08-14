@@ -1,7 +1,7 @@
+use crate::ui::PanelAction;
 use terra_core::mask::bake_mask_assets;
 use terra_gui::GuiContext;
 use terra_render::{pick_terrain_uv_on_surface, BrushGizmo};
-use crate::ui::PanelAction;
 
 use super::{AppScreen, TerraApp};
 impl TerraApp {
@@ -68,7 +68,7 @@ impl TerraApp {
         if self.ui_state.editor_tool == crate::ui::EditorTool::PaintBiome {
             return self.session.document.active_biome.is_some();
         }
-self.ui_state.editor_tool == crate::ui::EditorTool::PaintMask
+        self.ui_state.editor_tool == crate::ui::EditorTool::PaintMask
             && self.ui_state.paint_mask.is_some()
     }
 
@@ -401,7 +401,7 @@ self.ui_state.editor_tool == crate::ui::EditorTool::PaintMask
             return;
         }
 
-let Some(mask_id) = self.ui_state.paint_mask else {
+        let Some(mask_id) = self.ui_state.paint_mask else {
             return;
         };
         let radius = self.ui_state.sculpt_radius.max(0.02);
@@ -623,7 +623,8 @@ let Some(mask_id) = self.ui_state.paint_mask else {
             return false;
         }
         // Paint tool, or Mask view (coloured overlay + colour UI stay in sync).
-        self.ui_state.editor_tool == crate::ui::EditorTool::PaintMask || self.ui_state.is_mask_view()
+        self.ui_state.editor_tool == crate::ui::EditorTool::PaintMask
+            || self.ui_state.is_mask_view()
     }
 
     /// Upload the active painted mask as a coloured translucent overlay on the terrain.
@@ -684,5 +685,4 @@ let Some(mask_id) = self.ui_state.paint_mask else {
         r.set_biome_tint_strength(0.0);
         self.mask_overlay_dirty = false;
     }
-
 }

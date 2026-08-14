@@ -99,8 +99,7 @@ impl ProcessorRegistry {
                     crate::eval::PreviewQuality::Draft => {
                         authored.iterations = authored.iterations.min(6);
                         authored.fixed_point_iters = authored.fixed_point_iters.min(3);
-                        authored.solver =
-                            crate::landscape_evolution::EvolutionSolverMode::Fast;
+                        authored.solver = crate::landscape_evolution::EvolutionSolverMode::Fast;
                     }
                     crate::eval::PreviewQuality::Medium => {
                         authored.iterations = authored.iterations.min(16);
@@ -259,9 +258,8 @@ impl ProcessorRegistry {
                     let (hf, erosion, deposit) = analyze::thermal_erode_with_strata_ex(
                         input, p, &reference, &strata, default_k, &geom,
                     );
-                    let hardness = bake_hardness_from_strata_ex(
-                        &reference, &hf, &strata, default_k, &geom,
-                    );
+                    let hardness =
+                        bake_hardness_from_strata_ex(&reference, &hf, &strata, default_k, &geom);
                     ctx.aux_insert(keys::HARDNESS, hardness);
                     let mats = surface::material_weights_at_depth(&reference, &hf, &strata);
                     ctx.aux_insert(keys::MATERIALS, mats);
@@ -367,11 +365,19 @@ impl ProcessorRegistry {
                     // Use the currently exposed stratum as the droplet resistance,
                     // then rebake after fine erosion reveals any deeper material.
                     let particle_hardness = bake_hardness_from_strata_ex(
-                        &reference, &result.height, &strata, default_k, &geom,
+                        &reference,
+                        &result.height,
+                        &strata,
+                        default_k,
+                        &geom,
                     );
                     result = analyze::apply_particle_erosion(result, &p, &particle_hardness);
                     let mut hardness = bake_hardness_from_strata_ex(
-                        &reference, &result.height, &strata, default_k, &geom,
+                        &reference,
+                        &result.height,
+                        &strata,
+                        default_k,
+                        &geom,
                     );
                     if p.sediment_softness > 0.0 {
                         hardness = analyze::apply_sediment_softness(
@@ -546,7 +552,11 @@ impl ProcessorRegistry {
                         input, &p, &reference, &strata, default_k,
                     );
                     let hardness = bake_hardness_from_strata_ex(
-                        &reference, &result.height, &strata, default_k, &geom,
+                        &reference,
+                        &result.height,
+                        &strata,
+                        default_k,
+                        &geom,
                     );
                     ctx.aux_insert(keys::HARDNESS, hardness);
                     let mats =

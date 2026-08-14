@@ -16,7 +16,5 @@ pub use operator::{
     evaluate_landscape_evolution, LandscapeEvolutionInput, LandscapeEvolutionOperator,
     LandscapeEvolutionOutput,
 };
-pub use params::{
-    BoundaryMode, EvolutionSolverMode, LandscapeEvolutionParams, UpliftMode,
-};
+pub use params::{BoundaryMode, EvolutionSolverMode, LandscapeEvolutionParams, UpliftMode};
 pub use uplift::{asymmetric_belt, synthesise_uplift};

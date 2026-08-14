@@ -51,9 +51,7 @@ pub mod staging;
 pub mod terrain_mesh;
 pub mod vegetation;
 
-pub use adaptive_sampling::{
-    AdaptiveSamplingState, TileState, VarianceTileSummary, TILE_SIZE,
-};
+pub use adaptive_sampling::{AdaptiveSamplingState, TileState, VarianceTileSummary, TILE_SIZE};
 pub use backends::{
     GBufferViews, HdrFrame, PresentationBackendId, ProgressivePostPipeline, ProgressivePtOutput,
 };
@@ -73,11 +71,10 @@ pub use path_tracer::{PathTraceUniforms, PathTracer};
 pub use render_quality::{
     QualityPreset, RenderQualityConfig, ViewportQualityManager, ViewportRendererMode,
 };
-pub use terra_core::EditorRefinementState;
 pub use scene_versions::{
-    CameraChangeThresholds, CameraSnapshot, InvalidationReason, SceneVersionRegistry,
-    SceneVersions,
+    CameraChangeThresholds, CameraSnapshot, InvalidationReason, SceneVersionRegistry, SceneVersions,
 };
+pub use terra_core::EditorRefinementState;
 pub use vegetation::VegetationOverlay;
 
 use bytemuck::{Pod, Zeroable};
@@ -423,9 +420,7 @@ pub async fn init_gpu(
     limits.max_compute_workgroups_per_dimension = adapter_limits
         .max_compute_workgroups_per_dimension
         .max(limits.max_compute_workgroups_per_dimension);
-    limits.max_buffer_size = adapter_limits
-        .max_buffer_size
-        .max(limits.max_buffer_size);
+    limits.max_buffer_size = adapter_limits.max_buffer_size.max(limits.max_buffer_size);
     limits.max_texture_dimension_2d = adapter_limits
         .max_texture_dimension_2d
         .max(limits.max_texture_dimension_2d);
@@ -1146,11 +1141,9 @@ impl TerrainRenderer {
             self.config.height,
             self.quality.internal_scale,
         );
-        self.adaptive
-            .resize(self.config.width, self.config.height);
+        self.adaptive.resize(self.config.width, self.config.height);
         let mask = self.adaptive.prepare_all_active_mask();
-        self.path_tracer
-            .upload_sample_mask(&self.queue, &mask);
+        self.path_tracer.upload_sample_mask(&self.queue, &mask);
         self.notify_invalidation(InvalidationReason::ViewportResized);
     }
 
@@ -1225,8 +1218,7 @@ impl TerrainRenderer {
             self.path_tracer.invalidate(&self.queue);
             self.adaptive.reactivate_all();
             let mask = self.adaptive.prepare_all_active_mask();
-            self.path_tracer
-                .upload_sample_mask(&self.queue, &mask);
+            self.path_tracer.upload_sample_mask(&self.queue, &mask);
         }
     }
 
@@ -1402,14 +1394,30 @@ impl TerrainRenderer {
     ) {
         if region.is_some() {
             self.present_gpu_height_region(
-                src, width, height, world_size, height_range, dx, dz, region,
+                src,
+                width,
+                height,
+                world_size,
+                height_range,
+                dx,
+                dz,
+                region,
             );
             return;
         }
         profiling::scope!("present_gpu_height_shared");
         let t0 = std::time::Instant::now();
-        self.heights
-            .present_shared_height(&self.device, &self.queue, src_view, width, height, world_size, height_range, dx, dz);
+        self.heights.present_shared_height(
+            &self.device,
+            &self.queue,
+            src_view,
+            width,
+            height,
+            world_size,
+            height_range,
+            dx,
+            dz,
+        );
         self.finish_height_present(t0);
     }
 
@@ -1419,7 +1427,12 @@ impl TerrainRenderer {
         // Match mesh density to the height texture as closely as device buffer
         // limits allow (256 MiB default). Height/normal textures still carry Full
         // 1 m detail; mesh is capped so create_buffer does not exceed max_buffer_size.
-        let tex = self.heights.tex_size.0.max(self.heights.tex_size.1).max(256);
+        let tex = self
+            .heights
+            .tex_size
+            .0
+            .max(self.heights.tex_size.1)
+            .max(256);
         let max_grid = TerrainGrid::max_resolution_for_device_limits();
         let target_grid = WorldGridConfig::for_world(tex.min(max_grid).max(513)).grid_size;
         let next = ClipmapConfig::for_world_with_height(extent, target_grid, tex);
@@ -1656,7 +1669,8 @@ impl TerrainRenderer {
                 halo: 0,
             },
         );
-        self.vegetation.sync(&self.device, &blank, None, 1.0, 1.0, 0.0);
+        self.vegetation
+            .sync(&self.device, &blank, None, 1.0, 1.0, 0.0);
         self.overhang.clear();
         self.ocean_level = ocean_level.filter(|v| v.is_finite());
         self.notify_invalidation(InvalidationReason::TerrainChanged);
@@ -1665,7 +1679,11 @@ impl TerrainRenderer {
         let next = ClipmapConfig::for_world_with_height(
             extent,
             self.clipmap.fallback.grid_size,
-            self.heights.tex_size.0.max(self.heights.tex_size.1).max(513),
+            self.heights
+                .tex_size
+                .0
+                .max(self.heights.tex_size.1)
+                .max(513),
         );
         self.clipmap = next;
         self.world_grid = self.clipmap.fallback.clone();
@@ -1792,24 +1810,17 @@ impl TerrainRenderer {
             self.notify_invalidation(reason);
         }
 
-        self.quality
-            .update_for_state(self.last_interaction_state);
+        self.quality.update_for_state(self.last_interaction_state);
         self.progressive
             .set_max_samples(self.quality.config.max_accumulated_spp);
         self.progressive.set_history_cap(self.quality.history_cap);
 
         let internal_scale = self.quality.internal_scale;
         if (self.last_internal_scale - internal_scale).abs() > 1e-4 {
-            self.path_tracer.resize(
-                &self.device,
-                &self.queue,
-                width,
-                height,
-                internal_scale,
-            );
-            let mask = self.adaptive.prepare_all_active_mask();
             self.path_tracer
-                .upload_sample_mask(&self.queue, &mask);
+                .resize(&self.device, &self.queue, width, height, internal_scale);
+            let mask = self.adaptive.prepare_all_active_mask();
+            self.path_tracer.upload_sample_mask(&self.queue, &mask);
             self.notify_invalidation(InvalidationReason::ViewportResized);
             self.last_internal_scale = internal_scale;
         }
@@ -1946,7 +1957,10 @@ impl TerrainRenderer {
         };
         let world_x = self.heights.world_size.0;
         let world_z = self.heights.world_size.1;
-        let fallback_spacing = self.clipmap.fallback.spacing_for_extent(world_x.max(world_z));
+        let fallback_spacing = self
+            .clipmap
+            .fallback
+            .spacing_for_extent(world_x.max(world_z));
 
         if let Some(timer) = self.gpu_timer.as_mut() {
             timer.poll_readback(&self.device);
@@ -2009,8 +2023,7 @@ impl TerrainRenderer {
                 if self.frame_graph.schedule.pt_dispatch {
                     self.frame_graph.mark(PassKind::ProgressivePt);
                     let mask = self.adaptive.prepare_all_active_mask();
-                    self.path_tracer
-                        .upload_sample_mask(&self.queue, &mask);
+                    self.path_tracer.upload_sample_mask(&self.queue, &mask);
 
                     let view_mat = glam::Mat4::look_at_rh(eye, self.camera.target, glam::Vec3::Y);
                     let view_inv = view_mat.inverse();
@@ -2087,8 +2100,11 @@ impl TerrainRenderer {
                             self.grid.resolution as f32,
                         ];
                         uniforms.viz[3] = present.fallback_exclude_half_extent;
-                        self.queue
-                            .write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
+                        self.queue.write_buffer(
+                            &self.uniform_buf,
+                            0,
+                            bytemuck::bytes_of(&uniforms),
+                        );
                     }
                     for draw in &present.rings {
                         let Some(ring_u) = self.ring_uniform_bufs.get(draw.ring_index) else {
@@ -2145,7 +2161,10 @@ impl TerrainRenderer {
                     if present.use_single_grid {
                         pass.set_bind_group(0, &self.bind_group, &[]);
                         pass.set_vertex_buffer(0, self.grid.vertex_buf.slice(..));
-                        pass.set_index_buffer(self.grid.index_buf.slice(..), wgpu::IndexFormat::Uint32);
+                        pass.set_index_buffer(
+                            self.grid.index_buf.slice(..),
+                            wgpu::IndexFormat::Uint32,
+                        );
                         pass.draw_indexed(0..self.grid.index_count, 0, 0..1);
                     } else {
                         if present.draw_fallback {
@@ -2180,15 +2199,14 @@ impl TerrainRenderer {
                     // Hole-free uniforms for ocean / overlays (shared main buffer).
                     {
                         let mut uniforms = base_uniforms;
-                        uniforms.clipmap = [
-                            0.0,
-                            0.0,
-                            fallback_spacing,
-                            self.grid.resolution as f32,
-                        ];
+                        uniforms.clipmap =
+                            [0.0, 0.0, fallback_spacing, self.grid.resolution as f32];
                         uniforms.viz[3] = 0.0;
-                        self.queue
-                            .write_buffer(&self.uniform_buf, 0, bytemuck::bytes_of(&uniforms));
+                        self.queue.write_buffer(
+                            &self.uniform_buf,
+                            0,
+                            bytemuck::bytes_of(&uniforms),
+                        );
                     }
                     {
                         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
@@ -2306,7 +2324,10 @@ impl TerrainRenderer {
         self.queue.submit(Some(encoder.finish()));
 
         let pixels = width as u64 * height as u64;
-        let spp = self.quality.spp_this_frame.max(if path_trace_mode { 1 } else { 0 });
+        let spp = self
+            .quality
+            .spp_this_frame
+            .max(if path_trace_mode { 1 } else { 0 });
         let bounces = self.quality.bounce_count.max(1);
         self.quality.approx_rays_this_frame = pixels * u64::from(spp) * u64::from(bounces);
         let (active, reduced, converged) = self.adaptive.count_by_state();

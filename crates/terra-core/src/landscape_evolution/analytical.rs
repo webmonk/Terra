@@ -172,9 +172,16 @@ fn analytical_on_tree(
         let area = (cache.accumulation[idx] * cell_area * area_scale).max(cell_area);
         let mut ai = k * area.powf(m_exp) * soft;
         // Slope correction: a ← a * δx / |z - zr| * ||∇z||  (stabilises axis bias)
-        if let Some(r) = cache.receiver.get(idx).copied().filter(|&r| r != usize::MAX) {
+        if let Some(r) = cache
+            .receiver
+            .get(idx)
+            .copied()
+            .filter(|&r| r != usize::MAX)
+        {
             let (ri, rj) = (r % w, r / w);
-            let dz_rec = (z.get(i as u32, j as u32) - z.get(ri as u32, rj as u32)).abs().max(1e-4);
+            let dz_rec = (z.get(i as u32, j as u32) - z.get(ri as u32, rj as u32))
+                .abs()
+                .max(1e-4);
             let grad = local_grad_mag(z, i, j).max(1e-4);
             let corr = (cell_len * grad / dz_rec).clamp(0.25, 4.0);
             ai *= corr;
@@ -295,8 +302,8 @@ fn characteristic_elevation(
         if t_up > target_travel && t_dn <= target_travel && (t_up - t_dn) > 1e-9 {
             let f = ((target_travel - t_dn) / (t_up - t_dn)).clamp(0.0, 1.0);
             let (ui, uj) = (upstream % w, upstream / w);
-            let z_blend = z0.get(li as u32, lj as u32) * (1.0 - f)
-                + z0.get(ui as u32, uj as u32) * f;
+            let z_blend =
+                z0.get(li as u32, lj as u32) * (1.0 - f) + z0.get(ui as u32, uj as u32) * f;
             let s_edge = cell_len * uplift.get(ui as u32, uj as u32) / a[upstream].max(1e-12);
             let s_blend = (s_uplift[idx] - s_uplift[upstream]) + s_edge * (1.0 - f);
             return (z_blend, s_blend.max(0.0));

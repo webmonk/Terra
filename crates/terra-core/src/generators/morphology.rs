@@ -6,8 +6,8 @@
 use crate::analyze::{AeolianState, AeolianTransportParams};
 use crate::heightfield::Heightfield;
 use crate::layer::EffectFilterParams;
-use crate::noise::{FractalNoiseType, WorleyFeature, WorleyParams};
 use crate::noise;
+use crate::noise::{FractalNoiseType, WorleyFeature, WorleyParams};
 
 use super::box_blur_height;
 use super::filter_kernels::{
@@ -56,8 +56,8 @@ fn domain_warp_xz(x: f32, z: f32, p: &EffectFilterParams) -> (f32, f32) {
     if p.warp_strength.abs() > 1e-5 {
         let wf = p.warp_frequency.max(1e-5);
         let wx = noise::perlin2(xr * wf, zr * wf, p.seed) * p.warp_strength;
-        let wz = noise::perlin2(xr * wf + 19.1, zr * wf + 7.3, p.seed.wrapping_add(1))
-            * p.warp_strength;
+        let wz =
+            noise::perlin2(xr * wf + 19.1, zr * wf + 7.3, p.seed.wrapping_add(1)) * p.warp_strength;
         xr += wx;
         zr += wz;
     }
@@ -218,8 +218,10 @@ pub(super) fn talus_fill(input: &Heightfield, p: &EffectFilterParams) -> Heightf
 
 pub(super) fn sediment_fill_soft(input: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     let graph = crate::geomorph::build_flow_graph(input, crate::geomorph::FlowModel::D8);
-    let flow =
-        crate::geomorph::accumulate_drainage_area(&graph, &crate::geomorph::Precipitation::uniform(1.0));
+    let flow = crate::geomorph::accumulate_drainage_area(
+        &graph,
+        &crate::geomorph::Precipitation::uniform(1.0),
+    );
     let (filled, _) = crate::analyze::sediment_fill_soft_mass(
         input,
         p.amount,
@@ -1061,9 +1063,11 @@ pub(super) fn terrace_steep(input: &Heightfield, p: &EffectFilterParams) -> Heig
 
 /// Phase 9 geological strata: band displace + soft-bed exposure on steep faces.
 pub(super) fn strata_filter(input: &Heightfield, p: &EffectFilterParams) -> Heightfield {
-    use crate::layer::BedGeometry;
-    use super::geology::{expose_strata_height, strata_band_displace, strata_fields_with, StrataFieldParams};
     use super::filter_kernels::slope_deg as slope_at;
+    use super::geology::{
+        expose_strata_height, strata_band_displace, strata_fields_with, StrataFieldParams,
+    };
+    use crate::layer::BedGeometry;
 
     let freq = p.effective_frequency();
     let banded = strata_band_displace(input, freq, p.amount, p.seed);

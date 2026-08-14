@@ -408,8 +408,8 @@ fn apply_cascade_band(
             let ff = fine_flow.get(i, j);
             let hard = hardness.map(|h| h.get(i, j)).unwrap_or(0.0).clamp(0.0, 1.0);
             let curv = curvature.get(i, j); // ~[0,1] mean curvature map
-            // Convex ridges sit toward high curvature in Terra's normalised map;
-            // use ridge/valley fields as primary organisers.
+                                            // Convex ridges sit toward high curvature in Terra's normalised map;
+                                            // use ridge/valley fields as primary organisers.
 
             // Geomorphological gates (anti-soup).
             let drain_suppress = 1.0 - (f * preserve).clamp(0.0, 1.0);
@@ -422,7 +422,10 @@ fn apply_cascade_band(
                 * (0.25 + 0.75 * gate)
                 * p.gully_strength.clamp(0.0, 1.0))
             .clamp(0.0, 1.0);
-            let rock_gate = gate * hard.max(0.15) * (1.0 - valley * 0.7) * (1.0 - f * 0.4)
+            let rock_gate = gate
+                * hard.max(0.15)
+                * (1.0 - valley * 0.7)
+                * (1.0 - f * 0.4)
                 * p.rock_roughness.clamp(0.0, 1.0);
             // Soft depositional texture only on low-slope, high-flow flats.
             let deposit_gate = ((0.18 - s) / 0.18).clamp(0.0, 1.0) * f * (1.0 - hard);
@@ -682,7 +685,10 @@ mod tests {
                 changed += 1;
             }
         }
-        assert!(changed > 64, "expected structured detail, changed={changed}");
+        assert!(
+            changed > 64,
+            "expected structured detail, changed={changed}"
+        );
         assert!(mask_any_above(&a.fine_flow, 0.01), "fine flow organisation");
         assert!(
             mask_any_above(&a.micro_channel, 0.01)

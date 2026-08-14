@@ -1,12 +1,12 @@
-﻿use std::sync::Arc;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
+use crate::ui::{resolve_shortcut_for_input, PanelAction, ShortcutChord, ShortcutModifiers};
 use terra_core::command::EditorCommand;
 use terra_core::eval::PreviewQuality;
 use terra_gpu::{GpuTerrainEngine, GpuTileAtlas};
 use terra_gui::GuiRenderer;
 use terra_render::TerrainRenderer;
-use crate::ui::{resolve_shortcut_for_input, PanelAction, ShortcutChord, ShortcutModifiers};
 use winit::application::ApplicationHandler;
 use winit::event::{ElementState, MouseButton, MouseScrollDelta, WindowEvent};
 use winit::event_loop::{ActiveEventLoop, ControlFlow};
@@ -39,18 +39,14 @@ impl ApplicationHandler for TerraApp {
             pollster::block_on(terra_render::init_gpu(window.clone())).expect("gpu init");
         let renderer = TerrainRenderer::new(&gpu, target);
         let tile_config = self.terrain_runtime.pyramid.config;
-        let tile_atlas = match GpuTileAtlas::new(
-            &gpu.device,
-            tile_config.tile_size,
-            tile_config.halo,
-            128,
-        ) {
-            Ok(atlas) => Some(atlas),
-            Err(error) => {
-                log::warn!("GPU tile atlas disabled: {error}");
-                None
-            }
-        };
+        let tile_atlas =
+            match GpuTileAtlas::new(&gpu.device, tile_config.tile_size, tile_config.halo, 128) {
+                Ok(atlas) => Some(atlas),
+                Err(error) => {
+                    log::warn!("GPU tile atlas disabled: {error}");
+                    None
+                }
+            };
 
         let gpu_engine = GpuTerrainEngine::new(&gpu.device, 256);
         let gui_renderer = GuiRenderer::new(&gpu.device, &gpu.queue, gpu.surface_format);
@@ -87,7 +83,11 @@ impl ApplicationHandler for TerraApp {
                 }
                 if event.state == ElementState::Pressed {
                     if let PhysicalKey::Code(code) = event.physical_key {
-                        let wants_chars = self.gui_state.wants_text_input() || self.ui_state.show_quick_add || self.ui_state.show_command_palette || self.inspector_gui.rename_buffer.is_some() || ui_tool_search_focused(&self.ui_state, &self.gui_state);
+                        let wants_chars = self.gui_state.wants_text_input()
+                            || self.ui_state.show_quick_add
+                            || self.ui_state.show_command_palette
+                            || self.inspector_gui.rename_buffer.is_some()
+                            || ui_tool_search_focused(&self.ui_state, &self.gui_state);
                         let bookmark = match code {
                             KeyCode::Digit1 => Some(0usize),
                             KeyCode::Digit2 => Some(1),
@@ -109,8 +109,18 @@ impl ApplicationHandler for TerraApp {
                                 }
                             }
                         }
-                        let chord = ShortcutChord::new(code, ShortcutModifiers { ctrl: self.modifiers_ctrl, shift: self.modifiers_shift, alt: self.modifiers_alt, super_key: self.modifiers_super });
-                        if let Some(command) = resolve_shortcut_for_input(chord, wants_chars) { self.dispatch_command(command); }
+                        let chord = ShortcutChord::new(
+                            code,
+                            ShortcutModifiers {
+                                ctrl: self.modifiers_ctrl,
+                                shift: self.modifiers_shift,
+                                alt: self.modifiers_alt,
+                                super_key: self.modifiers_super,
+                            },
+                        );
+                        if let Some(command) = resolve_shortcut_for_input(chord, wants_chars) {
+                            self.dispatch_command(command);
+                        }
                         match code {
                             KeyCode::Backspace
                                 if self.gui_state.wants_text_input()
@@ -219,14 +229,15 @@ impl ApplicationHandler for TerraApp {
                     {
                         let (sx, sy) = self.cursor_logical().unwrap_or((0.0, 0.0));
                         let uv = self.pick_paint_uv();
-                        self.ui_state.viewport_context_menu = Some(crate::ui::ViewportContextMenu {
-                            x: sx,
-                            y: sy,
-                            uv,
-                            locked_owner: None,
-                            picking_owner_for: None,
-                            owner_override: None,
-                        });
+                        self.ui_state.viewport_context_menu =
+                            Some(crate::ui::ViewportContextMenu {
+                                x: sx,
+                                y: sy,
+                                uv,
+                                locked_owner: None,
+                                picking_owner_for: None,
+                                owner_override: None,
+                            });
                         let _ = press_pos;
                     }
                     if button == MouseButton::Left {
@@ -240,8 +251,7 @@ impl ApplicationHandler for TerraApp {
                             self.apply_actions(vec![PanelAction::EndBiomePaintStroke]);
                         }
                         // Mask paint: commit stroke undo; defer/coalesce terrain rebuild.
-                        if self.ui_state.editor_tool == crate::ui::EditorTool::PaintMask
-                        {
+                        if self.ui_state.editor_tool == crate::ui::EditorTool::PaintMask {
                             self.commit_mask_paint_stroke();
                         }
                         if self.sculpt_stroke_active {
@@ -472,9 +482,7 @@ impl ApplicationHandler for TerraApp {
                 self.last_height = Some((*height).clone());
                 // Ingest every CPU layer checkpoint so GPU can bake unsupported shapes
                 // and keep EffectFilters live on the next edit.
-                if let (Some(engine), Some(gpu)) =
-                    (self.gpu_engine.as_mut(), self.gpu.as_ref())
-                {
+                if let (Some(engine), Some(gpu)) = (self.gpu_engine.as_mut(), self.gpu.as_ref()) {
                     let preview = self.session.document.preview_eval_stack();
                     for layer in preview.flatten_layers() {
                         if let Some(cached) = self.scheduler.evaluator.cache.get(layer.id()) {

@@ -157,7 +157,9 @@ impl LayerKind {
                 FieldId::Vegetation,
                 FieldId::SoilMoisture,
             ],
-            LayerKind::HydraulicErosion(_) | LayerKind::ThermalErosion(_) | LayerKind::DebrisFlow(_) => {
+            LayerKind::HydraulicErosion(_)
+            | LayerKind::ThermalErosion(_)
+            | LayerKind::DebrisFlow(_) => {
                 vec![
                     FieldId::Hardness,
                     FieldId::Rainfall,

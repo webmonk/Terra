@@ -693,9 +693,9 @@ impl HydraulicErosionCore {
 
     /// Convenience: height-only apply for EffectFilter morphology path.
     pub fn apply_height(&self, input: &Heightfield, hardness: Option<&MaskField>) -> Heightfield {
-        let k = hardness
-            .cloned()
-            .unwrap_or_else(|| MaskField::filled(input.metrics, self.params.hardness.clamp(0.0, 1.0)));
+        let k = hardness.cloned().unwrap_or_else(|| {
+            MaskField::filled(input.metrics, self.params.hardness.clamp(0.0, 1.0))
+        });
         let (result, _, _, _) = self.simulate(input, &k, None, None, None, None);
         result.height
     }
@@ -786,7 +786,10 @@ mod tests {
             .zip(out.to_dense().iter())
             .map(|(a, b)| (a - b).abs())
             .fold(0.0f32, f32::max);
-        assert!(max_dh > 0.1, "soft flows should reshape drainage, max_dh={max_dh}");
+        assert!(
+            max_dh > 0.1,
+            "soft flows should reshape drainage, max_dh={max_dh}"
+        );
         assert!(out.get(2, 2) <= hf.get(2, 2) + 0.75);
     }
 
@@ -807,12 +810,11 @@ mod tests {
         }
         let core = HydraulicErosionCore::new(HydraulicErosionParams::default());
         let out = core.apply_height(&hf, None);
-        let min = out
-            .to_dense()
-            .iter()
-            .copied()
-            .fold(f32::INFINITY, f32::min);
-        assert!(min < -150.0, "hydraulic erosion flattened bathymetry: min={min}");
+        let min = out.to_dense().iter().copied().fold(f32::INFINITY, f32::min);
+        assert!(
+            min < -150.0,
+            "hydraulic erosion flattened bathymetry: min={min}"
+        );
     }
 
     #[test]

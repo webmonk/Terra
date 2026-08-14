@@ -1,14 +1,12 @@
 use std::time::{Duration, Instant};
 
+use crate::ui::Preview2dMode;
 use terra_core::eval::{EvalWorkRequest, PreviewQuality};
 use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
 use terra_core::layer::{LayerId, LayerKind};
 use terra_core::mask::bake_mask_assets;
-use crate::ui::Preview2dMode;
 
-use super::{
-    quality_stage_progress, TerraApp,
-};
+use super::{quality_stage_progress, TerraApp};
 
 /// Interactive Full preview ceiling — same 1 m footing as WC (world metres ≈ samples),
 /// capped at export-class 8192² so extreme worlds stay bounded.
@@ -57,7 +55,11 @@ impl TerraApp {
         // Match the resolution already on screen (renderer tex or last_height).
         if let Some(r) = self.renderer.as_ref() {
             let w = r.heights.tex_size.0.max(1);
-            let preview = self.session.document.preview_resolution.min(INTERACTIVE_PREVIEW_CAP);
+            let preview = self
+                .session
+                .document
+                .preview_resolution
+                .min(INTERACTIVE_PREVIEW_CAP);
             let medium = PreviewQuality::Medium.resolution(preview, preview);
             self.scheduler.quality = if w >= preview {
                 PreviewQuality::Full
@@ -119,7 +121,11 @@ impl TerraApp {
             masks: self.session.document.masks.clone(),
             base_metrics: self.session.document.metrics,
             level_steps: self.session.document.level_steps.clone(),
-            preview_res: self.session.document.preview_resolution.min(INTERACTIVE_PREVIEW_CAP),
+            preview_res: self
+                .session
+                .document
+                .preview_resolution
+                .min(INTERACTIVE_PREVIEW_CAP),
             export_res: self.session.document.export_resolution,
             aux: self.scheduler.last_aux.clone(),
             strata: self.scheduler.last_strata.clone(),
@@ -200,9 +206,13 @@ impl TerraApp {
                     for evicted in upload.evicted {
                         self.terrain_runtime.pyramid.remove_resident(&evicted);
                     }
-                    self.terrain_runtime
-                        .pyramid
-                        .publish_resident(published_key, upload.handle, revision, revision, frame);
+                    self.terrain_runtime.pyramid.publish_resident(
+                        published_key,
+                        upload.handle,
+                        revision,
+                        revision,
+                        frame,
+                    );
                 }
                 Err(error) => {
                     log::warn!("terrain tile upload failed: {error}");
@@ -223,15 +233,7 @@ impl TerraApp {
     }
 
     pub(crate) fn sync_tile_stream_to_renderer(&mut self) {
-        let (
-            atlas_view,
-            page_table,
-            tile_size,
-            halo,
-            max_pages,
-            _resident,
-            budget_util,
-        ) = {
+        let (atlas_view, page_table, tile_size, halo, max_pages, _resident, budget_util) = {
             let Some(atlas) = self.tile_atlas.as_ref() else {
                 return;
             };
@@ -261,12 +263,7 @@ impl TerraApp {
             return;
         };
         renderer.set_tile_stream_resources(
-            atlas_view,
-            page_table,
-            tile_size,
-            halo,
-            max_pages,
-            level,
+            atlas_view, page_table, tile_size, halo, max_pages, level,
             // Streamed height is primary; shader falls back to monolithic on miss.
             true,
         );
@@ -293,7 +290,11 @@ impl TerraApp {
         }
     }
 
-    pub(crate) fn track_worker_dirty_from(&mut self, stack: &terra_core::layer::LayerStack, id: LayerId) {
+    pub(crate) fn track_worker_dirty_from(
+        &mut self,
+        stack: &terra_core::layer::LayerStack,
+        id: LayerId,
+    ) {
         if self.worker_mark_all_dirty {
             return;
         }
@@ -433,7 +434,11 @@ impl TerraApp {
             self.scheduler.quality = PreviewQuality::Draft;
             self.force_draft = false;
         }
-        let preview = self.session.document.preview_resolution.min(INTERACTIVE_PREVIEW_CAP);
+        let preview = self
+            .session
+            .document
+            .preview_resolution
+            .min(INTERACTIVE_PREVIEW_CAP);
         let export = self.session.document.export_resolution;
         let base = self.session.document.metrics;
         let quality = self.scheduler.quality;
@@ -507,9 +512,11 @@ impl TerraApp {
         let mut used_gpu = false;
         let mut eval_completed = false;
         if token == self.eval_token {
-            if let (Some(engine), Some(renderer), Some(gpu)) =
-                (self.gpu_engine.as_mut(), self.renderer.as_mut(), self.gpu.as_ref())
-            {
+            if let (Some(engine), Some(renderer), Some(gpu)) = (
+                self.gpu_engine.as_mut(),
+                self.renderer.as_mut(),
+                self.gpu.as_ref(),
+            ) {
                 match engine.evaluate(
                     &gpu.device,
                     &gpu.queue,
@@ -593,7 +600,9 @@ impl TerraApp {
                             // when stacks include unsupported layers (painted masks, SPE, …).
                             let needs_cpu_suffix = result.resume_cpu_from.is_some();
                             self.last_eval_fully_gpu = result.fully_gpu;
-                            if result.resume_cpu_from == Some(0) && !result.fully_gpu && !result.did_eval
+                            if result.resume_cpu_from == Some(0)
+                                && !result.fully_gpu
+                                && !result.did_eval
                             {
                                 // Seed failed — keep last-good, refine async at current quality.
                                 self.ui_state.profile.path = "GPU→async CPU";

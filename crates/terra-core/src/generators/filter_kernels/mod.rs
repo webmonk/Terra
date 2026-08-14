@@ -109,10 +109,7 @@ pub fn flow_accumulation_dinf(hf: &Heightfield, passes: u32) -> Vec<f32> {
 
 pub fn normalize_field(values: &[f32]) -> Vec<f32> {
     let max_f = values.iter().copied().fold(1e-6f32, f32::max);
-    values
-        .iter()
-        .map(|v| (v / max_f).clamp(0.0, 1.0))
-        .collect()
+    values.iter().map(|v| (v / max_f).clamp(0.0, 1.0)).collect()
 }
 
 /// Box blur helper used by several filters.
@@ -140,7 +137,12 @@ pub fn box_blur(input: &Heightfield, radius: u32) -> Heightfield {
 }
 
 /// Bilateral (edge-aware) filter — Tomasi & Manduchi style on heightfields.
-pub fn bilateral(input: &Heightfield, radius: u32, sigma_space: f32, sigma_range: f32) -> Heightfield {
+pub fn bilateral(
+    input: &Heightfield,
+    radius: u32,
+    sigma_space: f32,
+    sigma_range: f32,
+) -> Heightfield {
     let r = radius.max(1) as i32;
     let w = input.metrics.width as i32;
     let h = input.metrics.height as i32;
@@ -172,12 +174,7 @@ pub fn bilateral(input: &Heightfield, radius: u32, sigma_space: f32, sigma_range
 }
 
 /// Directional Gaussian blur along unit direction `(dir_x, dir_z)` in texel steps.
-pub fn anisotropic_blur(
-    input: &Heightfield,
-    radius: u32,
-    dir_x: f32,
-    dir_z: f32,
-) -> Heightfield {
+pub fn anisotropic_blur(input: &Heightfield, radius: u32, dir_x: f32, dir_z: f32) -> Heightfield {
     let r = radius.max(1) as i32;
     let w = input.metrics.width as i32;
     let h = input.metrics.height as i32;
@@ -240,7 +237,12 @@ fn morph_extremum(input: &Heightfield, radius: u32, maximize: bool) -> Heightfie
 /// Angle-of-repose thermal weathering (Musgrave-style talus).
 ///
 /// Thin wrapper around the layered mass-wasting apron for filter kernels.
-pub fn thermal_talus(input: &Heightfield, repose_deg: f32, amount: f32, iterations: u32) -> Heightfield {
+pub fn thermal_talus(
+    input: &Heightfield,
+    repose_deg: f32,
+    amount: f32,
+    iterations: u32,
+) -> Heightfield {
     crate::analyze::talus_apron(input, repose_deg, amount.max(0.5), 0.85, iterations, None).height
 }
 
@@ -554,7 +556,13 @@ pub fn directional_phasor(
 
     let mut re = 0.0f32;
     let mut im = 0.0f32;
-    let lobes = if lin > 0.75 { 2 } else if lin > 0.4 { 3 } else { 4 };
+    let lobes = if lin > 0.75 {
+        2
+    } else if lin > 0.4 {
+        3
+    } else {
+        4
+    };
     for k in 0..lobes {
         let sk = seed.wrapping_add(k as u64 * 9173);
         let spread = (1.0 - lin) * 0.55;
@@ -574,20 +582,17 @@ pub fn directional_phasor(
         ) * PI
             * (0.35 + 0.65 * (1.0 - lin));
         let phase = (x * ct + z * st) * freq * TAU + warp;
-        let amp = 0.6 + 0.4
-            * noise::sample_noise(
-                crate::noise::FractalNoiseType::Value,
-                across * freq * 0.18,
-                along * freq * 0.11,
-                sk ^ 0xC0DE,
-            )
-            .abs();
+        let amp = 0.6
+            + 0.4
+                * noise::sample_noise(
+                    crate::noise::FractalNoiseType::Value,
+                    across * freq * 0.18,
+                    along * freq * 0.11,
+                    sk ^ 0xC0DE,
+                )
+                .abs();
         // Prefer the primary wind-aligned lobe when linearity is high.
-        let w = if k == 0 {
-            1.0
-        } else {
-            (1.0 - lin).powf(0.65)
-        };
+        let w = if k == 0 { 1.0 } else { (1.0 - lin).powf(0.65) };
         re += amp * w * phase.cos();
         im += amp * w * phase.sin();
     }

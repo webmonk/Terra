@@ -283,7 +283,11 @@ impl ScenarioPassKind {
                 FieldId::SedimentThickness,
             ],
             Self::StreamPower | Self::LandscapeEvolution => &[FieldId::Hardness],
-            Self::ThermalErosion => &[FieldId::Hardness, FieldId::BedrockHeight, FieldId::DebrisDepth],
+            Self::ThermalErosion => &[
+                FieldId::Hardness,
+                FieldId::BedrockHeight,
+                FieldId::DebrisDepth,
+            ],
             Self::RiverExtraction | Self::RiverCarve => &[FieldId::FlowAccumulation],
             Self::EcosystemFeedback => &[FieldId::Hardness, FieldId::Vegetation],
             _ => &[],

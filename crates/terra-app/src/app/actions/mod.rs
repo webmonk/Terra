@@ -8,8 +8,8 @@ mod settings;
 mod tools;
 mod world_rules;
 
-use terra_core::layer::LayerId;
 use crate::ui::PanelAction;
+use terra_core::layer::LayerId;
 
 use super::TerraApp;
 
@@ -43,32 +43,44 @@ impl TerraApp {
                 Ok(()) => continue,
                 Err(a) => a,
             };
-            if ctx.continue_loop { continue; }
+            if ctx.continue_loop {
+                continue;
+            }
             let action = match masks::try_apply(self, action, &mut ctx) {
                 Ok(()) => continue,
                 Err(a) => a,
             };
-            if ctx.continue_loop { continue; }
+            if ctx.continue_loop {
+                continue;
+            }
             let action = match biomes::try_apply(self, action, &mut ctx) {
                 Ok(()) => continue,
                 Err(a) => a,
             };
-            if ctx.continue_loop { continue; }
+            if ctx.continue_loop {
+                continue;
+            }
             let action = match world_rules::try_apply(self, action, &mut ctx) {
                 Ok(()) => continue,
                 Err(a) => a,
             };
-            if ctx.continue_loop { continue; }
+            if ctx.continue_loop {
+                continue;
+            }
             let action = match scenarios::try_apply(self, action, &mut ctx) {
                 Ok(()) => continue,
                 Err(a) => a,
             };
-            if ctx.continue_loop { continue; }
+            if ctx.continue_loop {
+                continue;
+            }
             let action = match settings::try_apply(self, action, &mut ctx) {
                 Ok(()) => continue,
                 Err(a) => a,
             };
-            if ctx.continue_loop { continue; }
+            if ctx.continue_loop {
+                continue;
+            }
             match tools::try_apply(self, action, &mut ctx) {
                 Ok(()) => {}
                 Err(_a) => {

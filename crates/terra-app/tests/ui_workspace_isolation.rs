@@ -1,8 +1,8 @@
 //! Workspace switch isolation: presentation must not mutate project or selection.
 
+use terra_app::ui::{AppWorkspace, UiState, WorkspaceMode, WorkspaceState};
 use terra_core::document::TerrainDocument;
 use terra_core::eval::EvalScheduler;
-use terra_app::ui::{AppWorkspace, UiState, WorkspaceMode, WorkspaceState};
 
 fn selection_snapshot(
     doc: &TerrainDocument,

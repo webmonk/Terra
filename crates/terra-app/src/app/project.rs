@@ -1,10 +1,11 @@
 use std::path::PathBuf;
 
+use crate::ui::{
+    project_template_by_id, resolve_workspace_command, CommandId, NewWorldSettings,
+    ProjectHomeAction,
+};
 use terra_core::document::EditorSession;
 use terra_io::{save_project, ProjectIoResult};
-use crate::ui::{
-    project_template_by_id, resolve_workspace_command, CommandId, NewWorldSettings, ProjectHomeAction,
-};
 
 use super::{
     default_terra_projects_dir, document_from_world_settings, prepare_project_path,
@@ -317,10 +318,7 @@ impl TerraApp {
         self.pending_eval = false;
 
         // Fresh session (undo stacks, outdated sims, rebuild feedback) — same as a cold open.
-        let world_size = (
-            document.metrics.world_size_x,
-            document.metrics.world_size_z,
-        );
+        let world_size = (document.metrics.world_size_x, document.metrics.world_size_z);
         let ocean = Some(document.blueprint.sea_level).filter(|v| v.is_finite());
         let mut session = EditorSession::new();
         session.document = document;
@@ -379,11 +377,12 @@ impl TerraApp {
         self.pending_tile_uploads.clear();
 
         let metrics = self.session.document.metrics;
-        self.terrain_runtime.reconfigure(terra_core::PyramidConfig::new(
-            self.session.document.preview_resolution.max(256),
-            metrics.world_size_x,
-            metrics.world_size_z,
-        ));
+        self.terrain_runtime
+            .reconfigure(terra_core::PyramidConfig::new(
+                self.session.document.preview_resolution.max(256),
+                metrics.world_size_x,
+                metrics.world_size_z,
+            ));
 
         if let Some(engine) = self.gpu_engine.as_mut() {
             if let Some(gpu) = self.gpu.as_ref() {
@@ -541,13 +540,9 @@ impl TerraApp {
         );
         match decision {
             ShapeTargetDecision::UseExisting(id) => {
-                if self
-                    .session
-                    .document
-                    .stack
-                    .find(id)
-                    .is_some_and(|l| matches!(l.kind, terra_core::layer::LayerKind::SculptStrokes(_)))
-                {
+                if self.session.document.stack.find(id).is_some_and(|l| {
+                    matches!(l.kind, terra_core::layer::LayerKind::SculptStrokes(_))
+                }) {
                     self.ui_state.shape_session_layer = Some(id);
                 }
                 self.session.document.selected = Some(id);
@@ -600,13 +595,17 @@ impl TerraApp {
         self.session.document.sync_biome_paint_to_mask(biome_id);
     }
 
-
     pub(crate) fn dispatch_command(&mut self, command: &str) {
         if self.screen == AppScreen::Editor {
             if let Some(workspace) = resolve_workspace_command(command) {
                 let previous = self.ui_state.biome_color_preview;
                 self.ui_state.switch_workspace(workspace);
-                if self.ui_state.biome_color_preview != previous || workspace == crate::ui::WorkspaceId::Biomes { self.placement_tint_dirty = true; self.preview_dirty = true; }
+                if self.ui_state.biome_color_preview != previous
+                    || workspace == crate::ui::WorkspaceId::Biomes
+                {
+                    self.placement_tint_dirty = true;
+                    self.preview_dirty = true;
+                }
                 return;
             }
         }
@@ -632,7 +631,10 @@ impl TerraApp {
     }
 
     pub(crate) fn frame_terrain(&mut self) {
-        if let Some(renderer) = self.renderer.as_mut() { renderer.request_camera_reframe(); renderer.frame_camera_to_terrain(); }
+        if let Some(renderer) = self.renderer.as_mut() {
+            renderer.request_camera_reframe();
+            renderer.frame_camera_to_terrain();
+        }
     }
 
     pub(crate) fn save_camera_bookmark(&mut self, index: usize) {

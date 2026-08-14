@@ -163,8 +163,13 @@ const CLEAN_MODULES: &[&str] = &[
 const FORBIDDEN_DEPS: &[&str] = &["wgpu", "winit", "egui"];
 
 /// Tokens whose presence in stripped source betrays a GPU/UI leak.
-const FORBIDDEN_SOURCE_TOKENS: &[&str] =
-    &["wgpu::", "use wgpu", "terra_gui", "terra_render", "terra_app"];
+const FORBIDDEN_SOURCE_TOKENS: &[&str] = &[
+    "wgpu::",
+    "use wgpu",
+    "terra_gui",
+    "terra_render",
+    "terra_app",
+];
 
 // ===========================================================================
 // Rule 1 — purity

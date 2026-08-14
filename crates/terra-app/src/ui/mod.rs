@@ -10,11 +10,11 @@ mod command_registry;
 mod contextual_create_gui;
 mod dist_kinds;
 mod dock_gui;
+mod hierarchy;
 mod hierarchy_view;
 mod history_gui;
 mod inspector;
 mod inspector_schema;
-mod hierarchy;
 mod panels;
 mod pipeline_gui;
 mod presets;
@@ -42,35 +42,38 @@ pub fn prefetch_tool_thumbnails() {
     tool_thumbs::prefetch_all();
 }
 
+pub use actions::{MaskEditAction, PanelAction, TerrainSettingsUpdate};
 pub use chrome_gui::{
     apply_borderless_window_frame, caption_controls_width, draw_caption_controls,
     draw_export_unsupported_modal, ChromeGuiState,
 };
 pub use command_palette::{draw_command_palette, CommandPaletteState, PaletteAction};
 pub(crate) use command_registry::resolve_workspace_command;
-pub use command_registry::{commands, format_shortcuts, fuzzy_match, resolve_shortcut, resolve_shortcut_for_input, BindingVisibility, CommandCategory, CommandDef, CommandId, ShortcutBinding, ShortcutChord, ShortcutModifiers};
+pub use command_registry::{
+    commands, format_shortcuts, fuzzy_match, resolve_shortcut, resolve_shortcut_for_input,
+    BindingVisibility, CommandCategory, CommandDef, CommandId, ShortcutBinding, ShortcutChord,
+    ShortcutModifiers,
+};
 pub use contextual_create_gui::{
     create_to_workspace, draw_viewport_context_menu, hierarchy_add_actions, workspace_to_create,
     ViewportContextMenu,
 };
 pub use dock_gui::DockGuiState;
-pub use hierarchy_view::{
-    advanced_placement_id, biome_section_artist_label, hierarchy_identity_ids, mask_stack_row_id,
-    world_rule_entity_meta, world_rules_meta, ArtistConcept, TERRAIN_ROOT,
-    WORLD_SECTION,
-};
-pub use inspector::{draw_inspector_gui, InspectorGuiState};
-pub use inspector_schema::InspectorSection;
 pub use hierarchy::{
     draw_layers_gui, hierarchy_presentation_snapshot, LayerDragSource, LayerPresentationState,
     LayersGuiState,
 };
+pub use hierarchy_view::{
+    advanced_placement_id, biome_section_artist_label, hierarchy_identity_ids, mask_stack_row_id,
+    world_rule_entity_meta, world_rules_meta, ArtistConcept, TERRAIN_ROOT, WORLD_SECTION,
+};
+pub use inspector::{draw_inspector_gui, InspectorGuiState};
+pub use inspector_schema::InspectorSection;
 pub use panels::{draw_windows, WindowsGuiState};
-pub use actions::{MaskEditAction, PanelAction, TerrainSettingsUpdate};
 pub use presets::{
     builtin_presets, contextual_presets, layers_from_preset, layers_from_project_template,
-    project_template_by_id, project_templates, world_design_templates,
-    ContextualPreset, LayerPreset, ProjectTemplate,
+    project_template_by_id, project_templates, world_design_templates, ContextualPreset,
+    LayerPreset, ProjectTemplate,
 };
 pub use project_home_gui::{
     draw_discard_confirm, draw_new_project_templates, draw_project_home, DiscardConfirmChoice,
@@ -957,7 +960,7 @@ impl UiState {
         self.viewport_lighting_selected = false;
         self.pending_close_mask_editor = false;
         let _ov = &mut self.viewport_overlays;
-        }
+    }
 
     /// Leave Mask view and restore Terrain chrome (tool rail). Schedules session close.
     pub fn leave_mask_view(&mut self) {
@@ -970,7 +973,6 @@ impl UiState {
         self.show_mask_editor = false;
         self.viewport_lighting_selected = false;
     }
-
 }
 
 /// Optional viewport aids. These flags affect editor presentation, not terrain data.
@@ -1142,12 +1144,7 @@ impl EditorTool {
 
     /// Raise / Lower / Smooth / Paint Mask / Paint Biome — own left-drag paint and wheel size.
     pub fn is_brush(self) -> bool {
-        self.is_sculpt()
-            || matches!(
-                self,
-                EditorTool::PaintMask
-                    | EditorTool::PaintBiome
-            )
+        self.is_sculpt() || matches!(self, EditorTool::PaintMask | EditorTool::PaintBiome)
     }
 
     pub fn is_view(self) -> bool {
@@ -1554,7 +1551,8 @@ pub fn draw_editor_gui(
     draw_menu_overlays(ui, ui_state, chrome, &mut out);
     // Global popups are drawn after menus and other chrome.
     let mut quick_add = std::mem::take(&mut ui_state.quick_add);
-    out.actions.extend(ui.with_menu_input(|ui| draw_quick_add(ui, doc, ui_state, &mut quick_add)));
+    out.actions
+        .extend(ui.with_menu_input(|ui| draw_quick_add(ui, doc, ui_state, &mut quick_add)));
     ui_state.quick_add = quick_add;
     out.actions
         .extend(draw_viewport_context_menu(ui, doc, ui_state));

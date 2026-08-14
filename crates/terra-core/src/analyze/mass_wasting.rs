@@ -3,10 +3,10 @@
 //! Bedrock and loose debris/sediment are tracked separately so Landscape Evolution →
 //! Hydraulic → Debris Flow → Thermal stacks can exchange real sediment fields.
 
-use crate::heightfield::{Heightfield, HeightfieldMetrics};
 use crate::geomorph::{
     accumulate_drainage_area, build_flow_graph, priority_flood_fill, FlowModel, Precipitation,
 };
+use crate::heightfield::{Heightfield, HeightfieldMetrics};
 use crate::layer::{DebrisFlowParams, ThermalErosionParams};
 use crate::mask::MaskField;
 
@@ -28,11 +28,7 @@ pub struct MassWastingState {
 }
 
 impl MassWastingState {
-    pub fn from_height(
-        input: &Heightfield,
-        initial_debris: f32,
-        initial_sediment: f32,
-    ) -> Self {
+    pub fn from_height(input: &Heightfield, initial_debris: f32, initial_sediment: f32) -> Self {
         let metrics = input.metrics;
         let n = (metrics.width * metrics.height) as usize;
         let height = input.to_dense();
@@ -457,7 +453,8 @@ pub fn thermal_erode_layered(
                 }
             }
             // 1 = fully stable; 0 = strongly over-steep.
-            stability[idx] = (1.0 - (max_excess / (dx.max(dz) * 4.0)).clamp(0.0, 1.0)).clamp(0.0, 1.0);
+            stability[idx] =
+                (1.0 - (max_excess / (dx.max(dz) * 4.0)).clamp(0.0, 1.0)).clamp(0.0, 1.0);
             if max_excess > instability[idx] {
                 instability[idx] = max_excess;
             }
@@ -517,7 +514,15 @@ pub fn talus_apron(
     thermal_erode_layered(input, &p, &k, None)
 }
 
-fn slope_magnitude(surface: &[f32], w: usize, h: usize, i: usize, j: usize, dx: f32, dz: f32) -> f32 {
+fn slope_magnitude(
+    surface: &[f32],
+    w: usize,
+    h: usize,
+    i: usize,
+    j: usize,
+    dx: f32,
+    dz: f32,
+) -> f32 {
     let idx = j * w + i;
     let h0 = surface[idx];
     let hx = if i + 1 < w {
@@ -782,8 +787,8 @@ pub fn debris_flow_erode(
                         0.0
                     };
 
-                    let erode_total = ((e_th + e_abr) * dt + e_fluv * dt + e_hill.max(0.0) * dt)
-                        .max(0.0);
+                    let erode_total =
+                        ((e_th + e_abr) * dt + e_fluv * dt + e_hill.max(0.0) * dt).max(0.0);
                     let mut remaining = erode_total;
 
                     // Erode soft layers first (sediment → debris → bedrock).
@@ -803,7 +808,8 @@ pub fn debris_flow_erode(
                     // Mobilised material enters debris flux (bedrock/debris → debris mixture).
                     let mobilized = take_bed + take_deb + e_th * dt;
                     next_debris_flux[idx] += mobilized * cell_area / dt.max(1e-6);
-                    next_sediment_flux[idx] += take_sed * cell_area / dt.max(1e-6) + e_fluv * cell_area;
+                    next_sediment_flux[idx] +=
+                        take_sed * cell_area / dt.max(1e-6) + e_fluv * cell_area;
 
                     // Deposition onto debris / sediment layers.
                     if d_dep > 0.0 {
@@ -811,7 +817,8 @@ pub fn debris_flow_erode(
                         d_debris[idx] += avail;
                         deposit[idx] += avail;
                         debris_deposit[idx] += avail;
-                        next_debris_flux[idx] = (next_debris_flux[idx] - avail * cell_area / dt).max(0.0);
+                        next_debris_flux[idx] =
+                            (next_debris_flux[idx] - avail * cell_area / dt).max(0.0);
                     }
                     if d_fluv > 0.0 {
                         let avail = d_fluv.min(qs * dt / cell_area);
@@ -1058,7 +1065,10 @@ mod tests {
             .iter()
             .copied()
             .fold(f32::INFINITY, f32::min);
-        assert!(min < -150.0, "thermal erosion flattened bathymetry: min={min}");
+        assert!(
+            min < -150.0,
+            "thermal erosion flattened bathymetry: min={min}"
+        );
     }
 
     #[test]

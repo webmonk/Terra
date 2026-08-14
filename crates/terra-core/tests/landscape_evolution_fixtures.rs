@@ -4,8 +4,8 @@
 
 use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
 use terra_core::landscape_evolution::{
-    asymmetric_belt, synthesise_uplift, BoundaryMode, EvolutionSolverMode,
-    LandscapeEvolutionInput, LandscapeEvolutionOperator, LandscapeEvolutionParams, UpliftMode,
+    asymmetric_belt, synthesise_uplift, BoundaryMode, EvolutionSolverMode, LandscapeEvolutionInput,
+    LandscapeEvolutionOperator, LandscapeEvolutionParams, UpliftMode,
 };
 use terra_core::mask::MaskField;
 
@@ -92,8 +92,20 @@ fn run_evo(
 fn uplift_plateau_uniform_preserves_large_form() {
     let m = metrics();
     let seed = flat_seed(m, 20.0);
-    let young = run_evo(&seed, UpliftMode::Uniform, 0.15, EvolutionSolverMode::Fast, None);
-    let mature = run_evo(&seed, UpliftMode::Uniform, 0.85, EvolutionSolverMode::Fast, None);
+    let young = run_evo(
+        &seed,
+        UpliftMode::Uniform,
+        0.15,
+        EvolutionSolverMode::Fast,
+        None,
+    );
+    let mature = run_evo(
+        &seed,
+        UpliftMode::Uniform,
+        0.85,
+        EvolutionSolverMode::Fast,
+        None,
+    );
     assert!(
         relief(&young.elevation) > 5.0,
         "young uplifted plateau should gain relief"
@@ -344,7 +356,19 @@ fn synthesise_uplift_modes_are_smooth() {
 fn evolution_is_deterministic() {
     let m = HeightfieldMetrics::new(40, 40, 2000.0, 2000.0);
     let seed = flat_seed(m, 10.0);
-    let a = run_evo(&seed, UpliftMode::LinearBelt, 0.4, EvolutionSolverMode::Fast, None);
-    let b = run_evo(&seed, UpliftMode::LinearBelt, 0.4, EvolutionSolverMode::Fast, None);
+    let a = run_evo(
+        &seed,
+        UpliftMode::LinearBelt,
+        0.4,
+        EvolutionSolverMode::Fast,
+        None,
+    );
+    let b = run_evo(
+        &seed,
+        UpliftMode::LinearBelt,
+        0.4,
+        EvolutionSolverMode::Fast,
+        None,
+    );
     assert_eq!(a.elevation.to_dense(), b.elevation.to_dense());
 }

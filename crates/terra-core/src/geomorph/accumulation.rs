@@ -1,9 +1,9 @@
 //! Flow accumulation / discharge from precipitation fields.
 
 use crate::heightfield::HeightfieldMetrics;
-use crate::noise::{FractalNoiseType, NoiseParams};
 use crate::mask::MaskField;
 use crate::noise::fbm;
+use crate::noise::{FractalNoiseType, NoiseParams};
 
 use super::routing::{D8Drainage, FlowGraph};
 

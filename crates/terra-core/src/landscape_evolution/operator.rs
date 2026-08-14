@@ -99,9 +99,10 @@ impl LandscapeEvolutionOperator {
         let uplift = synthesise_uplift(m, p, input.painted_uplift);
         // Rainfall field modulates local uplift-driven discharge later via params.rainfall;
         // optional precip map scales rainfall spatially into a discharge weight.
-        let rain_weight = input.precipitation.cloned().unwrap_or_else(|| {
-            MaskField::filled(m, p.rainfall.max(0.0))
-        });
+        let rain_weight = input
+            .precipitation
+            .cloned()
+            .unwrap_or_else(|| MaskField::filled(m, p.rainfall.max(0.0)));
 
         // ── Boundary / outlet mask ───────────────────────────────────────
         let boundary = build_boundary_mask(input.elevation, p, input.outlet_mask);
@@ -132,11 +133,7 @@ impl LandscapeEvolutionOperator {
                     continue;
                 }
                 let a = seed_blend.clamp(0.0, 1.0);
-                working.set(
-                    i,
-                    j,
-                    working.get(i, j) * (1.0 - a) + tectonic.get(i, j) * a,
-                );
+                working.set(i, j, working.get(i, j) * (1.0 - a) + tectonic.get(i, j) * a);
             }
         }
 
@@ -165,13 +162,7 @@ impl LandscapeEvolutionOperator {
             EvolutionSolverMode::Fast => {
                 let passes = p.fast_passes();
                 let (z, cache, incision) = evolve_analytical(
-                    &working,
-                    &tectonic,
-                    &uplift,
-                    &hardness,
-                    &boundary,
-                    p,
-                    passes,
+                    &working, &tectonic, &uplift, &hardness, &boundary, p, passes,
                 );
                 let erosion = incision
                     .iter()
@@ -327,7 +318,10 @@ fn apply_tectonic_preservation(
     let base_lock = (preservation.clamp(0.0, 1.0) * 0.35).clamp(0.0, 1.0);
     for j in 0..m.height {
         for i in 0..m.width {
-            let painted = protection.map(|f| f.get(i, j)).unwrap_or(0.0).clamp(0.0, 1.0);
+            let painted = protection
+                .map(|f| f.get(i, j))
+                .unwrap_or(0.0)
+                .clamp(0.0, 1.0);
             let a = (base_lock + painted * preservation.clamp(0.0, 1.0)).clamp(0.0, 1.0);
             if a <= 1e-5 {
                 continue;

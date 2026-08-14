@@ -1,4 +1,4 @@
-﻿//! Layer parameter kinds (split by family).
+//! Layer parameter kinds (split by family).
 
 use crate::mask::MaskSource;
 use serde::{Deserialize, Serialize};
@@ -59,10 +59,7 @@ pub enum BedGeometry {
     #[default]
     Horizontal,
     /// Planar dip. `dip_deg` from horizontal; `azimuth_deg` is dip direction.
-    Tilted {
-        dip_deg: f32,
-        azimuth_deg: f32,
-    },
+    Tilted { dip_deg: f32, azimuth_deg: f32 },
     /// Sinusoidal fold + mild coherent noise.
     Folded {
         amplitude_m: f32,
@@ -650,4 +647,3 @@ impl BiomeBand {
         }
     }
 }
-

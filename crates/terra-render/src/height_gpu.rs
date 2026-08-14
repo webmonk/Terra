@@ -900,12 +900,7 @@ impl HeightGpu {
             h,
             world_size.0 / w.max(1) as f32,
             world_size.1 / h.max(1) as f32,
-            SampleRect {
-                x: 0,
-                y: 0,
-                w,
-                h,
-            },
+            SampleRect { x: 0, y: 0, w, h },
         );
     }
 

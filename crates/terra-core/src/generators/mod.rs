@@ -747,12 +747,10 @@ pub fn seed_dune_sand(
             let ph = directional_phasor(x, z, freq, ang, lin, seed);
             let lobe = (0.5 + 0.5 * ph).clamp(0.0, 1.0);
             let shaped = lobe.powf(0.55 + sharp * 1.1);
-            let ripple = noise::perlin2(
-                along * freq * 5.5,
-                across * freq * 1.1,
-                seed ^ 0x51F7_E001,
-            ) * 0.06
-                * shaped;
+            let ripple =
+                noise::perlin2(along * freq * 5.5, across * freq * 1.1, seed ^ 0x51F7_E001)
+                    * 0.06
+                    * shaped;
             let secondary = if lin < 0.85 {
                 let ang2 = ang + std::f32::consts::FRAC_PI_2 * (1.0 - lin);
                 let ph2 = directional_phasor(x, z, freq * 0.92, ang2, lin, seed ^ 0xA11C);
@@ -760,11 +758,9 @@ pub fn seed_dune_sand(
             } else {
                 0.0
             };
-            let profile =
-                (shaped * (0.65 + 0.35 * lin) + secondary + ripple.abs()).clamp(0.0, 1.0);
+            let profile = (shaped * (0.65 + 0.35 * lin) + secondary + ripple.abs()).clamp(0.0, 1.0);
             let idx = (j * metrics.width + i) as usize;
-            sand[idx] =
-                base_cover + height * supply * profile * (0.55 + 0.45 * supply.min(1.0));
+            sand[idx] = base_cover + height * supply * profile * (0.55 + 0.45 * supply.min(1.0));
         }
     }
     sand

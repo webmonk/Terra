@@ -13,8 +13,8 @@
 use std::path::PathBuf;
 use terra_core::eval::{EvalContext, PreviewQuality, StackEvaluator};
 use terra_core::fields::keys;
-use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
 use terra_core::geomorph::{accumulate_drainage_area, build_flow_graph, FlowModel, Precipitation};
+use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
 use terra_core::layer::{
     CoastalParams, HydraulicErosionParams, Layer, LayerKind, LayerStack, MaterialsParams, PathNode,
     PathParams, RiverCarveParams, RiverNetworkParams, RiverNode, SculptParams, StreamPowerParams,

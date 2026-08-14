@@ -1,17 +1,15 @@
-﻿use std::time::Instant;
+use std::time::Instant;
 
-use terra_core::eval::PreviewQuality;
-use terra_core::layer::LayerKind;
-use terra_gui::{GuiContext, GuiInput};
 use crate::ui::{
     draw_discard_confirm, draw_editor_gui, draw_new_project_templates, draw_project_home,
     DiscardConfirmChoice, NewProjectTemplateChoice,
 };
+use terra_core::eval::PreviewQuality;
+use terra_core::layer::LayerKind;
+use terra_gui::{GuiContext, GuiInput};
 use winit::event::MouseButton;
 
-use super::helpers::{
-    aux_maps_fingerprint, mask_field_fingerprint, vegetation_instance_params,
-};
+use super::helpers::{aux_maps_fingerprint, mask_field_fingerprint, vegetation_instance_params};
 use super::prefs::{save_editor_prefs, EditorPrefs};
 use super::{AppScreen, PendingProjectAction, TerraApp};
 impl TerraApp {
@@ -209,8 +207,11 @@ impl TerraApp {
                     // preset returns to Raster.
                     self.ui_state.viewport_render.mode = preset.suggested_renderer_mode();
                     let (preset_dir, preset_exposure, preset_clear) = preset.params();
-                    let (az, el) =
-                        crate::ui::sun_az_el_from_dir([preset_dir[0], preset_dir[1], preset_dir[2]]);
+                    let (az, el) = crate::ui::sun_az_el_from_dir([
+                        preset_dir[0],
+                        preset_dir[1],
+                        preset_dir[2],
+                    ]);
                     let vr = &mut self.ui_state.viewport_render;
                     vr.sun_azimuth_deg = az;
                     vr.sun_elevation_deg = el;
@@ -272,15 +273,17 @@ impl TerraApp {
                 let debug_viz = vr.debug_viz_mode;
                 renderer.set_debug_viz_mode(debug_viz);
                 // Mode alone selects the presentation backend (no dual progressive flag).
-                let progressive_active = self.screen == AppScreen::Editor
-                    && vr.mode.uses_progressive_path_tracer();
+                let progressive_active =
+                    self.screen == AppScreen::Editor && vr.mode.uses_progressive_path_tracer();
                 self.ui_state.progressive_renderer_active = progressive_active;
 
                 let shading = if self.ui_state.is_mask_view() {
                     terra_render::ViewportShadingMode::Lit
                 } else {
                     match self.ui_state.preview_mode {
-                        crate::ui::Preview2dMode::Height => terra_render::ViewportShadingMode::Height,
+                        crate::ui::Preview2dMode::Height => {
+                            terra_render::ViewportShadingMode::Height
+                        }
                         crate::ui::Preview2dMode::Slope => terra_render::ViewportShadingMode::Slope,
                         crate::ui::Preview2dMode::Flow => terra_render::ViewportShadingMode::Flow,
                         _ => terra_render::ViewportShadingMode::Lit,
@@ -350,8 +353,8 @@ impl TerraApp {
             );
             let progressive_samples = renderer.progressive_samples();
             self.ui_state.progressive_samples = progressive_samples;
-            let render_converged = progressive_samples
-                >= renderer.quality().config.max_accumulated_spp;
+            let render_converged =
+                progressive_samples >= renderer.quality().config.max_accumulated_spp;
             self.terrain_runtime
                 .refinement
                 .set_render_converged(render_converged);
@@ -568,11 +571,7 @@ impl TerraApp {
                     world_size_m,
                     sea_level,
                 } => {
-                    self.new_project_with_template(
-                        &template_id,
-                        world_size_m,
-                        sea_level,
-                    );
+                    self.new_project_with_template(&template_id, world_size_m, sea_level);
                 }
             }
         }

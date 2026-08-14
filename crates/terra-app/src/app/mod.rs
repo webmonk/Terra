@@ -1,8 +1,8 @@
 //! Application shell: window, eval, project I/O, paint, and UI action dispatch.
 
 mod actions;
-mod helpers;
 mod eval;
+mod helpers;
 mod lifecycle;
 mod paint;
 pub mod prefs;
@@ -15,6 +15,11 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Instant;
 
+use crate::ui::{
+    layers_from_project_template, ChromeGuiState, DockGuiState, InspectorGuiState, LayersGuiState,
+    NewWorldSettings, Preview2dMode, ProjectHomeGuiState, ProjectPrefs, ToolsGuiState, UiState,
+    WindowsGuiState,
+};
 use terra_core::document::EditorSession;
 use terra_core::eval::{EvalScheduler, EvalWorker, PreviewQuality};
 use terra_core::heightfield::{Heightfield, TileId};
@@ -23,9 +28,6 @@ use terra_gpu::{GpuTerrainEngine, GpuTileAtlas};
 use terra_gui::{GuiRenderer, GuiState, Rect, WidgetLabState};
 use terra_io::{BackgroundExporter, BackgroundProjectIo};
 use terra_render::TerrainRenderer;
-use crate::ui::{
-    layers_from_project_template, ChromeGuiState, DockGuiState, InspectorGuiState, LayersGuiState, NewWorldSettings, Preview2dMode, ProjectHomeGuiState, ProjectPrefs, ToolsGuiState, UiState, WindowsGuiState,
-};
 use winit::event::MouseButton;
 use winit::window::Window;
 
@@ -422,13 +424,18 @@ pub(crate) fn project_name_from_path(path: &std::path::Path) -> String {
 }
 
 /// `Documents/Terra/<name>/<name>.json`, creating the project folder as needed.
-pub(crate) fn prepare_project_path(projects_root: &std::path::Path, name: &str) -> std::io::Result<PathBuf> {
+pub(crate) fn prepare_project_path(
+    projects_root: &std::path::Path,
+    name: &str,
+) -> std::io::Result<PathBuf> {
     let project_dir = projects_root.join(name);
     std::fs::create_dir_all(&project_dir)?;
     Ok(project_dir.join(format!("{name}.json")))
 }
 
-pub(crate) fn document_from_template(template_id: &str) -> Option<terra_core::document::TerrainDocument> {
+pub(crate) fn document_from_template(
+    template_id: &str,
+) -> Option<terra_core::document::TerrainDocument> {
     match template_id {
         "blank" => Some(terra_core::blank_world_design(8192.0, 512)),
         "tropical_island" => Some(terra_core::tropical_island_world(10_000.0, 512)),

@@ -106,7 +106,10 @@ fn gui_pass_can_modify_the_target() {
         covered, BACKDROP_RGBA,
         "GUI geometry never reached the target — the preserve test would be vacuous"
     );
-    assert_eq!(covered, MARKER_RGBA, "marker should composite as opaque blue");
+    assert_eq!(
+        covered, MARKER_RGBA,
+        "marker should composite as opaque blue"
+    );
 }
 
 /// A frame with no geometry skips the pass entirely.

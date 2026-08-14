@@ -1,10 +1,10 @@
 //! Viewport / hierarchy contextual Create-here menus.
 
+use crate::ui::style::{self, FONT_SCALE, TYPE_BODY, TYPE_LABEL};
 use terra_core::contextual_create::{
     available_kinds, propose_owner, CreateContext, CreateKind, CreateOwner, CreateWorkspace,
 };
 use terra_core::document::TerrainDocument;
-use crate::ui::style::{self, FONT_SCALE, TYPE_BODY, TYPE_LABEL};
 use terra_gui::{GuiContext, Id, Rect};
 
 use crate::ui::actions::PanelAction;

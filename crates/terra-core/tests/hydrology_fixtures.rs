@@ -1,8 +1,8 @@
 //! Phase E hydrology fixtures: SPE + drainage coherence vs noise+carve.
 
 use terra_core::generators::{fbm_field, uplift};
-use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
 use terra_core::geomorph::{accumulate_drainage_area, build_flow_graph, FlowModel, Precipitation};
+use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
 use terra_core::hydro::{carve_rivers, fill_depressions, stream_power_erode};
 use terra_core::layer::{
     FbmParams, FractalNoiseType, NoiseParams, RiverCarveParams, StreamPowerParams, UpliftParams,

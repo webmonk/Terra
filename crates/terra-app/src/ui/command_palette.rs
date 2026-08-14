@@ -1,7 +1,9 @@
 //! Global command palette and its editor-facing action bridge.
 
 use crate::ui::actions::PanelAction;
-use crate::ui::command_registry::{commands, format_shortcuts, fuzzy_match, resolve_workspace_command, CommandId};
+use crate::ui::command_registry::{
+    commands, format_shortcuts, fuzzy_match, resolve_workspace_command, CommandId,
+};
 use crate::ui::style::{self, FONT_SCALE, PAD, ROW_H};
 use crate::ui::tool_catalog::{all_tools_cached, instantiate_layer_preset, ToolAction};
 use crate::ui::{AppWorkspace, Preview2dMode, UiState};

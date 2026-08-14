@@ -1,4 +1,4 @@
-﻿//! Layer parameter kinds (split by family).
+//! Layer parameter kinds (split by family).
 
 use crate::mask::MaskSource;
 use serde::{Deserialize, Serialize};
@@ -653,4 +653,3 @@ impl Default for MultiScaleAmplifyParams {
         }
     }
 }
-

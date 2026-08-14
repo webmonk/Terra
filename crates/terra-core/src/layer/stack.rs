@@ -713,10 +713,7 @@ impl LayerStack {
         section: BiomeSection,
     ) -> bool {
         // Region shape layers stay on the Shape stack — never under a biome section.
-        if self
-            .find(layer_id)
-            .is_some_and(|l| is_shape_kind(&l.kind))
-        {
+        if self.find(layer_id).is_some_and(|l| is_shape_kind(&l.kind)) {
             return false;
         }
         let Some(node) = self.remove(layer_id) else {
@@ -1047,9 +1044,7 @@ mod tests {
 
     #[test]
     fn biome_destination_section_routes_expected_kinds() {
-        use crate::layer::{
-            MaterialsParams, SandSimParams, TerraceParams, VegetationParams,
-        };
+        use crate::layer::{MaterialsParams, SandSimParams, TerraceParams, VegetationParams};
         assert_eq!(
             biome_destination_section(&LayerKind::EffectFilter(EffectFilterParams::default())),
             Some(BiomeSection::Filters)
@@ -1058,11 +1053,15 @@ mod tests {
             biome_destination_section(&LayerKind::Terrace(TerraceParams::default())),
             Some(BiomeSection::Filters)
         );
-        assert!(is_shape_kind(&LayerKind::Path(crate::layer::PathParams::default())));
+        assert!(is_shape_kind(&LayerKind::Path(
+            crate::layer::PathParams::default()
+        )));
         assert!(is_shape_kind(&LayerKind::PolygonHeight(
             crate::layer::PolygonHeightParams::default()
         )));
-        assert!(!is_shape_kind(&LayerKind::Terrace(TerraceParams::default())));
+        assert!(!is_shape_kind(
+            &LayerKind::Terrace(TerraceParams::default())
+        ));
         assert_eq!(
             biome_destination_section(&LayerKind::Materials(MaterialsParams::default())),
             Some(BiomeSection::Materials)
@@ -1076,7 +1075,9 @@ mod tests {
             Some(BiomeSection::LocalSims)
         );
         assert_eq!(
-            biome_destination_section(&LayerKind::ProceduralShape(ProceduralShapeParams::default())),
+            biome_destination_section(
+                &LayerKind::ProceduralShape(ProceduralShapeParams::default())
+            ),
             None
         );
         assert_eq!(

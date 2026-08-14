@@ -102,7 +102,10 @@ fn routing_is_deterministic() {
         let a = build_flow_graph(&filled, model);
         let b = build_flow_graph(&filled, model);
         assert_eq!(a.d8_dir, b.d8_dir, "d8_dir differs for {model:?}");
-        assert_eq!(a.topo_order, b.topo_order, "topo_order differs for {model:?}");
+        assert_eq!(
+            a.topo_order, b.topo_order,
+            "topo_order differs for {model:?}"
+        );
         let acc_a = accumulate_drainage_area(&a, &Precipitation::uniform(1.0));
         let acc_b = accumulate_drainage_area(&b, &Precipitation::uniform(1.0));
         assert_eq!(
@@ -165,7 +168,11 @@ fn flat_d8_drainage_matches_flow_graph() {
 
                 let acc_g = accumulate_drainage_area(&g, &precip);
                 let acc_d = accumulate_drainage_area_d8(&d, &precip);
-                assert_eq!(bits(&acc_g), bits(&acc_d), "accumulation not bit-identical: {tag}");
+                assert_eq!(
+                    bits(&acc_g),
+                    bits(&acc_d),
+                    "accumulation not bit-identical: {tag}"
+                );
 
                 for j in 0..m.height {
                     for i in 0..m.width {
@@ -222,7 +229,12 @@ fn tiled_derivative_halo_has_no_interior_seams() {
             let j1 = (tj + tile + halo).min(hf.metrics.height);
             let tw = i1 - i0;
             let th = j1 - j0;
-            let tm = HeightfieldMetrics::new(tw, th, tw as f32 * hf.metrics.dx(), th as f32 * hf.metrics.dz());
+            let tm = HeightfieldMetrics::new(
+                tw,
+                th,
+                tw as f32 * hf.metrics.dx(),
+                th as f32 * hf.metrics.dz(),
+            );
             let mut patch = Heightfield::zeros(tm);
             for j in 0..th {
                 for i in 0..tw {

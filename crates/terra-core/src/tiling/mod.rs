@@ -492,11 +492,9 @@ mod tests {
             DirtyClass::BasinDependent.support_radius_samples(256, 1, 1),
             None
         );
-        assert!(
-            DirtyClass::Local
-                .support_radius_samples(256, 2, 1)
-                .is_some()
-        );
+        assert!(DirtyClass::Local
+            .support_radius_samples(256, 2, 1)
+            .is_some());
     }
 
     /// Smoke: dirty tile snapshot can feed a viewport overlay (tx/tz list + bounds).

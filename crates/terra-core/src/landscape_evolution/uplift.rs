@@ -153,10 +153,8 @@ fn zero_boundary_uplift(field: &mut MaskField, boundary: super::params::Boundary
     };
     for j in 0..m.height {
         for i in 0..m.width {
-            let on_rim = i < margin
-                || j < margin
-                || i + margin >= m.width
-                || j + margin >= m.height;
+            let on_rim =
+                i < margin || j < margin || i + margin >= m.width || j + margin >= m.height;
             if on_rim {
                 let edge = {
                     let di = i.min(m.width.saturating_sub(1 + i));
@@ -190,7 +188,11 @@ pub fn asymmetric_belt(
             let v = j as f32 / m.height.max(1) as f32 - 0.5;
             let across = -sa * u + ca * v;
             let side = (0.5 + 0.5 * across.signum() * bias.clamp(0.0, 1.0)).clamp(0.2, 1.5);
-            field.set(i, j, field.get(i, j) / p.peak_uplift_rate().max(1e-12) * peak * side);
+            field.set(
+                i,
+                j,
+                field.get(i, j) / p.peak_uplift_rate().max(1e-12) * peak * side,
+            );
         }
     }
     field

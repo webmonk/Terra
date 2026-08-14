@@ -13,6 +13,7 @@ mod scale;
 mod stack;
 mod workflow;
 
+pub use crate::ids::{LayerId, OutputId};
 pub use binding::{
     BindingCombine, BindingCurve, BindingSource, ParamBinding, ParamPath, RemapRange,
 };
@@ -29,13 +30,10 @@ pub use metadata::{
     LayerTypeMeta, MaskCompatibility,
 };
 pub use operation::{FieldContract, OperationCategory};
-pub use crate::ids::{LayerId, OutputId};
 pub use output::{NamedOutputDecl, OutputRef, PublishedOutput};
 pub use registry::LayerTypeRegistry;
 pub use scale::ScaleBand;
-pub use stack::{
-    biome_destination_section, is_shape_kind, LayerGroup, LayerStack, StackNode,
-};
+pub use stack::{biome_destination_section, is_shape_kind, LayerGroup, LayerStack, StackNode};
 pub use workflow::WorkflowStage;
 
 use crate::mask::Distribution;

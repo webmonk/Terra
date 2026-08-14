@@ -86,7 +86,10 @@ fn raster_frame_covers_offscreen_target() {
     renderer.upload_heightfield(&heights);
     renderer.render_to_view(&target.view, W, H);
     let err = pollster::block_on(gpu.device.pop_error_scope());
-    assert!(err.is_none(), "validation error after height upload: {err:?}");
+    assert!(
+        err.is_none(),
+        "validation error after height upload: {err:?}"
+    );
     assert_fully_overwritten(&gpu.read_rgba8(&target), "uploaded frame");
 
     // Frame 3: enable raster cast shadows (dormant until wired to shadow_strength)
@@ -97,7 +100,10 @@ fn raster_frame_covers_offscreen_target() {
     gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
     renderer.render_to_view(&target.view, W, H);
     let err = pollster::block_on(gpu.device.pop_error_scope());
-    assert!(err.is_none(), "validation error with shadows enabled: {err:?}");
+    assert!(
+        err.is_none(),
+        "validation error with shadows enabled: {err:?}"
+    );
     assert_fully_overwritten(&gpu.read_rgba8(&target), "shadowed frame");
 
     // Frame 4: switch to the progressive path tracer so the frame graph takes
@@ -111,5 +117,8 @@ fn raster_frame_covers_offscreen_target() {
     gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
     renderer.render_to_view(&target.view, W, H);
     let err = pollster::block_on(gpu.device.pop_error_scope());
-    assert!(err.is_none(), "validation error in path-traced frame: {err:?}");
+    assert!(
+        err.is_none(),
+        "validation error in path-traced frame: {err:?}"
+    );
 }

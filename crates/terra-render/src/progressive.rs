@@ -650,11 +650,7 @@ impl ProgressiveRenderer {
             mode: debug_viz_mode,
             _pad: [0; 3],
         };
-        queue.write_buffer(
-            &self.composite_uniform,
-            0,
-            bytemuck::bytes_of(&composite_u),
-        );
+        queue.write_buffer(&self.composite_uniform, 0, bytemuck::bytes_of(&composite_u));
         let composite_bg = device.create_bind_group(&wgpu::BindGroupDescriptor {
             label: Some("progressive-composite-bg"),
             layout: &self.composite_layout,
@@ -703,10 +699,7 @@ impl ProgressiveRenderer {
 
         self.history_index = write;
         self.history_valid = true;
-        self.samples = self
-            .samples
-            .saturating_add(1)
-            .min(self.max_samples);
+        self.samples = self.samples.saturating_add(1).min(self.max_samples);
         self.accumulation_frame_index = self.accumulation_frame_index.wrapping_add(1);
         self.previous_view_proj = view_proj;
     }
