@@ -16,6 +16,7 @@ use crate::mask::MaskField;
 
 use super::cache::DrainageCache;
 use super::params::LandscapeEvolutionParams;
+use super::BoundaryMasks;
 
 /// Characteristic motion below this fraction of a cell cannot be resolved
 /// reliably by the f32 path integrals and is treated as the no-advection limit.
@@ -33,7 +34,7 @@ pub fn evolve_analytical(
     tectonic_base: &Heightfield,
     uplift: &MaskField,
     hardness: &MaskField,
-    boundary: &MaskField,
+    boundaries: &BoundaryMasks,
     p: &LandscapeEvolutionParams,
     passes: u32,
 ) -> (Heightfield, DrainageCache, Vec<f32>) {
@@ -54,7 +55,9 @@ pub fn evolve_analytical(
     let bounds = finite_horizon_bounds(initial, tectonic_base, uplift, t);
 
     let mut z = initial.clone();
-    let mut cache = DrainageCache::build(&z, true);
+    let routing_outlets = &boundaries.routing_outlets;
+    let elevation_locks = &boundaries.elevation_locks;
+    let mut cache = DrainageCache::build(&z, true, routing_outlets);
     let mut incision = vec![0.0f32; n];
     let passes = passes.max(1);
 
@@ -76,14 +79,14 @@ pub fn evolve_analytical(
         };
         for pass in 0..level_passes {
             if pass == 0 || pass % 2 == 0 || level > 0 {
-                cache = DrainageCache::build(&z, true);
+                cache = DrainageCache::build(&z, true, routing_outlets);
             }
             let predicted = analytical_on_tree(
                 &z,
                 tectonic_base,
                 uplift,
                 hardness,
-                boundary,
+                elevation_locks,
                 &cache,
                 t,
                 k,
@@ -102,7 +105,7 @@ pub fn evolve_analytical(
                         continue;
                     }
                     let idx = j * w + i;
-                    if boundary.get(i as u32, j as u32) > 0.5 {
+                    if elevation_locks.get(i as u32, j as u32) > 0.5 {
                         continue;
                     }
                     let old = z.get(i as u32, j as u32);
@@ -114,6 +117,7 @@ pub fn evolve_analytical(
             }
             if stride > 1 {
                 bilinear_fill_stride(&mut z, stride);
+                restore_locked(&mut z, initial, elevation_locks);
             }
             if rejected > 0 {
                 log::warn!(
@@ -124,13 +128,13 @@ pub fn evolve_analytical(
     }
 
     // Final full-res pass for consistency.
-    cache = DrainageCache::build(&z, true);
+    cache = DrainageCache::build(&z, true, routing_outlets);
     let predicted = analytical_on_tree(
         &z,
         tectonic_base,
         uplift,
         hardness,
-        boundary,
+        elevation_locks,
         &cache,
         t,
         k,
@@ -144,7 +148,7 @@ pub fn evolve_analytical(
     for j in 0..h {
         for i in 0..w {
             let idx = j * w + i;
-            if boundary.get(i as u32, j as u32) > 0.5 {
+            if elevation_locks.get(i as u32, j as u32) > 0.5 {
                 z.set(i as u32, j as u32, initial.get(i as u32, j as u32));
                 continue;
             }
@@ -159,6 +163,7 @@ pub fn evolve_analytical(
             "Landscape Evolution rejected {rejected} final analytical candidates outside the finite-time uplift envelope"
         );
     }
+    restore_locked(&mut z, initial, elevation_locks);
     cache.refresh_fingerprint(&z);
 
     (z, cache, incision)
@@ -169,7 +174,7 @@ fn analytical_on_tree(
     z0: &Heightfield,
     uplift: &MaskField,
     hardness: &MaskField,
-    boundary: &MaskField,
+    elevation_locks: &MaskField,
     cache: &DrainageCache,
     t: f32,
     k: f32,
@@ -238,7 +243,7 @@ fn analytical_on_tree(
         if stride > 1 && (i % stride != 0 || j % stride != 0) {
             continue;
         }
-        if boundary.get(i as u32, j as u32) > 0.5 || transport_receiver[idx] == usize::MAX {
+        if elevation_locks.get(i as u32, j as u32) > 0.5 || transport_receiver[idx] == usize::MAX {
             travel[idx] = 0.0;
             s_uplift[idx] = 0.0;
             out[idx] = z0.get(i as u32, j as u32);
@@ -255,7 +260,7 @@ fn analytical_on_tree(
         if stride > 1 && (i % stride != 0 || j % stride != 0) {
             continue;
         }
-        if boundary.get(i as u32, j as u32) > 0.5 {
+        if elevation_locks.get(i as u32, j as u32) > 0.5 {
             out[idx] = z0.get(i as u32, j as u32);
             continue;
         }
@@ -454,6 +459,17 @@ fn bilinear_fill_stride(z: &mut Heightfield, stride: usize) {
             let v0 = v00 + (v10 - v00) * fx;
             let v1 = v01 + (v11 - v01) * fx;
             z.set(i as u32, j as u32, v0 + (v1 - v0) * fy);
+        }
+    }
+}
+
+fn restore_locked(z: &mut Heightfield, original: &Heightfield, elevation_locks: &MaskField) {
+    let m = z.metrics;
+    for j in 0..m.height {
+        for i in 0..m.width {
+            if elevation_locks.get(i, j) > 0.5 {
+                z.set(i, j, original.get(i, j));
+            }
         }
     }
 }

@@ -41,14 +41,16 @@ impl Default for UpliftMode {
 /// Drainage outlet / base-level boundary behaviour.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum BoundaryMode {
-    /// Cells at or below sea / base level act as fixed outlets.
+    /// Cells at or below sea / base level are fixed; the rim remains a
+    /// routing-only outlet so above-sea edge samples may evolve.
     #[default]
     SeaLevel,
-    /// Domain border cells are fixed elevation outlets.
+    /// The one-cell domain rim is both a drainage outlet and elevation-locked.
     Fixed,
-    /// Border cells drain freely (open) without fixing height.
+    /// The one-cell rim terminates drainage without locking its elevation.
     OpenDrainage,
-    /// User outlet mask (1 = fixed outlet). Falls back to SeaLevel if absent.
+    /// User outlet mask (`> 0.5` = fixed outlet). A missing mask falls back to
+    /// SeaLevel; an empty supplied mask gets a routing-only rim fallback.
     OutletMask,
 }
 

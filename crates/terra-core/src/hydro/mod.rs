@@ -152,6 +152,23 @@ const D8_OFFSETS: [(i32, i32); 8] = [
 /// Ridges are local maxima (higher than all 8 neighbors). Distance is a multi-source
 /// BFS in grid steps. This is **not** a full Dendry network authoring pass.
 pub fn ridge_distance_valley_seed(hf: &Heightfield, strength: f32) -> Heightfield {
+    ridge_distance_valley_seed_impl(hf, strength, None)
+}
+
+/// Landscape-evolution variant that never carves elevation-locked cells.
+pub(crate) fn ridge_distance_valley_seed_with_locks(
+    hf: &Heightfield,
+    strength: f32,
+    elevation_locks: &MaskField,
+) -> Heightfield {
+    ridge_distance_valley_seed_impl(hf, strength, Some(elevation_locks))
+}
+
+fn ridge_distance_valley_seed_impl(
+    hf: &Heightfield,
+    strength: f32,
+    elevation_locks: Option<&MaskField>,
+) -> Heightfield {
     if strength <= 1e-6 {
         return hf.clone();
     }
@@ -229,6 +246,12 @@ pub fn ridge_distance_valley_seed(hf: &Heightfield, strength: f32) -> Heightfiel
     let mut out = hf.clone();
     for j in 0..h {
         for i in 0..w {
+            if elevation_locks
+                .map(|locks| locks.get(i as u32, j as u32) > 0.5)
+                .unwrap_or(false)
+            {
+                continue;
+            }
             let d = dist[j * w + i];
             let t = if d == i32::MAX { 1.0 } else { d as f32 / max_d };
             let carve = strength * t * relief * 0.05;

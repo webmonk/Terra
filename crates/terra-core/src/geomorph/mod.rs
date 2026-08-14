@@ -18,6 +18,7 @@ pub use accumulation::{
     PrecipitationSource,
 };
 pub use debug::{bake_debug_field, GeomorphDebugField};
+pub(crate) use depression::priority_flood_fill_from_outlets;
 pub use depression::{
     handle_depressions, priority_flood_fill, BreachParams, DepressionMode, DepressionResult,
     PreserveBasinsParams,
