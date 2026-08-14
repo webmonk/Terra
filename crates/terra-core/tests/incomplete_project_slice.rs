@@ -1,17 +1,15 @@
-//! Incomplete-but-valid projects, soft diagnostics, and eval/authoring independence.
+//! Incomplete-but-valid projects, soft diagnostics, and stack-order evaluation.
 
 use std::collections::HashMap;
 use terra_core::biome_definition::{BiomeDefinition, BiomePlacementRules};
 use terra_core::biome_paint::BiomeLayer;
 use terra_core::document::TerrainDocument;
-use terra_core::domain::{
-    authoring_order_is_arbitrary, evaluation_pipeline_order, incomplete_project_diagnostics,
-    TerrainPipelineStage,
-};
+use terra_core::domain::{authoring_order_is_arbitrary, incomplete_project_diagnostics};
 use terra_core::eval::{EvalContext, PreviewQuality, StackEvaluator};
 use terra_core::heightfield::HeightfieldMetrics;
 use terra_core::layer::{
-    HydraulicErosionParams, Layer, LayerKind, MaterialsParams, NoiseParams, ThermalErosionParams,
+    BlendMode, FlatParams, HydraulicErosionParams, Layer, LayerKind, LayerStack, MaterialsParams,
+    NoiseParams, ThermalErosionParams,
 };
 use terra_core::mask::{bake_mask_assets, DistNode};
 
@@ -42,13 +40,33 @@ fn authoring_order_is_arbitrary_contract() {
 }
 
 #[test]
-fn evaluation_order_independent_of_authoring_chronology() {
-    // Author materials and biome defs *before* any shape height exists.
+fn evaluation_follows_the_current_stack_tree_order() {
+    let mut doc = TerrainDocument::new_default();
+    doc.stack = LayerStack::new();
+
+    let mut base = Layer::new("Base", LayerKind::Flat(FlatParams { height: 10.0 }));
+    base.common.blend = BlendMode::Normal;
+    let mut raise = Layer::new("Raise", LayerKind::Flat(FlatParams { height: 5.0 }));
+    raise.common.blend = BlendMode::Add;
+    doc.stack.push(base);
+    doc.stack.push(raise);
+
+    let bottom_to_top = eval_doc(&mut doc);
+    assert!((bottom_to_top.get(32, 32) - 15.0).abs() < 1.0e-4);
+
+    doc.stack.nodes.reverse();
+    let reordered = eval_doc(&mut doc);
+    assert!((reordered.get(32, 32) - 10.0).abs() < 1.0e-4);
+}
+
+#[test]
+fn incomplete_content_evaluates_and_reports_soft_diagnostics() {
     let mut doc = TerrainDocument::new_default();
     let mut mats = MaterialsParams::default();
     mats.rules.clear();
     mats.strata.clear();
-    doc.stack.push(Layer::new("Early Materials", LayerKind::Materials(mats)));
+    doc.stack
+        .push(Layer::new("Early Materials", LayerKind::Materials(mats)));
     let mut snow = BiomeDefinition::new("Snow", [0.9, 0.92, 0.95]);
     snow.placement = BiomePlacementRules {
         rules: Some(DistNode::height(500.0, 10_000.0)), // no terrain that high
@@ -56,7 +74,7 @@ fn evaluation_order_independent_of_authoring_chronology() {
     };
     doc.biome_library.definitions.push(snow);
 
-    // Later: add a low hill (authoring order ≠ pipeline stage order).
+    // Add a low hill after the incomplete material and biome content.
     doc.stack.push(Layer::new(
         "Late Hill",
         LayerKind::NoiseValue(NoiseParams {
@@ -64,20 +82,6 @@ fn evaluation_order_independent_of_authoring_chronology() {
             ..NoiseParams::default()
         }),
     ));
-
-    let order = evaluation_pipeline_order();
-    let shape = order
-        .iter()
-        .position(|s| *s == TerrainPipelineStage::Shape)
-        .unwrap();
-    let material = order
-        .iter()
-        .position(|s| *s == TerrainPipelineStage::Material)
-        .unwrap();
-    assert!(
-        shape < material,
-        "eval order must not follow authoring order"
-    );
 
     let _hf = eval_doc(&mut doc);
     let diags = incomplete_project_diagnostics(&doc.stack, &doc.biome_library, &doc.biome_layers);

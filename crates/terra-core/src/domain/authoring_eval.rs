@@ -1,16 +1,17 @@
-//! Authoring order vs evaluation order.
+//! Authoring chronology and stack evaluation.
 //!
 //! Artists may create and edit project content in any order (biomes before
 //! shapes, materials before simulations, snow rules before mountains, etc.).
-//! Evaluation always follows a deterministic dependency-driven pipeline that is
-//! **independent of UI workspace order** and of the chronological authoring order.
+//! Authoring chronology does not create a separate stage schedule. Evaluation
+//! walks the resulting [`LayerStack`] tree bottom-to-top, preserving its group
+//! and solo semantics. Chronology matters only when authoring operations leave
+//! the stack in a different order.
 //!
 //! Incomplete but valid projects produce empty outputs and soft diagnostics —
 //! never fatal errors solely because coverage is zero or a stage has no sources.
 
 use crate::biome_definition::{BiomeDefinition, BiomeLibrary};
 use crate::biome_paint::BiomeLayer;
-use crate::domain::pipeline::TerrainPipelineStage;
 use crate::landscape_blueprint::EvalStage;
 use crate::layer::{LayerKind, LayerStack, WorkflowStage};
 
@@ -30,19 +31,14 @@ impl SoftDiagnostic {
     }
 }
 
-/// Authoring is unordered: creation / edit chronology does not define evaluation.
+/// Content may be authored in any chronology; evaluation follows the resulting stack tree.
 pub fn authoring_order_is_arbitrary() -> bool {
     true
 }
 
-/// Deterministic terrain pipeline stage order (documented contract).
+/// Metadata order used for invalidation and optional explicit authoring sorts.
 ///
-/// Independent of [`crate`]-external UI workspace mode order.
-pub fn evaluation_pipeline_order() -> &'static [TerrainPipelineStage] {
-    TerrainPipelineStage::execution_order()
-}
-
-/// Documented EvalStage order used for optional dependency hygiene sorts.
+/// This does not reorder [`crate::eval::StackEvaluator`] execution.
 pub fn evaluation_eval_stage_order() -> &'static [EvalStage] {
     &[
         EvalStage::Blueprint,
@@ -165,23 +161,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn pipeline_order_is_stable_and_independent_of_workspace() {
-        let order = evaluation_pipeline_order();
-        assert_eq!(order.first(), Some(&TerrainPipelineStage::Shape));
-        assert_eq!(order.last(), Some(&TerrainPipelineStage::Output));
-        let shape = order
-            .iter()
-            .position(|s| *s == TerrainPipelineStage::Shape)
-            .unwrap();
-        let mats = order
-            .iter()
-            .position(|s| *s == TerrainPipelineStage::Material)
-            .unwrap();
-        assert!(shape < mats);
-    }
-
-    #[test]
-    fn authoring_is_explicitly_unordered() {
+    fn authoring_chronology_has_no_separate_stage_contract() {
         assert!(authoring_order_is_arbitrary());
     }
 }

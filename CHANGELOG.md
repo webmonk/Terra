@@ -35,3 +35,5 @@ All notable changes to Terra will be documented in this file.
   `fields`, `heightfield`, and `layer`.
 - Retired the unexecuted per-layer terrain work scheduler and vector tile executor; viewport
   residency now records only payload-backed tiles produced by the live final-output upload path.
+- Retired the delegating `TerrainPipelineExecutor` and fictional ten-stage rebuild diagnostics;
+  final and export CPU evaluation now call the authored-tree `StackEvaluator` directly.

@@ -1,4 +1,4 @@
-//! B1 evaluator-authority ratchet (audits B1-D1, B1-D2, and B1-D3).
+//! B1 evaluator-authority ratchet (audits B1-D1 through B1-D4).
 //!
 //! `StackEvaluator` is the CPU executor. Terra-core must not grow another
 //! compiled graph until that graph lands with a production executor, a
@@ -26,6 +26,75 @@ fn stack_evaluator_remains_the_single_cpu_authority() {
         source.contains("pub fn evaluate_nodes"),
         "{} no longer exposes the established CPU tree-walk authority; update this ratchet only with equivalent end-to-end coverage",
         eval_path.display()
+    );
+}
+
+#[test]
+fn delegating_evaluator_facades_stay_retired() {
+    let core = manifest_dir();
+    let retired_module = core.join("src/domain/pipeline.rs");
+    assert!(
+        !retired_module.exists(),
+        "{} reintroduced the retired fictional stage pipeline",
+        retired_module.display()
+    );
+
+    let mut sources = Vec::new();
+    collect_rs(&core.join("src"), &mut sources);
+    let retired = [
+        "TerrainPipelineExecutor",
+        "TerrainPipelineStage",
+        "RebuildReason",
+    ];
+    let mut retired_references = Vec::new();
+    let mut delegating_facades = Vec::new();
+
+    for path in sources {
+        let source = production_source(&read(&path));
+        let module_delegates_to_stack =
+            source.contains("LayerStack") && source.contains("StackEvaluator");
+
+        for (line_index, line) in source.lines().enumerate() {
+            let tokens: Vec<_> = line
+                .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+                .filter(|token| !token.is_empty())
+                .collect();
+
+            for forbidden in retired {
+                if tokens.contains(&forbidden) {
+                    retired_references.push(format!(
+                        "{}:{} ({forbidden})",
+                        path.display(),
+                        line_index + 1
+                    ));
+                }
+            }
+
+            let Some(struct_index) = tokens.iter().position(|token| *token == "struct") else {
+                continue;
+            };
+            if !tokens[..struct_index].contains(&"pub") {
+                continue;
+            }
+            let Some(name) = tokens.get(struct_index + 1) else {
+                continue;
+            };
+            let evaluator_name = name.ends_with("Evaluator") || name.ends_with("Executor");
+            if evaluator_name && *name != "StackEvaluator" && module_delegates_to_stack {
+                delegating_facades.push(format!("{}:{} ({name})", path.display(), line_index + 1));
+            }
+        }
+    }
+
+    assert!(
+        retired_references.is_empty(),
+        "production sources reference retired pipeline-facade tokens:\n  {}",
+        retired_references.join("\n  ")
+    );
+    assert!(
+        delegating_facades.is_empty(),
+        "terra-core contains a public evaluator/executor facade beside StackEvaluator that accepts LayerStack and delegates in the same module:\n  {}\nA second CPU authority requires a real execution model, production caller, and end-to-end result test.",
+        delegating_facades.join("\n  ")
     );
 }
 

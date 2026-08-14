@@ -70,10 +70,9 @@ pub use biome_paint::{
 pub use document::{EditorSession, MaskPaintStrokeUndo, PaintStrokeUndo, TerrainDocument};
 pub use domain::{
     authoring_order_is_arbitrary, behavioural_differences, classify_in_context,
-    classify_layer_kind, evaluation_eval_stage_order, evaluation_pipeline_order,
-    incomplete_project_diagnostics, workflow_stage_metadata_order, world_eval_outline,
-    DomainBiomeRef, DomainLayerRef, DomainParent, DomainRole, DomainView, RebuildReason,
-    SoftDiagnostic, TerrainPipelineExecutor, TerrainPipelineStage,
+    classify_layer_kind, evaluation_eval_stage_order, incomplete_project_diagnostics,
+    workflow_stage_metadata_order, world_eval_outline, DomainBiomeRef, DomainLayerRef,
+    DomainParent, DomainRole, DomainView, SoftDiagnostic,
 };
 pub use heightfield::{HeightTile, Heightfield, HeightfieldMetrics, TileId};
 pub use landscape_blueprint::{

@@ -434,8 +434,8 @@ impl TerrainDocument {
         &mut self,
         ctx: &mut crate::eval::EvalContext,
     ) -> Result<crate::Heightfield, crate::eval::EvalError> {
-        let mut exec = crate::domain::TerrainPipelineExecutor::new();
-        exec.evaluate_stack(&self.stack, ctx, "evaluate_final_height")
+        let mut evaluator = crate::eval::StackEvaluator::new();
+        evaluator.rebuild_all(&self.stack, ctx)
     }
 
     /// Add a layer via context-aware stack routing.
