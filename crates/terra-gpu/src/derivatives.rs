@@ -167,11 +167,16 @@ pub fn run_derivative_gpu(
         pass.dispatch_workgroups(w.div_ceil(8), h.div_ceil(8), 1);
     }
 
-    let n = (w * h) as usize;
+    // `copy_texture_to_buffer` requires each row to start on a
+    // `COPY_BYTES_PER_ROW_ALIGNMENT` (256) boundary, so the readback buffer is
+    // sized for a padded stride and the padding is dropped after mapping.
+    let unpadded = w * 4;
+    let align = wgpu::COPY_BYTES_PER_ROW_ALIGNMENT;
+    let padded = unpadded.div_ceil(align) * align;
     let readback = ctx.device.create_buffer(&wgpu::BufferDescriptor {
         label: Some("deriv-readback"),
-        size: (n * 4) as u64,
-        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::MAP_READ,
+        size: (padded * h) as u64,
+        usage: wgpu::BufferUsages::COPY_DST | wgpu::BufferUsages::COPY_SRC,
         mapped_at_creation: false,
     });
     encoder.copy_texture_to_buffer(
@@ -185,7 +190,7 @@ pub fn run_derivative_gpu(
             buffer: &readback,
             layout: wgpu::TexelCopyBufferLayout {
                 offset: 0,
-                bytes_per_row: Some(w * 4),
+                bytes_per_row: Some(padded),
                 rows_per_image: Some(h),
             },
         },
@@ -197,7 +202,13 @@ pub fn run_derivative_gpu(
     );
     ctx.queue.submit(Some(encoder.finish()));
 
-    let data = readback_f32(&ctx.device, &ctx.queue, &readback, n)?;
+    let row_floats = (padded / 4) as usize;
+    let padded_f32 = readback_f32(&ctx.device, &ctx.queue, &readback, row_floats * h as usize)?;
+    let mut data = Vec::with_capacity((w * h) as usize);
+    for y in 0..h as usize {
+        let start = y * row_floats;
+        data.extend_from_slice(&padded_f32[start..start + w as usize]);
+    }
     Ok(MaskField::from_raw(m, &data))
 }
 
