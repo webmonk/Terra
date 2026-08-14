@@ -3,7 +3,7 @@
 //! Artist UI remains layer-based; this IR is the internal execution plan for
 //! `GpuTerrainEngine` (deps, dirty policy, fusion hooks).
 
-use terra_core::layer::{FractalNoiseType, Layer, LayerId, LayerKind, LayerStack};
+use terra_core::layer::{BlendMode, FractalNoiseType, Layer, LayerId, LayerKind, LayerStack};
 use terra_core::mask::{MaskAsset, MaskCombine, MaskSource};
 use terra_core::tiling::DirtyClass;
 
@@ -81,6 +81,36 @@ fn gpu_mask_supported(layer: &Layer, assets: &[MaskAsset]) -> bool {
         })
 }
 
+/// Exact mode IDs implemented by `shaders/blend.wgsl`.
+///
+/// Returning `None` is deliberate: unsupported equations must select the CPU
+/// oracle instead of being approximated by a different GPU blend operation.
+pub(crate) fn gpu_blend_mode(mode: BlendMode) -> Option<u32> {
+    match mode {
+        BlendMode::Normal | BlendMode::Replace | BlendMode::Interpolate => Some(0),
+        BlendMode::Add => Some(1),
+        BlendMode::Subtract => Some(2),
+        BlendMode::Multiply => Some(3),
+        BlendMode::Min => Some(4),
+        BlendMode::Max => Some(5),
+        BlendMode::Overlay => Some(6),
+        BlendMode::HeightBlend
+        | BlendMode::SmoothMaximum
+        | BlendMode::SmoothMinimum
+        | BlendMode::SmoothUnion
+        | BlendMode::SmoothSubtraction => None,
+    }
+}
+
+fn inplace_composite_supported(layer: &Layer) -> bool {
+    layer.common.opacity == 1.0
+        && layer.common.masks.is_empty()
+        && matches!(
+            layer.common.blend,
+            BlendMode::Normal | BlendMode::Replace | BlendMode::Interpolate
+        )
+}
+
 fn gpu_pass_for_layer(layer: &Layer, mask_assets: &[MaskAsset]) -> Option<GpuLayerPlan> {
     use LayerKind::*;
     if !gpu_mask_supported(layer, mask_assets) {
@@ -89,27 +119,42 @@ fn gpu_pass_for_layer(layer: &Layer, mask_assets: &[MaskAsset]) -> Option<GpuLay
     let (kind, dirty_policy, halo_texels) = match &layer.kind {
         Flat(_) | Ramp(_) | NoiseValue(_) | NoisePerlin(_) | Mountains(_) | Dunes(_)
         | Canyons(_) | DomainWarp(_) | SculptBase(_) | Mesa(_) | Volcano(_) | Island(_)
-        | Plateau(_) | Uplift(_) => (GpuPassKind::Generator, GpuDirtyPolicy::Local, 2),
+        | Plateau(_) | Uplift(_)
+            if gpu_blend_mode(layer.common.blend).is_some() =>
+        {
+            (GpuPassKind::Generator, GpuDirtyPolicy::Local, 2)
+        }
+        Flat(_) | Ramp(_) | NoiseValue(_) | NoisePerlin(_) | Mountains(_) | Dunes(_)
+        | Canyons(_) | DomainWarp(_) | SculptBase(_) | Mesa(_) | Volcano(_) | Island(_)
+        | Plateau(_) | Uplift(_) => return None,
         Fbm(p) | Ridged(p)
-            if matches!(p.noise, FractalNoiseType::Value | FractalNoiseType::Perlin) =>
+            if matches!(p.noise, FractalNoiseType::Value | FractalNoiseType::Perlin)
+                && gpu_blend_mode(layer.common.blend).is_some() =>
         {
             (GpuPassKind::Generator, GpuDirtyPolicy::Local, 2)
         }
         Fbm(_) | Ridged(_) => return None,
-        Blur(p) => (
+        Blur(p) if inplace_composite_supported(layer) => (
             GpuPassKind::Filter,
             GpuDirtyPolicy::Local,
             p.radius.max(1).min(16),
         ),
-        EffectFilter(p) => (
+        EffectFilter(p) if inplace_composite_supported(layer) => (
             GpuPassKind::Filter,
             GpuDirtyPolicy::Local,
             p.radius.max(1).min(16),
         ),
-        Terrace(_) => (GpuPassKind::Filter, GpuDirtyPolicy::Local, 4),
-        ThermalErosion(_) | HydraulicErosion(_) | RiverCarve(_) => {
+        Blur(_) | EffectFilter(_) => return None,
+        Terrace(_) if inplace_composite_supported(layer) => {
+            (GpuPassKind::Filter, GpuDirtyPolicy::Local, 4)
+        }
+        Terrace(_) => return None,
+        ThermalErosion(_) | HydraulicErosion(_) | RiverCarve(_)
+            if inplace_composite_supported(layer) =>
+        {
             (GpuPassKind::Simulation, GpuDirtyPolicy::FullField, 0)
         }
+        ThermalErosion(_) | HydraulicErosion(_) | RiverCarve(_) => return None,
         // These CPU operations either modify height without a GPU kernel or publish
         // observable auxiliary fields that the GPU preview cannot currently produce.
         Coastal(_) | Materials(_) | Biomes(_) | Vegetation(_) => return None,
@@ -180,8 +225,9 @@ mod tests {
     use super::*;
     use std::collections::HashMap;
     use terra_core::layer::{
-        BiomesParams, CoastalParams, EffectFilterKind, EffectFilterParams, FbmParams, FlatParams,
-        Layer, LayerKind, LayerStack, LayerTypeRegistry, MaterialsParams, NoiseParams,
+        BiomesParams, BlurParams, CoastalParams, EffectFilterKind, EffectFilterParams, FbmParams,
+        FlatParams, HydraulicErosionParams, Layer, LayerKind, LayerStack, LayerTypeRegistry,
+        MaterialsParams, NoiseParams, RiverCarveParams, TerraceParams, ThermalErosionParams,
         VegetationParams,
     };
     use terra_core::mask::{
@@ -198,6 +244,29 @@ mod tests {
         let mut layer = Layer::new("masked", LayerKind::Flat(FlatParams::default()));
         layer.common.masks.push(MaskRef::new(asset.id));
         layer
+    }
+
+    fn inplace_layers() -> Vec<Layer> {
+        vec![
+            Layer::new("blur", LayerKind::Blur(BlurParams::default())),
+            Layer::new(
+                "effect filter",
+                LayerKind::EffectFilter(EffectFilterParams::default()),
+            ),
+            Layer::new("terrace", LayerKind::Terrace(TerraceParams::default())),
+            Layer::new(
+                "thermal",
+                LayerKind::ThermalErosion(ThermalErosionParams::default()),
+            ),
+            Layer::new(
+                "hydraulic",
+                LayerKind::HydraulicErosion(HydraulicErosionParams::default()),
+            ),
+            Layer::new(
+                "river carve",
+                LayerKind::RiverCarve(RiverCarveParams::default()),
+            ),
+        ]
     }
 
     #[test]
@@ -317,6 +386,83 @@ mod tests {
         assert_eq!(graph.cpu_from, Some(1));
         assert_eq!(graph.passes.len(), 1);
         assert_eq!(graph.passes[0].flat_index, 0);
+    }
+
+    /// Revert check for #50: in-place kernels only implement the default outer
+    /// composite, so richer LayerCommon settings must begin CPU fallback at the owner.
+    #[test]
+    fn inplace_kernels_require_default_outer_composite() {
+        let mask = MaskAsset::new(MaskId::new(), "constant", MaskSource::Constant(0.5));
+        for default_layer in inplace_layers() {
+            assert!(
+                layer_gpu_supported(&default_layer, &[]),
+                "default {} should remain GPU-supported",
+                default_layer.common.name
+            );
+
+            let mut cases = Vec::new();
+            let mut partial = default_layer.clone();
+            partial.common.opacity = 0.5;
+            cases.push((partial, Vec::new(), "partial opacity"));
+
+            let mut masked = default_layer.clone();
+            masked.common.masks.push(MaskRef::new(mask.id));
+            cases.push((masked, vec![mask.clone()], "mask"));
+
+            let mut additive = default_layer.clone();
+            additive.common.blend = BlendMode::Add;
+            cases.push((additive, Vec::new(), "non-replacement blend"));
+
+            for (layer, assets, reason) in cases {
+                assert!(
+                    !layer_gpu_supported(&layer, &assets),
+                    "{} unexpectedly supports {reason}",
+                    layer.common.name
+                );
+                let mut stack = LayerStack::new();
+                stack.push(Layer::new("prefix", LayerKind::Flat(FlatParams::default())));
+                stack.push(layer);
+                let graph = compile_gpu_graph(&stack, &assets);
+                assert_eq!(graph.cpu_from, Some(1), "{reason}");
+                assert_eq!(graph.passes.len(), 1, "{reason}");
+            }
+        }
+    }
+
+    /// Revert check for #50: only equations actually implemented in blend.wgsl
+    /// may be advertised; no authored blend is substituted with a nearby equation.
+    #[test]
+    fn blend_support_maps_exact_equations_or_falls_back() {
+        for (mode, shader_mode) in [
+            (BlendMode::Normal, 0),
+            (BlendMode::Replace, 0),
+            (BlendMode::Interpolate, 0),
+            (BlendMode::Add, 1),
+            (BlendMode::Subtract, 2),
+            (BlendMode::Multiply, 3),
+            (BlendMode::Min, 4),
+            (BlendMode::Max, 5),
+            (BlendMode::Overlay, 6),
+        ] {
+            assert_eq!(gpu_blend_mode(mode), Some(shader_mode));
+            let mut layer = Layer::new("generator", LayerKind::Flat(FlatParams::default()));
+            layer.common.blend = mode;
+            assert!(layer_gpu_supported(&layer, &[]), "{mode:?}");
+        }
+
+        for mode in [
+            BlendMode::HeightBlend,
+            BlendMode::SmoothMaximum,
+            BlendMode::SmoothMinimum,
+            BlendMode::SmoothUnion,
+            BlendMode::SmoothSubtraction,
+        ] {
+            assert_eq!(gpu_blend_mode(mode), None, "{mode:?}");
+            let mut layer = Layer::new("generator", LayerKind::Flat(FlatParams::default()));
+            layer.common.blend = mode;
+            assert!(!layer_gpu_supported(&layer, &[]), "{mode:?}");
+            assert_eq!(single_layer_graph(layer).cpu_from, Some(0), "{mode:?}");
+        }
     }
 
     #[test]

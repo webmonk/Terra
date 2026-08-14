@@ -9,7 +9,9 @@
 //! prefer fully GPU stacks, never present an incomplete prefix as finished Draft.
 
 use crate::effect_filter::resolve_effect_mode;
-use crate::graph::{compile_gpu_graph, expand_dirty_rect, layer_gpu_supported, GpuComputeGraph};
+use crate::graph::{
+    compile_gpu_graph, expand_dirty_rect, gpu_blend_mode, layer_gpu_supported, GpuComputeGraph,
+};
 use crate::{readback_f32, GpuError};
 use bytemuck::{Pod, Zeroable};
 use std::collections::{HashMap, HashSet};
@@ -1208,19 +1210,6 @@ impl GpuTerrainEngine {
         }
     }
 
-    fn blend_mode_u(mode: BlendMode) -> u32 {
-        // GPU blend.wgsl currently implements 0..=6; map newer modes to closest.
-        match mode {
-            BlendMode::Normal | BlendMode::Replace | BlendMode::Interpolate => 0,
-            BlendMode::Add => 1,
-            BlendMode::Subtract | BlendMode::SmoothSubtraction => 2,
-            BlendMode::Multiply => 3,
-            BlendMode::Min | BlendMode::SmoothMinimum => 4,
-            BlendMode::Max | BlendMode::SmoothMaximum | BlendMode::SmoothUnion => 5,
-            BlendMode::Overlay | BlendMode::HeightBlend => 6,
-        }
-    }
-
     fn noise_type_u(t: FractalNoiseType) -> Option<u32> {
         match t {
             FractalNoiseType::Value => Some(0),
@@ -1472,12 +1461,12 @@ impl GpuTerrainEngine {
         encoder: &mut wgpu::CommandEncoder,
         opacity: f32,
         mode: BlendMode,
-    ) {
+    ) -> Result<(), GpuError> {
         let u = BlendU {
             width: self.metrics.width,
             height: self.metrics.height,
             opacity,
-            mode: Self::blend_mode_u(mode),
+            mode: gpu_blend_mode(mode).ok_or(GpuError::RequiresCpu)?,
         };
         let u_buf = self.write_uniform(device, queue, &u);
         let src_ping = self.current == 0;
@@ -1526,6 +1515,7 @@ impl GpuTerrainEngine {
             );
         }
         self.swap_current();
+        Ok(())
     }
 
     fn scale_iters(quality: PreviewQuality, iters: u32) -> u32 {
@@ -2019,7 +2009,7 @@ impl GpuTerrainEngine {
                     &mut encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             } else {
                 if let LayerKind::SculptBase(params) = &layer.kind {
                     queue.submit(Some(encoder.finish()));
@@ -2214,7 +2204,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::Flat(p) => {
                 self.fill_slot(device, queue, encoder, TexSlot::Layer, p.height);
@@ -2225,7 +2215,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::Ramp(p) => {
                 let u = RampU {
@@ -2273,7 +2263,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::NoiseValue(p) => {
                 self.gen_noise(device, queue, encoder, p, 0, false);
@@ -2284,7 +2274,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::NoisePerlin(p) => {
                 self.gen_noise(device, queue, encoder, p, 1, false);
@@ -2295,7 +2285,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::Fbm(p) => {
                 let nt = Self::noise_type_u(p.noise).ok_or(GpuError::RequiresCpu)?;
@@ -2307,7 +2297,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::Ridged(p) => {
                 let nt = Self::noise_type_u(p.noise).ok_or(GpuError::RequiresCpu)?;
@@ -2319,7 +2309,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             // Dedicated range-mask / dune asymmetry / canyon meander kernels.
             LayerKind::Mountains(p) => {
@@ -2355,7 +2345,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::Dunes(p) => {
                 let u = ShapeU {
@@ -2390,7 +2380,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::Canyons(p) => {
                 let u = ShapeU {
@@ -2425,7 +2415,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::DomainWarp(p) => {
                 self.gen_noise(device, queue, encoder, &p.base, 1, false);
@@ -2436,7 +2426,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::ThermalErosion(p) => {
                 let talus = p.talus_angle_deg.to_radians().tan() * self.metrics.dx();
@@ -2775,9 +2765,7 @@ impl GpuTerrainEngine {
                 }
             }
             LayerKind::EffectFilter(p) => {
-                let mut params = p.clone();
-                params.strength = (p.strength * layer.common.opacity).clamp(0.0, 1.0);
-                self.run_effect_filter(device, queue, encoder, &params, quality);
+                self.run_effect_filter(device, queue, encoder, p, quality);
                 let amp = p.amount.abs().max(1.0);
                 self.expand_range(self.approx_range.0 - amp, self.approx_range.1 + amp);
             }
@@ -2814,7 +2802,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::Volcano(p) => {
                 let u = ShapeU {
@@ -2849,7 +2837,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::Uplift(p) => {
                 let u = ShapeU {
@@ -2884,7 +2872,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::Island(p) => {
                 // Preview: volcano-like massif + soft shelf (full island profile remains CPU oracle).
@@ -2920,7 +2908,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::Plateau(p) => {
                 // Preview: hard height clamp via mesa-style flat top across the field.
@@ -2957,7 +2945,7 @@ impl GpuTerrainEngine {
                     encoder,
                     layer.common.opacity,
                     layer.common.blend,
-                );
+                )?;
             }
             LayerKind::Coastal(_)
             | LayerKind::Materials(_)
@@ -3117,8 +3105,9 @@ mod smoke_tests {
     use terra_core::eval::{EvalContext, PreviewQuality, StackEvaluator};
     use terra_core::heightfield::HeightfieldMetrics;
     use terra_core::layer::{
-        BlendMode, CoastalParams, FbmParams, FlatParams, FractalNoiseType, GroupInputMode, Layer,
-        LayerGroup, LayerKind, LayerStack, MaterialsParams, NoiseParams, SculptParams, StackNode,
+        BlendMode, BlurParams, CoastalParams, FbmParams, FlatParams, FractalNoiseType,
+        GroupInputMode, Layer, LayerGroup, LayerKind, LayerStack, MaterialsParams, NoiseParams,
+        SculptParams, StackNode, ThermalErosionParams,
     };
     use terra_core::mask::{
         bake_mask_assets, DistributionEntry, MaskAsset, MaskCombine, MaskId, MaskOp, MaskRef,
@@ -3176,6 +3165,31 @@ mod smoke_tests {
         stack.push(base);
         stack.push(probe);
         (stack, asset, base_id)
+    }
+
+    fn assert_gpu_fallback(
+        gpu: &terra_test_gpu::TestGpu,
+        stack: &LayerStack,
+        assets: &[MaskAsset],
+        metrics: HeightfieldMetrics,
+        owner_index: usize,
+    ) {
+        let mut engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
+        let result = engine
+            .evaluate(
+                &gpu.device,
+                &gpu.queue,
+                stack,
+                assets,
+                metrics,
+                PreviewQuality::Draft,
+                false,
+                None,
+            )
+            .expect("unsupported composite should select CPU fallback");
+        assert!(!result.fully_gpu);
+        assert_eq!(result.resume_cpu_from, Some(owner_index));
+        assert_eq!(engine.last_graph.cpu_from, Some(owner_index));
     }
 
     /// Revert check for #47: scoped groups must never reach the flattened GPU evaluator.
@@ -3490,6 +3504,104 @@ mod smoke_tests {
                 max_error <= 1.0e-3,
                 "GPU mask exceeded documented tolerance: {max_error}"
             );
+        }
+    }
+
+    /// Revert check for #50: a mask can be GPU-bakeable while the in-place filter
+    /// that owns it cannot apply the outer composite. That owner must fall back.
+    #[test]
+    fn masked_blur_selects_cpu_fallback_at_filter() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let metrics = HeightfieldMetrics::new(16, 16, 160.0, 160.0);
+        let samples = (0..16 * 16)
+            .map(|index| if index % 2 == 0 { 0.0 } else { 100.0 })
+            .collect();
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "varying base",
+            LayerKind::SculptBase(SculptParams {
+                resolution: 16,
+                samples,
+                fill_height: 0.0,
+            }),
+        ));
+        let asset = MaskAsset::new(MaskId::new(), "half", MaskSource::Constant(0.5));
+        let mut blur = Layer::new("masked blur", LayerKind::Blur(BlurParams::default()));
+        blur.common.masks.push(MaskRef::new(asset.id));
+        stack.push(blur);
+
+        let expected = cpu_mask_oracle(&stack, metrics, std::slice::from_ref(&asset));
+        assert!(
+            expected
+                .to_dense()
+                .iter()
+                .any(|height| *height > 1.0 && *height < 99.0),
+            "fixture must exercise partial masked filtering"
+        );
+        assert_gpu_fallback(&gpu, &stack, std::slice::from_ref(&asset), metrics, 1);
+    }
+
+    /// Revert check for #50: a simulation result must be composited with
+    /// LayerCommon opacity rather than mutating the entering field directly.
+    #[test]
+    fn partial_opacity_simulation_selects_cpu_fallback() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let metrics = HeightfieldMetrics::new(16, 16, 16.0, 16.0);
+        let mut samples = vec![0.0; 16 * 16];
+        samples[8 * 16 + 8] = 100.0;
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "peaked base",
+            LayerKind::SculptBase(SculptParams {
+                resolution: 16,
+                samples,
+                fill_height: 0.0,
+            }),
+        ));
+        let mut simulation = Layer::new(
+            "partial thermal",
+            LayerKind::ThermalErosion(ThermalErosionParams {
+                iterations: 2,
+                ..ThermalErosionParams::default()
+            }),
+        );
+        simulation.common.opacity = 0.5;
+        stack.push(simulation);
+
+        let expected = cpu_oracle(&stack, metrics);
+        assert!(
+            expected.get(8, 8) < 99.0,
+            "fixture must exercise partial outer compositing"
+        );
+        assert_gpu_fallback(&gpu, &stack, &[], metrics, 1);
+    }
+
+    /// Revert check for #50: unsupported blend equations must never be mapped to
+    /// Overlay or hard min/max operations by the runtime.
+    #[test]
+    fn unsupported_generator_blends_select_cpu_fallback() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let metrics = HeightfieldMetrics::new(16, 16, 160.0, 160.0);
+        for mode in [BlendMode::HeightBlend, BlendMode::SmoothUnion] {
+            let mut stack = LayerStack::new();
+            stack.push(Layer::new(
+                "base",
+                LayerKind::Flat(FlatParams { height: 10.0 }),
+            ));
+            let mut contribution =
+                Layer::new("contribution", LayerKind::Flat(FlatParams { height: 20.0 }));
+            contribution.common.blend = mode;
+            stack.push(contribution);
+
+            let expected = cpu_oracle(&stack, metrics);
+            assert!(expected.get(8, 8).is_finite(), "CPU oracle for {mode:?}");
+            assert_gpu_fallback(&gpu, &stack, &[], metrics, 1);
         }
     }
 
