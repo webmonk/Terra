@@ -21,5 +21,7 @@ WGSL kernel provides ping-pong height/water layout. Production path may call CPU
 ## Assumptions / limits
 
 - No pipe cross-sections; 4-neighbor only (not full Mei pipe model).
-- Not strictly mass-conserving under all parameter extremes — validate with fixture basins.
+- The CPU oracle uses a closed material boundary: terrain plus suspended
+  sediment closes within the scale-aware f32 tolerance exercised by the
+  [simulation stability contract](simulation_stability.md).
 - Prefer lower timesteps / more iterations for stability.

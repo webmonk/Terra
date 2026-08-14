@@ -60,3 +60,7 @@ soft shoulders. Two distinct stream-order notions coexist under distinct names:
   enclosed pits before river carving.
 - Tile seams: recompute flow on the full field or with sufficient halo after
   height edits.
+
+Landscape Evolution's executable fixed/open/outlet semantics and transport
+material policies are documented by the
+[simulation stability contract](simulation_stability.md).

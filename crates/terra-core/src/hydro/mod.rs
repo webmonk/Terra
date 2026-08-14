@@ -469,12 +469,10 @@ fn stream_power_erode_impl(
         }
     }
 
-    let mut incision_mask = MaskField::zeros(input.metrics);
-    for j in 0..h {
-        for i in 0..w {
-            incision_mask.set(i as u32, j as u32, incision[j * w + i]);
-        }
-    }
+    // Incision is a physical depth in metres, not a normalized display mask.
+    // Preserve the raw values so downstream material ledgers can reconcile the
+    // terrain removed by stream power, including cells incised by more than 1 m.
+    let incision_mask = MaskField::from_raw(input.metrics, &incision);
 
     StreamPowerResult {
         height: out,

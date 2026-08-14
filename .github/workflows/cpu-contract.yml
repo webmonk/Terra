@@ -14,6 +14,8 @@ jobs:
       - uses: dtolnay/rust-toolchain@stable
       - name: Run CPU determinism contract
         run: cargo test -p terra-core --test cpu_determinism_contract
+      - name: Run simulation numerical contract
+        run: cargo test -p terra-core --test simulation_numerical_contract
       - name: Run debris-flow numerical regressions
         run: |
           cargo test -p terra-core --lib pick_receiver
