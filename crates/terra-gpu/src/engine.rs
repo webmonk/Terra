@@ -17,6 +17,7 @@ use bytemuck::{Pod, Zeroable};
 use std::collections::{HashMap, HashSet};
 use terra_core::analyze::{apply_transport_model, clamp_timestep_cfl};
 use terra_core::eval::PreviewQuality;
+use terra_core::fields::FieldId;
 use terra_core::heightfield::{Heightfield, HeightfieldMetrics, TileId};
 use terra_core::layer::{
     BlendMode, EffectFilterParams, FractalNoiseType, Layer, LayerId, LayerKind, LayerStack,
@@ -483,6 +484,23 @@ fn layer_input_independent(kind: &LayerKind) -> bool {
     )
 }
 
+/// Whether height alone completely represents the enabled prefix before `resume_index`.
+///
+/// CPU suffix evaluation also observes auxiliary fields and named layer outputs. Until
+/// `GpuEvalResult` carries those checkpoints, any prefix that publishes them must restart
+/// on the CPU from layer zero rather than borrowing stale state from another generation.
+fn cpu_resume_prefix_is_height_only(layers: &[&Layer], resume_index: usize) -> bool {
+    layers.iter().take(resume_index).all(|layer| {
+        !layer.common.enabled
+            || (layer.common.outputs.is_empty()
+                && layer
+                    .kind
+                    .produced_fields()
+                    .into_iter()
+                    .all(|field| field == FieldId::Height))
+    })
+}
+
 /// Result of a GPU preview evaluation.
 pub struct GpuEvalResult {
     pub width: u32,
@@ -491,7 +509,8 @@ pub struct GpuEvalResult {
     pub height_range: (f32, f32),
     pub fully_gpu: bool,
     pub cpu: Option<Heightfield>,
-    /// First flattened layer that must resume on the CPU.
+    /// First flattened layer that must resume on the CPU. When this is `Some(n)`,
+    /// `cpu` is the height entering layer `n`; `Some(0)` is a full-CPU restart seed.
     pub resume_cpu_from: Option<usize>,
     /// True when the evaluate loop ran (filters may have been applied). False on seed failure.
     pub did_eval: bool,
@@ -1823,7 +1842,15 @@ impl GpuTerrainEngine {
             }
         }
 
-        let first_dirty = first_dirty.min(layers.len());
+        // A real CPU checkpoint stops before the first unsupported layer. Interactive
+        // preview keeps walking the whole suffix so supported filters above an unsupported
+        // layer remain live without forcing a UI-thread readback.
+        let execution_end = if want_cpu {
+            self.last_graph.cpu_from.unwrap_or(layers.len())
+        } else {
+            layers.len()
+        };
+        let first_dirty = first_dirty.min(execution_end);
         // Hybrid resume point (first unsupported we could only passthrough).
         let mut cpu_from = self.last_graph.cpu_from;
         let mut hybrid = false;
@@ -1939,9 +1966,15 @@ impl GpuTerrainEngine {
             });
         }
 
-        // Walk the full dirty suffix. Unsupported layers use bake cache or passthrough
-        // so EffectFilters above shapes still run on GPU (WC live-filter behaviour).
-        for (layer_index, layer) in layers.iter().enumerate().skip(first_dirty) {
+        // Walk either the full speculative preview suffix or the exact GPU prefix needed
+        // for CPU resume. Unsupported layers use bake cache or passthrough only in the
+        // speculative path, so EffectFilters above shapes stay live interactively.
+        for (layer_index, layer) in layers
+            .iter()
+            .enumerate()
+            .skip(first_dirty)
+            .take(execution_end.saturating_sub(first_dirty))
+        {
             if !layer.common.enabled {
                 self.cache_current(device, queue, &mut encoder, layer.id());
                 self.dirty.remove(&layer.id());
@@ -2069,12 +2102,17 @@ impl GpuTerrainEngine {
             });
         }
 
-        // Explicit CPU readback for export / hybrid resume / tests.
-        let need_cpu = want_cpu || resume.is_some();
-        let cpu = if need_cpu {
-            Some(self.readback_current(device, queue)?)
+        // Height-only prefixes can resume at their exact boundary. Prefixes that publish
+        // aux or named outputs cannot be represented by this result type, so give the CPU
+        // its canonical layer-zero seed instead of a partial and state-incomplete checkpoint.
+        let resume = match resume {
+            Some(index) if !cpu_resume_prefix_is_height_only(&layers, index) => Some(0),
+            other => other,
+        };
+        let cpu = if resume == Some(0) {
+            Some(Heightfield::zeros(metrics))
         } else {
-            None
+            Some(self.readback_current(device, queue)?)
         };
 
         Ok(GpuEvalResult {
@@ -3105,9 +3143,10 @@ mod smoke_tests {
     use terra_core::eval::{EvalContext, PreviewQuality, StackEvaluator};
     use terra_core::heightfield::HeightfieldMetrics;
     use terra_core::layer::{
-        BlendMode, BlurParams, CoastalParams, FbmParams, FlatParams, FractalNoiseType,
-        GroupInputMode, Layer, LayerGroup, LayerKind, LayerStack, MaterialsParams, NoiseParams,
-        SculptParams, StackNode, ThermalErosionParams,
+        BlendMode, BlurParams, CoastalParams, EffectFilterParams, FbmParams, FlatParams,
+        FractalNoiseType, GroupInputMode, IslandParams, Layer, LayerGroup, LayerKind, LayerStack,
+        MaterialsParams, NamedOutputDecl, NoiseParams, SculptParams, StackNode,
+        ThermalErosionParams,
     };
     use terra_core::mask::{
         bake_mask_assets, DistributionEntry, MaskAsset, MaskCombine, MaskId, MaskOp, MaskRef,
@@ -3190,6 +3229,169 @@ mod smoke_tests {
         assert!(!result.fully_gpu);
         assert_eq!(result.resume_cpu_from, Some(owner_index));
         assert_eq!(engine.last_graph.cpu_from, Some(owner_index));
+    }
+
+    #[test]
+    fn cpu_resume_prefix_requires_a_complete_height_only_checkpoint() {
+        let flat = Layer::new("Flat", LayerKind::Flat(FlatParams { height: 10.0 }));
+        let flat_layers = [&flat];
+        assert!(cpu_resume_prefix_is_height_only(&flat_layers, 1));
+
+        let island = Layer::new("Island", LayerKind::Island(IslandParams::default()));
+        let island_layers = [&island];
+        assert!(!cpu_resume_prefix_is_height_only(&island_layers, 1));
+
+        let mut published = Layer::new("Published", LayerKind::Flat(FlatParams::default()));
+        published
+            .common
+            .outputs
+            .push(NamedOutputDecl::new("height checkpoint", FieldId::Height));
+        let published_layers = [&published];
+        assert!(!cpu_resume_prefix_is_height_only(&published_layers, 1));
+
+        let mut disabled_island = island;
+        disabled_island.common.enabled = false;
+        let disabled_layers = [&disabled_island];
+        assert!(cpu_resume_prefix_is_height_only(&disabled_layers, 1));
+    }
+
+    /// Revert check for #51: a requested CPU checkpoint must stop before the
+    /// unsupported layer, while the no-readback preview may remain speculative.
+    #[test]
+    fn cpu_resume_readback_stops_before_unsupported_suffix() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let metrics = HeightfieldMetrics::new(16, 16, 160.0, 160.0);
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "Base",
+            LayerKind::Flat(FlatParams { height: 10.0 }),
+        ));
+        let mut unsupported = Layer::new(
+            "Half-strength Add/Set",
+            LayerKind::EffectFilter(EffectFilterParams::add_set()),
+        );
+        unsupported.common.opacity = 0.5;
+        stack.push(unsupported);
+        let mut downstream = Layer::new(
+            "Downstream add",
+            LayerKind::Flat(FlatParams { height: 2.0 }),
+        );
+        downstream.common.blend = BlendMode::Add;
+        stack.push(downstream);
+
+        let expected = cpu_oracle(&stack, metrics);
+        assert!((expected.get(8, 8) - 17.0).abs() < 1.0e-4);
+
+        let mut preview_engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
+        let preview = preview_engine
+            .evaluate(
+                &gpu.device,
+                &gpu.queue,
+                &stack,
+                &[],
+                metrics,
+                PreviewQuality::Draft,
+                false,
+                None,
+            )
+            .expect("speculative preview");
+        assert_eq!(preview.resume_cpu_from, Some(1));
+        assert!(preview.cpu.is_none());
+        let speculative = preview_engine
+            .readback_current(&gpu.device, &gpu.queue)
+            .expect("speculative preview readback for test");
+        assert!((speculative.get(8, 8) - 12.0).abs() < 0.01);
+
+        let mut resume_engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
+        let result = resume_engine
+            .evaluate(
+                &gpu.device,
+                &gpu.queue,
+                &stack,
+                &[],
+                metrics,
+                PreviewQuality::Draft,
+                true,
+                None,
+            )
+            .expect("CPU checkpoint evaluation");
+        assert!(!result.fully_gpu);
+        assert_eq!(result.resume_cpu_from, Some(1));
+        let checkpoint = result.cpu.expect("height entering unsupported layer");
+        assert!((checkpoint.get(8, 8) - 10.0).abs() < 0.01);
+
+        let mut evaluator = StackEvaluator::new();
+        let mut ctx = EvalContext::new(metrics);
+        let completed = evaluator
+            .evaluate_suffix(&stack, &mut ctx, 1, checkpoint)
+            .expect("CPU suffix");
+        let max_error = completed
+            .to_dense()
+            .iter()
+            .zip(expected.to_dense())
+            .map(|(actual, oracle)| (actual - oracle).abs())
+            .fold(0.0f32, f32::max);
+        assert!(max_error < 0.01, "hybrid vs CPU max error {max_error}");
+    }
+
+    #[test]
+    fn aux_producing_gpu_prefix_forces_full_cpu_restart() {
+        let Some(gpu) = terra_test_gpu::headless() else {
+            return;
+        };
+        let metrics = HeightfieldMetrics::new(16, 16, 160.0, 160.0);
+        let land_mask = MaskAsset::new(
+            MaskId::new(),
+            "Island land",
+            MaskSource::Named(terra_core::fields::keys::LAND_MASK.into()),
+        );
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "Island",
+            LayerKind::Island(IslandParams::default()),
+        ));
+        let mut upper = Layer::new(
+            "Land-only add",
+            LayerKind::Flat(FlatParams { height: 5.0 }),
+        );
+        upper.common.blend = BlendMode::Add;
+        upper.common.masks.push(MaskRef::new(land_mask.id));
+        stack.push(upper);
+        let assets = vec![land_mask];
+
+        let expected = cpu_mask_oracle(&stack, metrics, &assets);
+        let mut engine = GpuTerrainEngine::new(&gpu.device, metrics.width);
+        let result = engine
+            .evaluate(
+                &gpu.device,
+                &gpu.queue,
+                &stack,
+                &assets,
+                metrics,
+                PreviewQuality::Draft,
+                true,
+                None,
+            )
+            .expect("conservative CPU restart");
+        assert_eq!(engine.last_graph.cpu_from, Some(1));
+        assert_eq!(result.resume_cpu_from, Some(0));
+        let checkpoint = result.cpu.expect("layer-zero seed");
+        assert!(checkpoint.to_dense().iter().all(|height| *height == 0.0));
+
+        let mut evaluator = StackEvaluator::new();
+        let mut ctx = EvalContext::new(metrics);
+        ctx.mask_assets = assets.clone();
+        ctx.masks = bake_mask_assets(&assets, &checkpoint, metrics, &HashMap::new());
+        let completed = evaluator
+            .evaluate_suffix(&stack, &mut ctx, 0, checkpoint)
+            .expect("full CPU restart");
+        assert!(ctx
+            .aux_maps
+            .get(terra_core::fields::keys::LAND_MASK)
+            .is_some());
+        assert_eq!(completed.to_dense(), expected.to_dense());
     }
 
     /// Revert check for #47: scoped groups must never reach the flattened GPU evaluator.

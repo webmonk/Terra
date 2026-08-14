@@ -415,7 +415,9 @@ impl StackEvaluator {
 
     /// Continue evaluating a flattened stack from a precomputed heightfield.
     ///
-    /// Used by the hybrid GPU preview path after it readbacks its compatible prefix.
+    /// `current` must be the height entering `start_index`, and `ctx` must contain the
+    /// equivalent auxiliary and published-output state produced by the skipped prefix.
+    /// Callers that cannot supply that complete checkpoint must restart from layer zero.
     pub fn evaluate_suffix(
         &mut self,
         stack: &LayerStack,

@@ -603,36 +603,32 @@ impl TerraApp {
                                 (result.cpu.clone(), result.resume_cpu_from)
                             {
                                 // Full/Export hybrid only (Draft/Medium no longer read back).
+                                // The GPU result carries height, not aux/published-output state,
+                                // so never seed this generation from scheduler leftovers.
                                 let masks = self.session.document.masks.clone();
                                 let mut ctx = terra_core::eval::EvalContext::new(metrics);
                                 ctx.quality = quality;
                                 ctx.level_steps = self.session.document.level_steps.clone();
                                 ctx.mask_assets = masks.clone();
-                                ctx.set_aux_hashmap(self.scheduler.last_aux.clone());
-                                if let Some(strata) = &self.scheduler.last_strata {
-                                    ctx.aux_maps.strata = Some(strata.clone());
-                                }
-                                let owned_zero;
-                                let reference: &terra_core::Heightfield =
-                                    match self.scheduler.last_good.as_ref() {
-                                        Some(h) => h.as_ref(),
-                                        None => {
-                                            owned_zero = prefix.clone();
-                                            &owned_zero
-                                        }
-                                    };
                                 ctx.masks = terra_core::mask::bake_mask_assets(
                                     &masks,
-                                    reference,
+                                    &prefix,
                                     metrics,
-                                    &self.scheduler.last_aux,
+                                    &std::collections::HashMap::new(),
                                 );
-                                match self.scheduler.evaluator.evaluate_suffix(
-                                    &preview_stack,
-                                    &mut ctx,
-                                    start,
-                                    prefix,
-                                ) {
+                                let cpu_result = if start == 0 {
+                                    self.scheduler
+                                        .evaluator
+                                        .rebuild_all(&preview_stack, &mut ctx)
+                                } else {
+                                    self.scheduler.evaluator.evaluate_suffix(
+                                        &preview_stack,
+                                        &mut ctx,
+                                        start,
+                                        prefix,
+                                    )
+                                };
+                                match cpu_result {
                                     Ok(hf) => {
                                         ctx.sync_aux_hashmap();
                                         self.scheduler.last_strata = ctx.aux_maps.strata.clone();
