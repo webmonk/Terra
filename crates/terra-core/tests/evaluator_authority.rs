@@ -1,8 +1,10 @@
-//! B1 evaluator-authority ratchet (audit B1-D1).
+//! B1 evaluator-authority ratchet (audits B1-D1 and B1-D2).
 //!
 //! `StackEvaluator` is the CPU executor. Terra-core must not grow another
 //! compiled graph until that graph lands with a production executor, a
 //! production caller, and an end-to-end result test.
+//! The retired parallel multi-field state generation must likewise stay absent
+//! until it has a real executor and end-to-end caller.
 
 use std::fs;
 use std::path::{Path, PathBuf};
@@ -30,14 +32,11 @@ fn stack_evaluator_remains_the_single_cpu_authority() {
 #[test]
 fn inert_core_graph_and_operator_scaffolding_stays_retired() {
     let terrain_eval = manifest_dir().join("src/terrain_eval");
-    for retired in ["graph.rs", "operator.rs"] {
-        let path = terrain_eval.join(retired);
-        assert!(
-            !path.exists(),
-            "{} reintroduced retired scaffolding; a future graph requires an executor, production caller, and end-to-end result test",
-            path.display()
-        );
-    }
+    assert!(
+        !terrain_eval.exists(),
+        "{} reintroduced retired evaluator scaffolding; a future evaluator generation requires an executor, production caller, and end-to-end result test",
+        terrain_eval.display()
+    );
 
     let mut sources = Vec::new();
     collect_rs(&manifest_dir().join("src"), &mut sources);
@@ -66,6 +65,56 @@ fn inert_core_graph_and_operator_scaffolding_stays_retired() {
         compilers.is_empty(),
         "terra-core contains a production graph compiler without ratcheted execution evidence:\n  {}\nA future graph must land with its executor, non-test caller, and an end-to-end result test; then update this guard deliberately.",
         compilers.join("\n  ")
+    );
+}
+
+#[test]
+fn unused_multi_field_state_stays_retired() {
+    let context = manifest_dir().join("src/fields/context.rs");
+    assert!(
+        !context.exists(),
+        "{} reintroduced the retired parallel field-state bridge; multi-field execution must enter through a production executor and end-to-end caller",
+        context.display()
+    );
+
+    let core_dir = manifest_dir();
+    let crates_dir = core_dir
+        .parent()
+        .expect("terra-core lives below the workspace crates directory");
+    let mut sources = Vec::new();
+    let crate_entries = fs::read_dir(crates_dir)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", crates_dir.display()));
+    for entry in crate_entries.flatten() {
+        let src = entry.path().join("src");
+        if src.is_dir() {
+            collect_rs(&src, &mut sources);
+        }
+    }
+
+    let mut references = Vec::new();
+    for path in sources {
+        let source = production_source(&read(&path));
+        for (line_index, line) in source.lines().enumerate() {
+            let tokens: Vec<_> = line
+                .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+                .filter(|token| !token.is_empty())
+                .collect();
+            for forbidden in ["TerrainContext", "terrain_eval"] {
+                if tokens.contains(&forbidden) {
+                    references.push(format!(
+                        "{}:{} ({forbidden})",
+                        path.display(),
+                        line_index + 1
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        references.is_empty(),
+        "production sources reference retired multi-field evaluator state:\n  {}\nA future replacement requires a production executor, caller, and end-to-end result test.",
+        references.join("\n  ")
     );
 }
 

@@ -42,7 +42,6 @@ pub mod simulation_scenario;
 pub mod sparse_paint;
 pub mod surface;
 pub mod terrain;
-pub mod terrain_eval;
 pub mod terrain_recipe;
 pub mod tiling;
 pub mod volumetric;
@@ -51,15 +50,10 @@ pub mod world_rules;
 
 pub use fields::{
     fields_invalidated_by, height_dependents, shared_physical_fields, AuxMaps, FieldId,
-    IterativeFieldGuard, TerrainContext,
+    IterativeFieldGuard,
 };
 pub use geomorph::{
     analyze_terrain, bake_debug_field, GeomorphAnalysis, GeomorphDebugField, GeomorphOptions,
-};
-pub use terrain_eval::{
-    metres_to_texels, sample_seed, texels_to_metres, world_radius_texels, DerivedFieldCache,
-    EvalDiagnostics, EvalMode, FieldLifetime, FieldRevision, FieldStorage, OperatorId, ScaleBand,
-    TerrainFieldSet, TileEvalSpec,
 };
 pub use terrain_recipe::{
     build_terrain_recipe_from_stack, recipe_matches_stack, RecipeItem, RecipeItemKind,

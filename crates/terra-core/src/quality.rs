@@ -4,8 +4,7 @@
 //! whose resolution and refine helpers are pure arithmetic, so it lives in its
 //! own leaf module rather than in `eval`. `eval` re-exports it, keeping
 //! `terra_core::eval::PreviewQuality` and every serialized document valid, while
-//! `analyze` and `terrain_eval` name it directly from here instead of importing
-//! `eval` from below.
+//! `analyze` names it directly from here instead of importing `eval` from below.
 
 use serde::{Deserialize, Serialize};
 

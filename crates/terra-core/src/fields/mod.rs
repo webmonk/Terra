@@ -3,11 +3,9 @@
 //! Processors should prefer the typed fields on [`AuxMaps`]. The HashMap adapters
 //! keep mask baking, disk cache, and export paths working during migration.
 
-mod context;
 mod id;
 mod invalidation;
 
-pub use context::TerrainContext;
 pub use id::FieldId;
 pub use invalidation::{
     fields_invalidated_by, height_dependents, shared_physical_fields, IterativeFieldGuard,
@@ -330,9 +328,8 @@ impl AuxMaps {
 
     /// Ensure slope / curvature caches exist for `hf`.
     ///
-    /// Prefer [`crate::terrain_eval::DerivedFieldCache`] / [`crate::fields::TerrainContext::get_derived`]
-    /// when revision tracking is required. This helper remains for processors that
-    /// only hold `AuxMaps`.
+    /// This is the supported helper for processors that hold `AuxMaps` and need
+    /// slope or curvature derived from the current heightfield.
     pub fn ensure_derived(&mut self, hf: &Heightfield) {
         if self.slope.is_none() {
             self.slope = Some(slope_degrees(hf));

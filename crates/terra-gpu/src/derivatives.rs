@@ -7,7 +7,7 @@
 use bytemuck::{Pod, Zeroable};
 use terra_core::heightfield::Heightfield;
 use terra_core::mask::MaskField;
-use terra_core::terrain_eval::world_radius_texels;
+use terra_core::heightfield::world_radius_texels;
 
 use crate::{readback_f32, GpuError};
 

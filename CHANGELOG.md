@@ -30,3 +30,6 @@ All notable changes to Terra will be documented in this file.
 ### Removed
 - Retired the unused terra-core evaluation graph, operator adapter, and duplicate GPU-support
   metadata; CPU evaluation remains owned by `StackEvaluator` and GPU planning by `terra-gpu`.
+- Retired the unconsumed `TerrainContext` bridge and parallel `terrain_eval` state, derived-cache,
+  diagnostics, mode, determinism, and tiling scaffolding; live field helpers remain under
+  `fields`, `heightfield`, and `layer`.
