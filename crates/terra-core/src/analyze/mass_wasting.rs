@@ -153,6 +153,22 @@ pub struct ThermalResult {
     pub deposition_raw: MaskField,
 }
 
+/// Conservation diagnostics for a debris-flow solve.
+///
+/// Sums are height-in-cell units. Multiplying by the uniform cell area gives volume.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub struct DebrisFlowMassLedger {
+    pub initial_surface_sum: f64,
+    pub eroded_sum: f64,
+    pub mobilized_sum: f64,
+    pub deposited_sum: f64,
+    pub in_flight_sum: f64,
+    pub exported_sum: f64,
+    pub final_surface_sum: f64,
+    /// `final + in_flight + exported - initial`.
+    pub residual: f64,
+}
+
 /// Outputs from Jain et al. 2024 debris-flow erosion.
 #[derive(Debug, Clone)]
 pub struct DebrisFlowResult {
@@ -169,6 +185,7 @@ pub struct DebrisFlowResult {
     pub flow_accumulation: MaskField,
     pub erosion_raw: MaskField,
     pub deposition_raw: MaskField,
+    pub mass_ledger: DebrisFlowMassLedger,
 }
 
 fn neighbors_8(dx: f32, dz: f32) -> [(i32, i32, f32); 8] {
@@ -642,6 +659,7 @@ pub fn debris_flow_erode(
             p.initial_sediment_thickness,
         )
     };
+    let initial_surface_sum: f64 = state.sync_surface().into_iter().map(f64::from).sum();
 
     let mut erosion = vec![0.0f32; n];
     let mut deposit = vec![0.0f32; n];
@@ -649,8 +667,7 @@ pub fn debris_flow_erode(
     let mut debris_deposit = vec![0.0f32; n];
     let mut slide_path = vec![0.0f32; n];
     let mut instability = vec![0.0f32; n];
-    let mut debris_flux = vec![0.0f32; n];
-    let mut sediment_flux = vec![0.0f32; n];
+    let mut mobilized_sum = 0.0f64;
     let mut last_acc = MaskField::zeros(metrics);
 
     let drain_stride = p.drainage_reuse_stride.max(1);
@@ -682,161 +699,167 @@ pub fn debris_flow_erode(
                 }
             }
 
-            // One-pass downstream accumulation of prior debris/sediment flux sources.
+            // Strictly downhill receivers make descending surface order a transport DAG.
+            // Each cell consumes deposition from its live load and forwards only the
+            // remainder, so cumulative upstream material can be deposited only once.
             let mut q_debris = vec![0.0f32; n];
             let mut q_sed = vec![0.0f32; n];
-            // Topological-ish: iterate high→low by sorting indices by height.
             let mut order: Vec<usize> = (0..n).collect();
             order.sort_by(|&a, &b| {
                 surface[b]
                     .partial_cmp(&surface[a])
                     .unwrap_or(std::cmp::Ordering::Equal)
             });
-            for &idx in &order {
-                q_debris[idx] += debris_flux[idx].max(0.0);
-                q_sed[idx] += sediment_flux[idx].max(0.0);
-                if let Some(r) = receiver[idx] {
-                    q_debris[r] += q_debris[idx];
-                    q_sed[r] += q_sed[idx];
-                    slide_path[r] += q_debris[idx] * 0.01;
-                    slide_path[idx] += q_debris[idx] * 0.02;
-                }
-            }
 
-            let mut next_debris_flux = vec![0.0f32; n];
-            let mut next_sediment_flux = vec![0.0f32; n];
             let mut d_bedrock = vec![0.0f32; n];
             let mut d_debris = vec![0.0f32; n];
             let mut d_sediment = vec![0.0f32; n];
+            let height_to_flux = cell_area / dt;
+            let flux_to_height = dt / cell_area;
 
-            for j in 0..hh {
-                for i in 0..w {
-                    let idx = j * w + i;
-                    let slope = jain_slope(&surface, w, hh, i, j, dx, dz);
-                    let k = hardness.get(i as u32, j as u32).clamp(0.0, 1.0);
-                    let soft = (1.0 - k).clamp(0.0, 1.0);
-                    let q = discharge[idx].max(0.0);
-                    let qd = q_debris[idx].max(0.0);
-                    let qs = q_sed[idx].max(0.0);
+            for &idx in &order {
+                let i = idx % w;
+                let j = idx / w;
+                let slope = jain_slope(&surface, w, hh, i, j, dx, dz);
+                let k = hardness.get(i as u32, j as u32).clamp(0.0, 1.0);
+                let soft = (1.0 - k).clamp(0.0, 1.0);
+                let q = discharge[idx].max(0.0);
+                let incoming_debris = q_debris[idx].max(0.0);
+                let incoming_sediment = q_sed[idx].max(0.0);
 
-                    // Thermal trigger (Jain Eq. 8): E_th = k_th (S - tan θ)+
-                    let excess = (slope - talus).max(0.0);
-                    instability[idx] = instability[idx].max(excess);
-                    let e_th = p.thermal_k * excess * soft;
+                // Thermal trigger (Jain Eq. 8): E_th = k_th (S - tan theta)+.
+                let excess = (slope - talus).max(0.0);
+                instability[idx] = instability[idx].max(excess);
+                let e_th = p.thermal_k * excess * soft;
 
-                    // Abrasion (Jain Eq. 12–13): E_abr = k Qd^α S^β Θ
-                    let theta = if slope > 1e-6 {
-                        let thresh = p.yield_stress
-                            * qd.powf(-p.threshold_exp_q)
-                            * slope.powf(-p.threshold_exp_s);
-                        (1.0 - thresh).max(0.0)
-                    } else {
-                        0.0
-                    };
-                    let e_abr = if qd > 1e-8 && theta > 0.0 {
-                        p.abrasion_k
-                            * qd.powf(p.abrasion_exp_q)
-                            * slope.powf(p.abrasion_exp_s)
-                            * theta
-                            * soft
-                    } else {
-                        0.0
-                    };
+                // Abrasion (Jain Eq. 12-13), driven by material arriving upstream.
+                let theta = if slope > 1e-6 {
+                    let thresh = p.yield_stress
+                        * incoming_debris.powf(-p.threshold_exp_q)
+                        * slope.powf(-p.threshold_exp_s);
+                    (1.0 - thresh).max(0.0)
+                } else {
+                    0.0
+                };
+                let e_abr = if incoming_debris > 1e-8 && theta > 0.0 {
+                    p.abrasion_k
+                        * incoming_debris.powf(p.abrasion_exp_q)
+                        * slope.powf(p.abrasion_exp_s)
+                        * theta
+                        * soft
+                } else {
+                    0.0
+                };
 
-                    // Debris deposition when Θ→0 (Jain Eq. 14 / 19): dump available debris flux.
-                    let d_dep = if theta <= 1e-4 && qd > 1e-8 {
-                        (qd * dt / cell_area).min(p.max_deposit_per_step)
-                    } else if theta < 0.35 && qd > 1e-8 {
-                        ((1.0 - theta) * qd * dt / cell_area * 0.5).min(p.max_deposit_per_step)
-                    } else {
-                        0.0
-                    };
+                let d_dep = if theta <= 1e-4 && incoming_debris > 1e-8 {
+                    (incoming_debris * flux_to_height).min(p.max_deposit_per_step)
+                } else if theta < 0.35 && incoming_debris > 1e-8 {
+                    ((1.0 - theta) * incoming_debris * flux_to_height * 0.5)
+                        .min(p.max_deposit_per_step)
+                } else {
+                    0.0
+                };
 
-                    // Fluvial SPE + deposition (Jain Eq. 1), acting mostly on sediment layer.
-                    let e_fluv = if p.fluvial_k > 0.0 && q > 1e-8 {
-                        p.fluvial_k * q.powf(p.fluvial_m) * slope.powf(p.fluvial_n) * soft
-                    } else {
-                        0.0
-                    };
-                    let d_fluv = if p.fluvial_deposition > 0.0 && qs > 1e-8 {
-                        (p.fluvial_deposition * qs * dt / cell_area)
-                            * (1.0 - (slope / talus.max(1e-3)).clamp(0.0, 1.0))
-                    } else {
-                        0.0
-                    };
+                // Fluvial SPE + deposition (Jain Eq. 1), acting mostly on sediment.
+                let e_fluv = if p.fluvial_k > 0.0 && q > 1e-8 {
+                    p.fluvial_k * q.powf(p.fluvial_m) * slope.powf(p.fluvial_n) * soft
+                } else {
+                    0.0
+                };
+                let d_fluv = if p.fluvial_deposition > 0.0 && incoming_sediment > 1e-8 {
+                    (p.fluvial_deposition * incoming_sediment * flux_to_height)
+                        * (1.0 - (slope / talus.max(1e-3)).clamp(0.0, 1.0))
+                } else {
+                    0.0
+                };
 
-                    // Hillslope Laplacian creep (Jain Eq. 4) — light, optional.
-                    let e_hill = if p.hillslope_k > 0.0 {
-                        let mut lap = 0.0f32;
-                        let mut count = 0.0f32;
-                        for &(di, dj) in &[(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
-                            let ni = i as i32 + di;
-                            let nj = j as i32 + dj;
-                            if ni < 0 || nj < 0 || ni >= w as i32 || nj >= hh as i32 {
-                                continue;
-                            }
-                            lap += surface[nj as usize * w + ni as usize] - surface[idx];
-                            count += 1.0;
+                // Hillslope Laplacian creep (Jain Eq. 4) - light, optional.
+                let e_hill = if p.hillslope_k > 0.0 {
+                    let mut lap = 0.0f32;
+                    let mut count = 0.0f32;
+                    for &(di, dj) in &[(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
+                        let ni = i as i32 + di;
+                        let nj = j as i32 + dj;
+                        if ni < 0 || nj < 0 || ni >= w as i32 || nj >= hh as i32 {
+                            continue;
                         }
-                        if count > 0.0 {
-                            -p.hillslope_k * (lap / count) // positive → erosion of peaks
-                        } else {
-                            0.0
-                        }
+                        lap += surface[nj as usize * w + ni as usize] - surface[idx];
+                        count += 1.0;
+                    }
+                    if count > 0.0 {
+                        -p.hillslope_k * (lap / count)
                     } else {
                         0.0
-                    };
-
-                    let erode_total =
-                        ((e_th + e_abr) * dt + e_fluv * dt + e_hill.max(0.0) * dt).max(0.0);
-                    let mut remaining = erode_total;
-
-                    // Erode soft layers first (sediment → debris → bedrock).
-                    let take_sed = remaining.min(state.sediment[idx]);
-                    d_sediment[idx] -= take_sed;
-                    remaining -= take_sed;
-                    let take_deb = remaining.min(state.debris[idx]);
-                    d_debris[idx] -= take_deb;
-                    remaining -= take_deb;
-                    let take_bed = remaining.min(state.bedrock[idx]);
-                    d_bedrock[idx] -= take_bed;
-
-                    let eroded = take_sed + take_deb + take_bed;
-                    erosion[idx] += eroded;
-                    debris_erosion[idx] += take_bed + take_deb * 0.5 + e_th * dt;
-
-                    // Mobilised material enters debris flux (bedrock/debris → debris mixture).
-                    let mobilized = take_bed + take_deb + e_th * dt;
-                    next_debris_flux[idx] += mobilized * cell_area / dt.max(1e-6);
-                    next_sediment_flux[idx] +=
-                        take_sed * cell_area / dt.max(1e-6) + e_fluv * cell_area;
-
-                    // Deposition onto debris / sediment layers.
-                    if d_dep > 0.0 {
-                        let avail = (qd * dt / cell_area).min(d_dep);
-                        d_debris[idx] += avail;
-                        deposit[idx] += avail;
-                        debris_deposit[idx] += avail;
-                        next_debris_flux[idx] =
-                            (next_debris_flux[idx] - avail * cell_area / dt).max(0.0);
                     }
-                    if d_fluv > 0.0 {
-                        let avail = d_fluv.min(qs * dt / cell_area);
-                        d_sediment[idx] += avail;
-                        deposit[idx] += avail;
-                        next_sediment_flux[idx] =
-                            (next_sediment_flux[idx] - avail * cell_area / dt).max(0.0);
-                    }
+                } else {
+                    0.0
+                };
+
+                let erode_total =
+                    ((e_th + e_abr) * dt + e_fluv * dt + e_hill.max(0.0) * dt).max(0.0);
+                let mut remaining = erode_total;
+
+                // Erode soft layers first (sediment, debris, then bedrock).
+                let take_sed = remaining.min(state.sediment[idx]);
+                d_sediment[idx] -= take_sed;
+                remaining -= take_sed;
+                let take_deb = remaining.min(state.debris[idx]);
+                d_debris[idx] -= take_deb;
+                remaining -= take_deb;
+                let take_bed = remaining.min(state.bedrock[idx]);
+                d_bedrock[idx] -= take_bed;
+
+                let eroded = take_sed + take_deb + take_bed;
+                erosion[idx] += eroded;
+                debris_erosion[idx] += take_bed + take_deb;
+
+                // Process-rate terms already contributed to `erode_total`. Only actual,
+                // clamped layer removal enters the transport ledger.
+                let mobilized_debris = take_bed + take_deb;
+                let mobilized_sediment = take_sed;
+                mobilized_sum += f64::from(mobilized_debris + mobilized_sediment);
+                let mut debris_load = incoming_debris + mobilized_debris * height_to_flux;
+                let mut sediment_load = incoming_sediment + mobilized_sediment * height_to_flux;
+
+                if d_dep > 0.0 {
+                    let settled = (debris_load * flux_to_height).min(d_dep);
+                    d_debris[idx] += settled;
+                    deposit[idx] += settled;
+                    debris_deposit[idx] += settled;
+                    debris_load = (debris_load - settled * height_to_flux).max(0.0);
+                }
+                if d_fluv > 0.0 {
+                    let settled = (sediment_load * flux_to_height).min(d_fluv);
+                    d_sediment[idx] += settled;
+                    deposit[idx] += settled;
+                    sediment_load = (sediment_load - settled * height_to_flux).max(0.0);
+                }
+
+                // Closed boundary: route only the remainder, and settle all terminal load.
+                q_debris[idx] = 0.0;
+                q_sed[idx] = 0.0;
+                if let Some(r) = receiver[idx] {
+                    q_debris[r] += debris_load;
+                    q_sed[r] += sediment_load;
+                    slide_path[r] += debris_load * 0.01;
+                    slide_path[idx] += debris_load * 0.02;
+                } else {
+                    let terminal_debris = debris_load * flux_to_height;
+                    let terminal_sediment = sediment_load * flux_to_height;
+                    d_debris[idx] += terminal_debris;
+                    d_sediment[idx] += terminal_sediment;
+                    deposit[idx] += terminal_debris + terminal_sediment;
+                    debris_deposit[idx] += terminal_debris;
                 }
             }
 
+            debug_assert!(q_debris.iter().all(|v| v.abs() <= 1e-6));
+            debug_assert!(q_sed.iter().all(|v| v.abs() <= 1e-6));
             for i in 0..n {
                 state.bedrock[i] = (state.bedrock[i] + d_bedrock[i]).max(0.0);
                 state.debris[i] = (state.debris[i] + d_debris[i]).max(0.0);
                 state.sediment[i] = (state.sediment[i] + d_sediment[i]).max(0.0);
             }
-            debris_flux = next_debris_flux;
-            sediment_flux = next_sediment_flux;
         } else {
             // Lightweight hop: reuse last accumulation without full refill.
             let surface = state.sync_surface();
@@ -864,6 +887,19 @@ pub fn debris_flow_erode(
     }
 
     let surface = state.sync_surface();
+    let final_surface_sum: f64 = surface.iter().copied().map(f64::from).sum();
+    let eroded_sum: f64 = erosion.iter().copied().map(f64::from).sum();
+    let deposited_sum: f64 = deposit.iter().copied().map(f64::from).sum();
+    let mass_ledger = DebrisFlowMassLedger {
+        initial_surface_sum,
+        eroded_sum,
+        mobilized_sum,
+        deposited_sum,
+        in_flight_sum: 0.0,
+        exported_sum: 0.0,
+        final_surface_sum,
+        residual: final_surface_sum - initial_surface_sum,
+    };
     DebrisFlowResult {
         height: Heightfield::from_dense(metrics, &surface),
         bedrock: raw_mask(&state.bedrock, metrics),
@@ -878,6 +914,7 @@ pub fn debris_flow_erode(
         flow_accumulation: last_acc,
         erosion_raw: raw_mask(&erosion, metrics),
         deposition_raw: raw_mask(&deposit, metrics),
+        mass_ledger,
     }
 }
 

@@ -33,7 +33,8 @@ pub use level_step::{
 };
 pub use mass_wasting::{
     debris_flow_erode, mud_settle_mass, sediment_fill_soft_mass, talus_apron,
-    thermal_erode_layered, thermal_erode_mass, DebrisFlowResult, MassWastingState, ThermalResult,
+    thermal_erode_layered, thermal_erode_mass, DebrisFlowMassLedger, DebrisFlowResult,
+    MassWastingState, ThermalResult,
 };
 pub use metrics::*;
 pub use terrain_amplification::{
