@@ -82,14 +82,12 @@ impl LandscapeEvolutionOperator {
         let mut hardness = input
             .lithology_hardness
             .cloned()
-            .unwrap_or_else(|| MaskField::filled(m, p.terrain_resistance.clamp(0.0, 1.0)));
+            .unwrap_or_else(|| MaskField::zeros(m));
         if let Some(ero) = input.erodibility {
             for j in 0..m.height {
                 for i in 0..m.width {
                     let soft = ero.get(i, j).clamp(0.0, 1.0);
-                    let h = (hardness.get(i, j) * (1.0 - soft * 0.85)
-                        + p.terrain_resistance * 0.15)
-                        .clamp(0.0, 1.0);
+                    let h = (hardness.get(i, j) * (1.0 - soft * 0.85)).clamp(0.0, 1.0);
                     hardness.set(i, j, h);
                 }
             }
@@ -147,6 +145,20 @@ impl LandscapeEvolutionOperator {
                     // Wetter → slightly softer effective rock for incision.
                     let h = hardness.get(i, j) / w.sqrt();
                     hardness.set(i, j, h.clamp(0.0, 1.0));
+                }
+            }
+        }
+
+        // Artist resistance is a global hardness floor and is applied after
+        // all spatial softening. The union form leaves lithology unchanged at
+        // zero and makes resistance=1 an exact no-incision limit.
+        let global_resistance = p.terrain_resistance.clamp(0.0, 1.0);
+        if global_resistance > 0.0 {
+            for j in 0..m.height {
+                for i in 0..m.width {
+                    let local = hardness.get(i, j).clamp(0.0, 1.0);
+                    let combined = 1.0 - (1.0 - local) * (1.0 - global_resistance);
+                    hardness.set(i, j, combined.clamp(0.0, 1.0));
                 }
             }
         }

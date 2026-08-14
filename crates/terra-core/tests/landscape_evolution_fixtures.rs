@@ -44,6 +44,58 @@ fn relief(height: &Heightfield) -> f32 {
     hi - lo
 }
 
+fn max_abs_delta(a: &Heightfield, b: &Heightfield) -> f32 {
+    a.to_dense()
+        .iter()
+        .zip(b.to_dense())
+        .map(|(a, b)| (a - b).abs())
+        .fold(0.0f32, f32::max)
+}
+
+fn max_abs_delta_interior(a: &Heightfield, b: &Heightfield, margin: u32) -> f32 {
+    let m = a.metrics;
+    let mut max_delta = 0.0f32;
+    for j in margin..m.height.saturating_sub(margin) {
+        for i in margin..m.width.saturating_sub(margin) {
+            max_delta = max_delta.max((a.get(i, j) - b.get(i, j)).abs());
+        }
+    }
+    max_delta
+}
+
+fn plateau_cone_seed() -> Heightfield {
+    let m = HeightfieldMetrics::new(24, 24, 240.0, 240.0);
+    let mut data = vec![20.0f32; (m.width * m.height) as usize];
+    let cx = (m.width - 1) as f32 * 0.5;
+    let cy = (m.height - 1) as f32 * 0.5;
+    let radius = 7.0f32;
+    for j in 0..m.height {
+        for i in 0..m.width {
+            let d = (i as f32 - cx).hypot(j as f32 - cy);
+            let cone = (1.0 - d / radius).max(0.0) * 18.0;
+            data[(j * m.width + i) as usize] += cone;
+        }
+    }
+    Heightfield::from_dense(m, &data)
+}
+
+fn evaluate_with_inputs(
+    seed: &Heightfield,
+    p: &LandscapeEvolutionParams,
+    hardness: Option<&MaskField>,
+    precipitation: Option<&MaskField>,
+) -> terra_core::landscape_evolution::LandscapeEvolutionOutput {
+    LandscapeEvolutionOperator::new(p.clone()).evaluate(LandscapeEvolutionInput {
+        elevation: seed,
+        painted_uplift: None,
+        precipitation,
+        erodibility: None,
+        lithology_hardness: hardness,
+        outlet_mask: None,
+        protection: None,
+    })
+}
+
 fn mean_channel_weight(order: &MaskField) -> f32 {
     let d = order.data();
     if d.is_empty() {
@@ -371,4 +423,156 @@ fn evolution_is_deterministic() {
         None,
     );
     assert_eq!(a.elevation.to_dense(), b.elevation.to_dense());
+}
+
+#[test]
+fn zero_erosion_has_explicit_bounded_limits_in_both_solvers() {
+    let seed = plateau_cone_seed();
+    for solver in [EvolutionSolverMode::Fast, EvolutionSolverMode::Accurate] {
+        let mut p = LandscapeEvolutionParams::default();
+        p.solver = solver;
+        p.erosion = 0.0;
+        p.hillslope_diffusion = 0.0;
+        p.fixed_point_iters = 2;
+
+        let out = evaluate_with_inputs(&seed, &p, None, None);
+        assert!(
+            out.elevation.to_dense().iter().all(|v| v.is_finite()),
+            "{solver:?} zero-erosion output must stay finite"
+        );
+        let incision: f32 = out.incision.data().iter().copied().sum();
+        assert!(
+            incision <= 1e-5,
+            "{solver:?} zero erosion must produce no incision, got {incision}"
+        );
+
+        match solver {
+            EvolutionSolverMode::Fast => assert!(
+                max_abs_delta_interior(&out.elevation, &out.tectonic_base, 1) <= 1e-4,
+                "Fast zero erosion must publish the finite tectonic seed"
+            ),
+            EvolutionSolverMode::Accurate => {
+                let (_, tectonic_max) = out.tectonic_base.min_max();
+                let max_uplift = out
+                    .uplift_field
+                    .data()
+                    .iter()
+                    .copied()
+                    .fold(0.0f32, f32::max);
+                let (_, actual_max) = out.elevation.min_max();
+                let uplift_budget = max_uplift * p.dt.max(1.0) * p.accurate_steps() as f32;
+                assert!(
+                    actual_max <= tectonic_max + uplift_budget + 1.0,
+                    "Accurate zero erosion exceeded uplift-only budget: {actual_max}"
+                );
+            }
+        }
+    }
+}
+
+#[test]
+fn zero_uplift_overrides_legacy_rate_without_disabling_incision() {
+    let seed = plateau_cone_seed();
+    let mut p = LandscapeEvolutionParams::default();
+    p.uplift = 0.0;
+    p.uplift_mode = UpliftMode::Uniform;
+    p.hillslope_diffusion = 0.0;
+    p.fixed_point_iters = 2;
+
+    let out = evaluate_with_inputs(&seed, &p, None, None);
+    assert!(out.uplift_field.data().iter().all(|&v| v == 0.0));
+    assert!(
+        max_abs_delta(&out.tectonic_base, &seed) <= 1e-6,
+        "zero uplift must not alter the tectonic base"
+    );
+    assert!(out.elevation.to_dense().iter().all(|v| v.is_finite()));
+}
+
+#[test]
+fn full_resistance_remains_no_incision_after_spatial_softening() {
+    let seed = plateau_cone_seed();
+    let m = seed.metrics;
+    let lithology = MaskField::zeros(m);
+    let precipitation = MaskField::filled(m, 2.5);
+    for solver in [EvolutionSolverMode::Fast, EvolutionSolverMode::Accurate] {
+        let mut p = LandscapeEvolutionParams::default();
+        p.solver = solver;
+        p.terrain_resistance = 1.0;
+        p.hillslope_diffusion = 0.0;
+        p.fixed_point_iters = 2;
+
+        let out = evaluate_with_inputs(&seed, &p, Some(&lithology), Some(&precipitation));
+        let incision: f32 = out.incision.data().iter().copied().sum();
+        assert!(
+            incision <= 1e-5,
+            "{solver:?} full resistance leaked incision: {incision}"
+        );
+        if solver == EvolutionSolverMode::Fast {
+            assert!(
+                max_abs_delta_interior(&out.elevation, &out.tectonic_base, 1) <= 1e-4,
+                "Fast full resistance must use the finite no-advection result"
+            );
+        }
+    }
+}
+
+#[test]
+fn mixed_hardness_terminates_characteristics_without_extreme_relief() {
+    let seed = plateau_cone_seed();
+    let m = seed.metrics;
+    let mut hardness = MaskField::zeros(m);
+    for j in 0..m.height {
+        for i in m.width / 2..m.width {
+            hardness.set(i, j, 1.0);
+        }
+    }
+    let mut p = LandscapeEvolutionParams::default();
+    p.hillslope_diffusion = 0.0;
+    p.fixed_point_iters = 2;
+
+    let out = evaluate_with_inputs(&seed, &p, Some(&hardness), None);
+    assert!(out.elevation.to_dense().iter().all(|v| v.is_finite()));
+    let mut hard_incision = 0.0f32;
+    for j in 0..m.height {
+        for i in m.width / 2..m.width {
+            hard_incision += out.incision.get(i, j);
+        }
+    }
+    assert!(
+        hard_incision <= 1e-5,
+        "non-advecting cells accumulated incision: {hard_incision}"
+    );
+
+    let (_, seed_max) = out.tectonic_base.min_max();
+    let max_uplift = out
+        .uplift_field
+        .data()
+        .iter()
+        .copied()
+        .fold(0.0f32, f32::max);
+    let (_, actual_max) = out.elevation.min_max();
+    assert!(
+        actual_max <= seed_max + max_uplift * p.evolution_time() + 1.0,
+        "mixed hardness exceeded the finite-time uplift envelope: {actual_max}"
+    );
+}
+
+#[test]
+fn default_fast_plateau_cone_retains_incision_and_bounded_relief() {
+    let seed = plateau_cone_seed();
+    let mut p = LandscapeEvolutionParams::default();
+    p.hillslope_diffusion = 0.0;
+    p.fixed_point_iters = 2;
+    let out = evaluate_with_inputs(&seed, &p, None, None);
+    let values = out.elevation.to_dense();
+    assert!(values.iter().all(|v| v.is_finite()));
+    assert!(
+        out.incision.data().iter().copied().sum::<f32>() > 0.1,
+        "default Fast path lost qualitative incision"
+    );
+    assert!(
+        relief(&out.elevation) > 5.0 && relief(&out.elevation) < 1_000.0,
+        "default Fast relief left its qualitative range: {}",
+        relief(&out.elevation)
+    );
 }
