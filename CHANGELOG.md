@@ -4,6 +4,9 @@ All notable changes to Terra will be documented in this file.
 
 ## [Unreleased]
 
+### Fixed
+- Incremental dirty-tile synchronization now refreshes neighboring edge and corner ghosts, and seam metrics detect stale halos in both directions at every configured depth.
+
 ### Added
 - Phase 11 geological integration: shared typed AuxMaps (bedrock / sediment / soil /
   lithology), `ScaleBand::MultiScale` + `LayerKind::scale_band`, field invalidation

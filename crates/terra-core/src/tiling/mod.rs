@@ -180,9 +180,16 @@ impl TileScheduler {
         }
     }
 
-    /// Incremental ghost exchange for dirty tiles; returns max seam error on dirty edges.
+    /// Refresh ghosts affected by dirty tile interiors and return the remaining
+    /// max seam error on edges touching those source tiles.
+    ///
+    /// A changed interior can feed the halos of any tile in its 8-neighbor
+    /// ring, including diagonal corner ghosts. The scheduler expands only the
+    /// temporary refresh destinations; `self.dirty` continues to describe the
+    /// actual changed interiors.
     pub fn sync_dirty(&self, hf: &mut Heightfield) -> f32 {
-        hf.refresh_halos_for(&self.dirty);
+        let destinations = halo_destinations_for(hf, &self.dirty);
+        hf.refresh_halos_for(&destinations);
         measure_seams_among(hf, &self.dirty)
     }
 
@@ -207,6 +214,37 @@ impl Default for TileScheduler {
     }
 }
 
+fn halo_destinations_for(hf: &Heightfield, sources: &[TileId]) -> Vec<TileId> {
+    let tx_max = hf.metrics.tiles_x() as i32;
+    let tz_max = hf.metrics.tiles_z() as i32;
+    let mut seen = HashSet::new();
+    let mut destinations = Vec::new();
+
+    for &source in sources {
+        if source.tx >= hf.metrics.tiles_x() || source.tz >= hf.metrics.tiles_z() {
+            continue;
+        }
+        for dj in -1i32..=1 {
+            for di in -1i32..=1 {
+                let tx = source.tx as i32 + di;
+                let tz = source.tz as i32 + dj;
+                if tx < 0 || tz < 0 || tx >= tx_max || tz >= tz_max {
+                    continue;
+                }
+                let id = TileId {
+                    tx: tx as u32,
+                    tz: tz as u32,
+                };
+                if seen.insert(id) {
+                    destinations.push(id);
+                }
+            }
+        }
+    }
+
+    destinations
+}
+
 /// Suggest metrics halo capacity for multi-iteration neighbourhood work.
 ///
 /// This does not rebuild tiles or change synchronization cadence. Callers that
@@ -215,7 +253,8 @@ pub fn suggest_halo(metrics: &HeightfieldMetrics, stencil: u32, iters_per_batch:
     recommended_halo(stencil, iters_per_batch).max(metrics.halo)
 }
 
-/// Max |halo − neighbor interior| across shared tile edges (0 after `refresh_halos`).
+/// Max |halo − source interior| in both directions and at every configured
+/// halo depth across shared tile edges (0 after `refresh_halos`).
 pub fn measure_seams(hf: &Heightfield) -> f32 {
     let mut max_err = 0.0f32;
     for tz in 0..hf.metrics.tiles_z() {
@@ -233,27 +272,35 @@ pub fn measure_seams(hf: &Heightfield) -> f32 {
 
 /// Seam metric restricted to edges touching any tile in `tiles`.
 pub fn measure_seams_among(hf: &Heightfield, tiles: &[TileId]) -> f32 {
-    let set: HashSet<TileId> = tiles.iter().copied().collect();
-    let mut max_err = 0.0f32;
+    let tx_max = hf.metrics.tiles_x();
+    let tz_max = hf.metrics.tiles_z();
+    let mut x_edges = HashSet::new();
+    let mut z_edges = HashSet::new();
+
     for &id in tiles {
-        if id.tx + 1 < hf.metrics.tiles_x() {
-            let right = TileId {
-                tx: id.tx + 1,
-                tz: id.tz,
-            };
-            if set.contains(&right) || set.contains(&id) {
-                max_err = max_err.max(edge_seam_x(hf, id.tx, id.tz));
-            }
+        if id.tx >= tx_max || id.tz >= tz_max {
+            continue;
         }
-        if id.tz + 1 < hf.metrics.tiles_z() {
-            let below = TileId {
-                tx: id.tx,
-                tz: id.tz + 1,
-            };
-            if set.contains(&below) || set.contains(&id) {
-                max_err = max_err.max(edge_seam_z(hf, id.tx, id.tz));
-            }
+        if id.tx > 0 {
+            x_edges.insert((id.tx - 1, id.tz));
         }
+        if id.tx + 1 < tx_max {
+            x_edges.insert((id.tx, id.tz));
+        }
+        if id.tz > 0 {
+            z_edges.insert((id.tx, id.tz - 1));
+        }
+        if id.tz + 1 < tz_max {
+            z_edges.insert((id.tx, id.tz));
+        }
+    }
+
+    let mut max_err = 0.0f32;
+    for (tx, tz) in x_edges {
+        max_err = max_err.max(edge_seam_x(hf, tx, tz));
+    }
+    for (tx, tz) in z_edges {
+        max_err = max_err.max(edge_seam_z(hf, tx, tz));
     }
     max_err
 }
@@ -261,12 +308,22 @@ pub fn measure_seams_among(hf: &Heightfield, tiles: &[TileId]) -> f32 {
 fn edge_seam_x(hf: &Heightfield, tx: u32, tz: u32) -> f32 {
     let left = hf.tile(TileId { tx, tz }).unwrap();
     let right = hf.tile(TileId { tx: tx + 1, tz }).unwrap();
-    let x_left = left.interior_width - 1;
+    let boundary_x = ((tx + 1) * hf.metrics.tile_size) as i32;
+    let origin_z = (tz * hf.metrics.tile_size) as i32;
+    let halo = hf.metrics.halo as i32;
     let mut max_err = 0.0f32;
     for lz in 0..left.interior_height.min(right.interior_height) {
-        let a = left.get_interior(x_left, lz);
-        let b = right.get_with_halo(-1, lz as i32);
-        max_err = max_err.max((a - b).abs());
+        let global_z = origin_z + lz as i32;
+        for depth in 1..=halo {
+            let left_source = hf.get_clamped(boundary_x - depth, global_z);
+            let right_left_halo = right.get_with_halo(-depth, lz as i32);
+            max_err = max_err.max((left_source - right_left_halo).abs());
+
+            let right_source = hf.get_clamped(boundary_x + depth - 1, global_z);
+            let left_right_halo =
+                left.get_with_halo(left.interior_width as i32 + depth - 1, lz as i32);
+            max_err = max_err.max((right_source - left_right_halo).abs());
+        }
     }
     max_err
 }
@@ -274,12 +331,22 @@ fn edge_seam_x(hf: &Heightfield, tx: u32, tz: u32) -> f32 {
 fn edge_seam_z(hf: &Heightfield, tx: u32, tz: u32) -> f32 {
     let top = hf.tile(TileId { tx, tz }).unwrap();
     let bot = hf.tile(TileId { tx, tz: tz + 1 }).unwrap();
-    let z_top = top.interior_height - 1;
+    let origin_x = (tx * hf.metrics.tile_size) as i32;
+    let boundary_z = ((tz + 1) * hf.metrics.tile_size) as i32;
+    let halo = hf.metrics.halo as i32;
     let mut max_err = 0.0f32;
     for lx in 0..top.interior_width.min(bot.interior_width) {
-        let a = top.get_interior(lx, z_top);
-        let b = bot.get_with_halo(lx as i32, -1);
-        max_err = max_err.max((a - b).abs());
+        let global_x = origin_x + lx as i32;
+        for depth in 1..=halo {
+            let top_source = hf.get_clamped(global_x, boundary_z - depth);
+            let bottom_top_halo = bot.get_with_halo(lx as i32, -depth);
+            max_err = max_err.max((top_source - bottom_top_halo).abs());
+
+            let bottom_source = hf.get_clamped(global_x, boundary_z + depth - 1);
+            let top_bottom_halo =
+                top.get_with_halo(lx as i32, top.interior_height as i32 + depth - 1);
+            max_err = max_err.max((bottom_source - top_bottom_halo).abs());
+        }
     }
     max_err
 }
@@ -422,6 +489,159 @@ mod tests {
                     "mismatch at {gx},{gz}"
                 );
             }
+        }
+    }
+
+    fn patterned_heightfield(metrics: HeightfieldMetrics) -> Heightfield {
+        let mut hf = Heightfield::zeros(metrics);
+        for j in 0..metrics.height {
+            for i in 0..metrics.width {
+                hf.set(i, j, (j * metrics.width + i) as f32);
+            }
+        }
+        hf.refresh_halos();
+        hf
+    }
+
+    fn assert_same_tile_storage(expected: &Heightfield, actual: &Heightfield) {
+        assert_eq!(expected.tiles().len(), actual.tiles().len());
+        for expected_tile in expected.tiles() {
+            let actual_tile = actual.tile(expected_tile.id).unwrap();
+            assert_eq!(
+                expected_tile.data(),
+                actual_tile.data(),
+                "tile {:?} differs from a full halo refresh",
+                expected_tile.id
+            );
+        }
+    }
+
+    #[test]
+    fn dirty_source_refreshes_neighbor_halo_and_metrics_expose_stale_reverse_copy() {
+        let metrics = HeightfieldMetrics {
+            width: 64,
+            height: 32,
+            world_size_x: 64.0,
+            world_size_z: 32.0,
+            tile_size: 32,
+            halo: 2,
+        };
+        let mut hf = patterned_heightfield(metrics);
+        let right_id = TileId { tx: 1, tz: 0 };
+
+        hf.set(32, 10, 9999.0);
+
+        let left = hf.tile(TileId { tx: 0, tz: 0 }).unwrap();
+        assert_eq!(left.get_with_halo(32, 10), 672.0);
+        assert_eq!(measure_seams(&hf), 9327.0);
+        assert_eq!(measure_seams_among(&hf, &[right_id]), 9327.0);
+
+        let mut scheduler = TileScheduler::new();
+        scheduler.mark_tile(right_id);
+        assert_eq!(scheduler.sync_dirty(&mut hf), 0.0);
+        assert_eq!(measure_seams(&hf), 0.0);
+        assert_eq!(
+            hf.tile(TileId { tx: 0, tz: 0 })
+                .unwrap()
+                .get_with_halo(32, 10),
+            9999.0
+        );
+    }
+
+    #[test]
+    fn seam_metrics_cover_both_directions_and_every_halo_depth() {
+        let metrics = HeightfieldMetrics {
+            width: 64,
+            height: 64,
+            world_size_x: 64.0,
+            world_size_z: 64.0,
+            tile_size: 32,
+            halo: 3,
+        };
+
+        for depth in 1..=metrics.halo {
+            let cases = [
+                (32 - depth, 10, TileId { tx: 0, tz: 0 }, "left"),
+                (32 + depth - 1, 10, TileId { tx: 1, tz: 0 }, "right"),
+                (10, 32 - depth, TileId { tx: 0, tz: 0 }, "top"),
+                (10, 32 + depth - 1, TileId { tx: 0, tz: 1 }, "bottom"),
+            ];
+
+            for (i, j, dirty_id, direction) in cases {
+                let mut hf = patterned_heightfield(metrics);
+                hf.set(i, j, 20_000.0 + depth as f32);
+
+                assert!(
+                    measure_seams(&hf) > 0.0,
+                    "full metric missed {direction} source at depth {depth}"
+                );
+                assert!(
+                    measure_seams_among(&hf, &[dirty_id]) > 0.0,
+                    "local metric missed {direction} source at depth {depth}"
+                );
+
+                let mut scheduler = TileScheduler::new();
+                scheduler.mark_tile(dirty_id);
+                assert_eq!(scheduler.sync_dirty(&mut hf), 0.0);
+                assert_eq!(measure_seams(&hf), 0.0);
+            }
+        }
+    }
+
+    #[test]
+    fn dirty_center_refresh_matches_full_for_edges_and_diagonal_corners() {
+        let metrics = HeightfieldMetrics {
+            width: 96,
+            height: 96,
+            world_size_x: 96.0,
+            world_size_z: 96.0,
+            tile_size: 32,
+            halo: 3,
+        };
+        let mut actual = patterned_heightfield(metrics);
+        for j in 32..64 {
+            for i in 32..64 {
+                actual.set(i, j, actual.get(i, j) + 100_000.0);
+            }
+        }
+        let mut expected = actual.clone();
+        expected.refresh_halos();
+
+        let mut scheduler = TileScheduler::new();
+        scheduler.mark_tile(TileId { tx: 1, tz: 1 });
+        assert_eq!(scheduler.sync_dirty(&mut actual), 0.0);
+        assert_same_tile_storage(&expected, &actual);
+    }
+
+    #[test]
+    fn dirty_partial_last_tile_matches_full_and_keeps_outer_clamp() {
+        let metrics = HeightfieldMetrics {
+            width: 70,
+            height: 58,
+            world_size_x: 70.0,
+            world_size_z: 58.0,
+            tile_size: 32,
+            halo: 3,
+        };
+        let mut actual = patterned_heightfield(metrics);
+        for j in 32..58 {
+            for i in 64..70 {
+                actual.set(i, j, actual.get(i, j) + 200_000.0);
+            }
+        }
+        let mut expected = actual.clone();
+        expected.refresh_halos();
+
+        let partial_id = TileId { tx: 2, tz: 1 };
+        let mut scheduler = TileScheduler::new();
+        scheduler.mark_tile(partial_id);
+        assert_eq!(scheduler.sync_dirty(&mut actual), 0.0);
+        assert_same_tile_storage(&expected, &actual);
+
+        let partial = actual.tile(partial_id).unwrap();
+        let last_interior = partial.get_interior(5, 25);
+        for depth in 1..=metrics.halo as i32 {
+            assert_eq!(partial.get_with_halo(5 + depth, 25 + depth), last_interior);
         }
     }
 
