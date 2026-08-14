@@ -11,3 +11,9 @@
   groups scheduling/accounting. A wider halo alone cannot make skipped refreshes
   correct unless the stencil also evolves the expanded halo domain.
 - `SampleRect` / `bounds_from_tiles` feed region GPU upload and normal recompute.
+
+The executable
+[CPU determinism contract](../../crates/terra-core/tests/cpu_determinism_contract.rs)
+compares batched tiled stencils with an independent dense oracle and evaluates
+the same authored stack with 16, 32, 256, and full-field tile sizes using exact
+`f32::to_bits` equality.

@@ -21,4 +21,11 @@
 
 ## Determinism
 
-Same `(seed, params, world x/z)` ⇒ identical `f32` on CPU. GPU ports must match within documented tolerance.
+For the supported CPU build contract, the same `(seed, params, world x/z)`
+produces bit-identical `f32` output. The executable
+[CPU determinism contract](../../crates/terra-core/tests/cpu_determinism_contract.rs)
+pins representative low-seed results, proves that upper `u64` seed bits affect
+output, and exercises the authored `StackEvaluator` path across storage tile
+counts. It does not claim bit portability across arbitrary toolchain or libm
+combinations. GPU ports remain an approximate parity contract with documented
+tolerances.

@@ -1,0 +1,16 @@
+name: CPU terrain contract
+
+on:
+  pull_request:
+  push:
+    branches: [main, wozzits-codex]
+
+jobs:
+  determinism-tiling-and-halos:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - name: Run CPU determinism contract
+        run: cargo test -p terra-core --test cpu_determinism_contract
