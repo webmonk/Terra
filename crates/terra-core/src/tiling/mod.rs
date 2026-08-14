@@ -45,9 +45,10 @@ pub fn dirty_class_for(kind: &LayerKind) -> DirtyClass {
 /// Recommended halo (ghost) width for a neighbourhood process.
 ///
 /// `stencil_radius` is the single-pass read radius (thermal/hydraulic ≈ 1).
-/// When iterating without per-iter halo refresh, use
-/// `halo ≥ stencil_radius * iters_per_batch`. Prefer refreshing between batches
-/// with the default halo (2) rather than silently widening forever.
+/// An implementation that skips per-pass halo refresh must both allocate and
+/// evolve an expanded domain of at least `stencil_radius * iters_per_batch`.
+/// Merely widening storage halos is not sufficient when only tile interiors are
+/// evaluated. [`map_tiles_batched`] therefore refreshes halos after every pass.
 pub fn recommended_halo(stencil_radius: u32, iters_per_batch: u32) -> u32 {
     let need = stencil_radius.saturating_mul(iters_per_batch.max(1));
     need.max(crate::heightfield::DEFAULT_HALO).min(16)
@@ -206,7 +207,10 @@ impl Default for TileScheduler {
     }
 }
 
-/// Suggest metrics halo for multi-iter neighbourhood work (does not rebuild tiles).
+/// Suggest metrics halo capacity for multi-iteration neighbourhood work.
+///
+/// This does not rebuild tiles or change synchronization cadence. Callers that
+/// skip per-pass refresh must also evolve the expanded halo domain.
 pub fn suggest_halo(metrics: &HeightfieldMetrics, stencil: u32, iters_per_batch: u32) -> u32 {
     recommended_halo(stencil, iters_per_batch).max(metrics.halo)
 }
@@ -303,10 +307,12 @@ where
     dirty.sync_dirty(hf);
 }
 
-/// Multi-pass tile stencil with halo refresh between batches to limit seam risk.
+/// Multi-pass tile stencil with halo refresh after every pass.
 ///
-/// Each batch runs `iters_per_batch` passes using the current halo, then
-/// `sync_dirty` refreshes ghosts. Prefer this over widening halo unboundedly.
+/// `iters_per_batch` groups passes for scheduling and accounting only; it does
+/// not change numerical results. Because this helper evaluates tile interiors
+/// rather than an expanded domain, widening halos cannot replace the per-pass
+/// `sync_dirty` call.
 pub fn map_tiles_batched<F>(
     hf: &mut Heightfield,
     total_iters: u32,
@@ -318,6 +324,8 @@ where
 {
     let batch = iters_per_batch.max(1);
     let mut max_seam = 0.0f32;
+    let mut dirty = TileScheduler::new();
+    dirty.mark_all(hf);
     let mut iter = 0u32;
     while iter < total_iters {
         let end = (iter + batch).min(total_iters);
@@ -334,10 +342,8 @@ where
                     }
                 }
             }
+            max_seam = max_seam.max(dirty.sync_dirty(hf));
         }
-        let mut dirty = TileScheduler::new();
-        dirty.mark_all(hf);
-        max_seam = max_seam.max(dirty.sync_dirty(hf));
         iter = end;
     }
     max_seam
@@ -436,24 +442,28 @@ mod tests {
         assert_eq!(sched.dirty.len(), 9);
     }
 
-    #[test]
-    fn batched_blur_keeps_seams_low() {
+    fn batched_blur_bits(
+        width: u32,
+        height: u32,
+        tile_size: u32,
+        iters_per_batch: u32,
+    ) -> Vec<u32> {
         let metrics = HeightfieldMetrics {
-            width: 64,
-            height: 64,
-            world_size_x: 64.0,
-            world_size_z: 64.0,
-            tile_size: 32,
+            width,
+            height,
+            world_size_x: width as f32,
+            world_size_z: height as f32,
+            tile_size,
             halo: 2,
         };
         let mut hf = Heightfield::zeros(metrics);
-        for j in 0..64 {
-            for i in 0..64 {
+        for j in 0..height {
+            for i in 0..width {
                 hf.set(i, j, ((i * 3 + j * 5) % 40) as f32);
             }
         }
         hf.refresh_halos();
-        let seam = map_tiles_batched(&mut hf, 6, 2, |tile, lx, lz, _, _| {
+        let seam = map_tiles_batched(&mut hf, 4, iters_per_batch, |tile, lx, lz, _, _| {
             let mut sum = 0.0;
             let mut c = 0.0;
             for dj in -1..=1 {
@@ -466,6 +476,48 @@ mod tests {
         });
         assert!(seam < 1e-2, "batched seam {seam}");
         assert!(measure_seams(&hf) < 1e-2);
+        hf.to_dense().into_iter().map(f32::to_bits).collect()
+    }
+
+    fn assert_same_interior_bits(
+        expected: &[u32],
+        actual: &[u32],
+        width: u32,
+        tile_size: u32,
+        iters_per_batch: u32,
+    ) {
+        assert_eq!(expected.len(), actual.len());
+        if let Some(index) = expected.iter().zip(actual).position(|(a, b)| a != b) {
+            let i = index as u32 % width;
+            let j = index as u32 / width;
+            panic!(
+                "interior differs at ({i}, {j}) for tile_size={tile_size}, \
+                 iters_per_batch={iters_per_batch}: expected bits {:#010x}, got {:#010x}",
+                expected[index], actual[index]
+            );
+        }
+    }
+
+    #[test]
+    fn batched_blur_is_tile_and_batch_independent() {
+        let reference = batched_blur_bits(64, 64, 64, 1);
+        for tile_size in [16, 32, 64] {
+            for iters_per_batch in [1, 2, 4] {
+                let actual = batched_blur_bits(64, 64, tile_size, iters_per_batch);
+                assert_same_interior_bits(&reference, &actual, 64, tile_size, iters_per_batch);
+            }
+        }
+    }
+
+    #[test]
+    fn batched_blur_is_independent_with_partial_edge_tiles() {
+        let reference = batched_blur_bits(70, 58, 70, 1);
+        for tile_size in [16, 32, 70] {
+            for iters_per_batch in [1, 2, 4] {
+                let actual = batched_blur_bits(70, 58, tile_size, iters_per_batch);
+                assert_same_interior_bits(&reference, &actual, 70, tile_size, iters_per_batch);
+            }
+        }
     }
 
     #[test]

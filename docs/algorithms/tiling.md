@@ -6,4 +6,7 @@
 - `sync_dirty` refreshes halos then measures seams on affected edges.
 - Seam metric: `|left.interior[edge] − right.halo[-1]|` must be ~0 after sync.
 - Blur/erosion tile-local reads use halo samples only (`map_tiles`).
+- `map_tiles_batched` refreshes halos after every pass; `iters_per_batch` only
+  groups scheduling/accounting. A wider halo alone cannot make skipped refreshes
+  correct unless the stencil also evolves the expanded halo domain.
 - `SampleRect` / `bounds_from_tiles` feed region GPU upload and normal recompute.
