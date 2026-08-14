@@ -347,6 +347,9 @@ pub struct ViewportRenderSettings {
     pub denoise: bool,
     pub menu_open: bool,
     pub advanced_open: bool,
+    /// Persisted scroll offset for the render panel (survives frames; reset would
+    /// snap the window back to the top every frame).
+    pub menu_scroll: f32,
     pub interactive_spp: u32,
     pub settling_spp: u32,
     pub refining_spp: u32,
@@ -372,6 +375,7 @@ impl Default for ViewportRenderSettings {
             denoise: cfg.denoise_enabled,
             menu_open: false,
             advanced_open: false,
+            menu_scroll: 0.0,
             interactive_spp: cfg.interactive_spp,
             settling_spp: cfg.settling_spp,
             refining_spp: cfg.refining_spp,
