@@ -1,7 +1,7 @@
 //! Persisted document-version compatibility contract.
 
 use terra_core::document::{TerrainDocument, DOCUMENT_VERSION};
-use terra_core::layer::{LayerId, LayerKind};
+use terra_core::layer::{LayerId, LayerKind, OPEN_HEIGHT_MAX, OPEN_HEIGHT_MIN};
 use terra_core::mask::{MaskCombine, MaskId, MaskSource};
 use uuid::Uuid;
 
@@ -9,6 +9,9 @@ use uuid::Uuid;
 const V1_FIXTURE: &str = include_str!("fixtures/document_v1_7b336c4.json");
 // Emitted by TerrainDocument::to_json at historical commit b450e72.
 const V2_FIXTURE: &str = include_str!("fixtures/document_v2_b450e72.json");
+// Material/biome bounds emitted as null by serde_json at audited commit 7b336c4.
+const NULL_HEIGHT_BOUNDS_FIXTURE: &str =
+    include_str!("fixtures/document_v1_null_height_bounds_7b336c4.json");
 
 fn layer_id(value: &str) -> LayerId {
     LayerId(Uuid::parse_str(value).expect("valid fixture layer id"))
@@ -106,6 +109,38 @@ fn original_version_2_writer_fixture_loads_and_round_trips() {
 #[test]
 fn regressed_version_1_writer_fixture_loads_and_round_trips() {
     assert_fixture_round_trip(V1_FIXTURE, 1, "Version 1 compatibility fixture");
+}
+
+#[test]
+fn legacy_null_material_and_biome_bounds_normalize_on_load() {
+    let loaded = TerrainDocument::from_json(NULL_HEIGHT_BOUNDS_FIXTURE)
+        .expect("legacy null height bounds must load");
+    let mut saw_materials = false;
+    let mut saw_biomes = false;
+
+    for layer in loaded.stack.flatten_layers() {
+        match &layer.kind {
+            LayerKind::Materials(params) if layer.common.name == "Legacy Materials" => {
+                saw_materials = true;
+                assert_eq!(params.rules[0].min_height, OPEN_HEIGHT_MIN);
+                assert_eq!(params.rules[0].max_height, OPEN_HEIGHT_MAX);
+            }
+            LayerKind::Biomes(params) if layer.common.name == "Legacy Biomes" => {
+                saw_biomes = true;
+                assert_eq!(params.bands[0].min_height, OPEN_HEIGHT_MIN);
+                assert_eq!(params.bands[0].max_height, OPEN_HEIGHT_MAX);
+            }
+            _ => {}
+        }
+    }
+    assert!(saw_materials && saw_biomes);
+
+    let saved = loaded.to_json().expect("normalized document must save");
+    assert!(!saved.contains("\"min_height\":null"));
+    assert!(!saved.contains("\"max_height\":null"));
+    let value: serde_json::Value = serde_json::from_str(&saved).expect("valid normalized JSON");
+    assert_eq!(value["version"], DOCUMENT_VERSION);
+    TerrainDocument::from_json(&saved).expect("normalized document must reload");
 }
 
 #[test]

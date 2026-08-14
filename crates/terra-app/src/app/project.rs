@@ -738,6 +738,19 @@ mod tests {
     use terra_gpu::GpuTileAtlas;
     use terra_render::{GpuContext, TerrainRenderer};
 
+    #[test]
+    fn new_world_settings_document_round_trips_material_bounds() {
+        let doc = document_from_world_settings("alpine", 2_048.0, 0.0);
+        let json = doc.to_json().expect("new-world document must serialize");
+        assert!(!json.contains("\"min_height\":null"));
+        assert!(!json.contains("\"max_height\":null"));
+        let loaded = terra_core::document::TerrainDocument::from_json(&json)
+            .expect("new-world document must reload");
+        let normalized = loaded.to_json().expect("new-world document must resave");
+        terra_core::document::TerrainDocument::from_json(&normalized)
+            .expect("resaved new-world document must reload");
+    }
+
     /// Revert check for #34: document reset must retain an empty atlas and the
     /// existing upload/sync path must make it streamable again.
     #[test]

@@ -5,6 +5,7 @@ All notable changes to Terra will be documented in this file.
 ## [Unreleased]
 
 ### Fixed
+- Default material and biome height ranges now save as finite JSON values, and projects previously written with `null` open bounds load and normalize on the next save.
 - Incremental dirty-tile synchronization now refreshes neighboring edge and corner ghosts, and seam metrics detect stale halos in both directions at every configured depth.
 - Layered hydraulic, debris-flow, and thermal stacks now preserve distinct canonical debris and fine-sediment inventories across aux and cache handoffs.
 

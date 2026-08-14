@@ -151,6 +151,35 @@ fn default_roundtrip() {
     assert_eq!(back.stack.layer_ids(), before_ids);
 }
 
+fn assert_surface_kind_roundtrips(kind: LayerKind) {
+    let mut doc = TerrainDocument::new_default();
+    doc.add_layer(Layer::new("Issue 70 surface layer", kind));
+
+    let json = doc.to_json().expect("surface document must serialize");
+    assert!(!json.contains("\"min_height\":null"));
+    assert!(!json.contains("\"max_height\":null"));
+
+    let loaded = TerrainDocument::from_json(&json).expect("surface document must reload");
+    let normalized = loaded
+        .to_json()
+        .expect("reloaded surface document must serialize");
+    assert!(!normalized.contains("\"min_height\":null"));
+    assert!(!normalized.contains("\"max_height\":null"));
+    TerrainDocument::from_json(&normalized).expect("normalized surface document must reload");
+}
+
+#[test]
+fn default_materials_save_load_save_roundtrip() {
+    assert_surface_kind_roundtrips(LayerKind::Materials(
+        crate::layer::MaterialsParams::default(),
+    ));
+}
+
+#[test]
+fn default_biomes_save_load_save_roundtrip() {
+    assert_surface_kind_roundtrips(LayerKind::Biomes(crate::layer::BiomesParams::default()));
+}
+
 #[test]
 fn alpine_demo_roundtrip() {
     let doc = TerrainDocument::alpine_demo();

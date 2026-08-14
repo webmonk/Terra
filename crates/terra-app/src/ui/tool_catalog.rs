@@ -11,7 +11,7 @@ use crate::ui::EditorTool;
 use terra_core::layer::{
     BedGeometry, DuneParams, EffectFilterParams, FluidSimParams, HydraulicErosionParams,
     ImportHeightmapParams, Layer, LayerKind, LayerTypeRegistry, MaterialRule, MaterialsParams,
-    ThermalErosionParams, VegetationParams,
+    ThermalErosionParams, VegetationParams, OPEN_HEIGHT_MAX, OPEN_HEIGHT_MIN,
 };
 use terra_core::mask::{DistNode, DistNodeKind, Distribution, MaskId, MaskSource};
 use terra_gui::Icon;
@@ -839,8 +839,8 @@ pub fn all_tools() -> Vec<ToolDef> {
             5,
             0.0,
             90.0,
-            f32::NEG_INFINITY,
-            f32::INFINITY,
+            OPEN_HEIGHT_MIN,
+            OPEN_HEIGHT_MAX,
             MaskSource::None,
             0.4,
             [0.55, 0.52, 0.48],
@@ -859,8 +859,8 @@ pub fn all_tools() -> Vec<ToolDef> {
             6,
             0.0,
             25.0,
-            f32::NEG_INFINITY,
-            f32::INFINITY,
+            OPEN_HEIGHT_MIN,
+            OPEN_HEIGHT_MAX,
             MaskSource::Wetness,
             0.15,
             [0.22, 0.32, 0.28],
@@ -880,7 +880,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             0.0,
             48.0,
             180.0,
-            f32::INFINITY,
+            OPEN_HEIGHT_MAX,
             MaskSource::Snow,
             0.12,
             [0.86, 0.89, 0.93],
@@ -899,8 +899,8 @@ pub fn all_tools() -> Vec<ToolDef> {
             1,
             35.0,
             90.0,
-            f32::NEG_INFINITY,
-            f32::INFINITY,
+            OPEN_HEIGHT_MIN,
+            OPEN_HEIGHT_MAX,
             MaskSource::None,
             0.85,
             [0.45, 0.42, 0.38],
@@ -920,7 +920,7 @@ pub fn all_tools() -> Vec<ToolDef> {
             0.0,
             35.0,
             5.0,
-            f32::INFINITY,
+            OPEN_HEIGHT_MAX,
             MaskSource::None,
             0.2,
             [0.28, 0.48, 0.22],
@@ -1941,6 +1941,24 @@ mod tests {
     use crate::ui::EditorTool;
     use std::collections::HashSet;
     use terra_core::mask::MaskSource;
+
+    #[test]
+    fn material_and_biome_catalog_layers_round_trip_without_null_bounds() {
+        for tool in all_tools() {
+            let ToolAction::AddLayer { kind, .. } = tool.action else {
+                continue;
+            };
+            if !matches!(&kind, LayerKind::Materials(_) | LayerKind::Biomes(_)) {
+                continue;
+            }
+            let json = serde_json::to_string(&kind)
+                .unwrap_or_else(|error| panic!("{} must serialize: {error}", tool.id));
+            assert!(!json.contains("\"min_height\":null"), "{}", tool.id);
+            assert!(!json.contains("\"max_height\":null"), "{}", tool.id);
+            serde_json::from_str::<LayerKind>(&json)
+                .unwrap_or_else(|error| panic!("{} must reload: {error}", tool.id));
+        }
+    }
 
     /// Modes whose tools live on the viewport hotbar, not the left-rail catalog.
     /// `Utilities` (Move / Measure / camera navigation) is intentionally
