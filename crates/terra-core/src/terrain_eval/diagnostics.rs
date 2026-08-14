@@ -2,10 +2,17 @@
 
 use crate::fields::FieldId;
 use crate::layer::LayerId;
+use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 use std::time::Duration;
 
-use super::OperatorId;
+/// Stable identity for work recorded by evaluation diagnostics.
+#[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
+pub enum OperatorId {
+    Layer(LayerId),
+    Derived(FieldId),
+    Synthetic(String),
+}
 
 #[derive(Debug, Clone)]
 pub struct OperatorTiming {

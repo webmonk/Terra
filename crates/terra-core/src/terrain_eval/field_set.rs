@@ -90,7 +90,7 @@ impl FieldSlot {
 /// Auxiliary / derived fields live in typed [`AuxMaps`] plus optional slots for
 /// fields that are not yet represented in AuxMaps.
 ///
-/// Also acts as the mutable evaluation state threaded through graph execution.
+/// Also acts as the revision-aware mutable state synchronized by `TerrainContext`.
 #[derive(Debug, Clone)]
 pub struct TerrainFieldSet {
     pub metrics: HeightfieldMetrics,

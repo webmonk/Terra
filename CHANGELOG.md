@@ -26,3 +26,7 @@ All notable changes to Terra will be documented in this file.
 - Shared geometry helpers in `terra-core::mask::geom`
 - Layer type registry documented as catalog source of truth; tool catalog points contributors there
 - Geomorphic Detail upgraded from isotropic-aligned polish to anti-soup structured amplification
+
+### Removed
+- Retired the unused terra-core evaluation graph, operator adapter, and duplicate GPU-support
+  metadata; CPU evaluation remains owned by `StackEvaluator` and GPU planning by `terra-gpu`.

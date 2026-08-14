@@ -138,8 +138,6 @@ impl EvalContext {
 pub struct StackEvaluator {
     pub registry: ProcessorRegistry,
     pub cache: LayerCache,
-    /// Last compiled operator graph (metadata; execution still uses processors).
-    pub last_graph: Option<crate::terrain_eval::EvalGraph>,
 }
 
 impl Default for StackEvaluator {
@@ -153,14 +151,7 @@ impl StackEvaluator {
         Self {
             registry: ProcessorRegistry::builtin(),
             cache: LayerCache::new(),
-            last_graph: None,
         }
-    }
-
-    /// Compile the artist stack into an internal multi-field operator graph.
-    pub fn compile_graph(&mut self, stack: &LayerStack, world_seed: u64) -> &crate::terrain_eval::EvalGraph {
-        self.last_graph = Some(crate::terrain_eval::compile_eval_graph(stack, world_seed));
-        self.last_graph.as_ref().expect("just set")
     }
 
     pub fn mark_dirty_from(&mut self, stack: &LayerStack, id: LayerId) {
@@ -234,7 +225,6 @@ impl StackEvaluator {
         ctx: &mut EvalContext,
     ) -> Result<Heightfield, EvalError> {
         profiling::scope!("rebuild_all");
-        let _ = self.compile_graph(stack, 0);
         self.cache.clear();
         let seed = Heightfield::zeros(ctx.metrics);
         self.evaluate_nodes(&stack.nodes, ctx, &seed)
@@ -250,7 +240,6 @@ impl StackEvaluator {
         ctx: &mut EvalContext,
     ) -> Result<Heightfield, EvalError> {
         profiling::scope!("rebuild_incremental");
-        let _ = self.compile_graph(stack, 0);
         if stack.requires_tree_evaluation() {
             let seed = Heightfield::zeros(ctx.metrics);
             return self.evaluate_nodes(&stack.nodes, ctx, &seed);

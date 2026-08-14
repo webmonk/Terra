@@ -13,7 +13,7 @@ use std::collections::HashMap;
 /// Shared evaluation context: height plus lazily allocated named fields.
 ///
 /// Wraps [`EvalContext`] so existing processors keep working while new code
-/// uses strong [`FieldId`]s, published outputs, and the Phase 1
+/// uses strong [`FieldId`]s, published outputs, and the revision-aware
 /// [`TerrainFieldSet`] / derived-field cache.
 pub struct TerrainContext {
     pub eval: EvalContext,

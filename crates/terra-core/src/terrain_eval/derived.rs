@@ -13,7 +13,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use std::time::Instant;
 
-use super::diagnostics::EvalDiagnostics;
+use super::diagnostics::{EvalDiagnostics, OperatorId, OperatorTiming};
 use super::field_set::{FieldRevision, TerrainFieldSet};
 
 #[derive(Debug, Clone, Default)]
@@ -118,8 +118,8 @@ impl DerivedFieldCache {
 
         if let Some(d) = diagnostics {
             d.set_field_bytes(field.clone(), computed.data().len() * 4);
-            d.record_operator(super::diagnostics::OperatorTiming {
-                operator: super::OperatorId::Derived(field),
+            d.record_operator(OperatorTiming {
+                operator: OperatorId::Derived(field),
                 layer: None,
                 cpu: elapsed,
                 gpu: Default::default(),

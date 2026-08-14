@@ -57,10 +57,9 @@ pub use geomorph::{
     analyze_terrain, bake_debug_field, GeomorphAnalysis, GeomorphDebugField, GeomorphOptions,
 };
 pub use terrain_eval::{
-    compile_eval_graph, metres_to_texels, sample_seed, texels_to_metres, world_radius_texels,
-    DerivedFieldCache, EvalDiagnostics, EvalGraph, EvalMode, FieldLifetime, FieldRevision,
-    FieldStorage, GpuKernelId, LayerOperatorAdapter, OperatorDescriptor, OperatorId, ScaleBand,
-    TerrainFieldSet, TerrainOperator, TileEvalSpec,
+    metres_to_texels, sample_seed, texels_to_metres, world_radius_texels, DerivedFieldCache,
+    EvalDiagnostics, EvalMode, FieldLifetime, FieldRevision, FieldStorage, OperatorId, ScaleBand,
+    TerrainFieldSet, TileEvalSpec,
 };
 pub use terrain_recipe::{
     build_terrain_recipe_from_stack, recipe_matches_stack, RecipeItem, RecipeItemKind,

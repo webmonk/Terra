@@ -3,14 +3,14 @@
 use crate::heightfield::{HeightfieldMetrics, TileId, DEFAULT_HALO, DEFAULT_TILE_SIZE};
 use serde::{Deserialize, Serialize};
 
-/// Declared tile geometry for an operator evaluation pass.
+/// Declared tile geometry for an evaluation pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 pub struct TileEvalSpec {
     /// Interior tile edge length in samples.
     pub interior: u32,
     /// Overlapping halo width in samples (neighbour-sensitive reads).
     pub halo: u32,
-    /// When true, operator needs a basin/global connectivity pass — tiles alone
+    /// When true, evaluation needs a basin/global connectivity pass — tiles alone
     /// must not pretend to be independent.
     pub requires_global_pass: bool,
 }

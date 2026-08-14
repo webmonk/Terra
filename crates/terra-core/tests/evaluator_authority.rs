@@ -1,0 +1,179 @@
+//! B1 evaluator-authority ratchet (audit B1-D1).
+//!
+//! `StackEvaluator` is the CPU executor. Terra-core must not grow another
+//! compiled graph until that graph lands with a production executor, a
+//! production caller, and an end-to-end result test.
+
+use std::fs;
+use std::path::{Path, PathBuf};
+
+#[test]
+fn stack_evaluator_remains_the_single_cpu_authority() {
+    let eval_path = manifest_dir().join("src/eval/mod.rs");
+    let source = read(&eval_path);
+
+    for forbidden in ["last_graph", "compile_graph", "compile_eval_graph"] {
+        assert!(
+            !source.contains(forbidden),
+            "{} contains retired evaluator-graph token `{forbidden}`; StackEvaluator must execute the tree walk directly",
+            eval_path.display()
+        );
+    }
+
+    assert!(
+        source.contains("pub fn evaluate_nodes"),
+        "{} no longer exposes the established CPU tree-walk authority; update this ratchet only with equivalent end-to-end coverage",
+        eval_path.display()
+    );
+}
+
+#[test]
+fn inert_core_graph_and_operator_scaffolding_stays_retired() {
+    let terrain_eval = manifest_dir().join("src/terrain_eval");
+    for retired in ["graph.rs", "operator.rs"] {
+        let path = terrain_eval.join(retired);
+        assert!(
+            !path.exists(),
+            "{} reintroduced retired scaffolding; a future graph requires an executor, production caller, and end-to-end result test",
+            path.display()
+        );
+    }
+
+    let mut sources = Vec::new();
+    collect_rs(&manifest_dir().join("src"), &mut sources);
+    let mut compilers = Vec::new();
+    for path in sources {
+        let source = production_source(&read(&path));
+        for (line_index, line) in source.lines().enumerate() {
+            let tokens: Vec<_> = line
+                .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+                .filter(|token| !token.is_empty())
+                .collect();
+            for pair in tokens.windows(2) {
+                if pair[0] == "fn" && pair[1].contains("compile") && pair[1].contains("graph") {
+                    compilers.push(format!(
+                        "{}:{} ({})",
+                        path.display(),
+                        line_index + 1,
+                        pair[1]
+                    ));
+                }
+            }
+        }
+    }
+
+    assert!(
+        compilers.is_empty(),
+        "terra-core contains a production graph compiler without ratcheted execution evidence:\n  {}\nA future graph must land with its executor, non-test caller, and an end-to-end result test; then update this guard deliberately.",
+        compilers.join("\n  ")
+    );
+}
+
+fn manifest_dir() -> PathBuf {
+    PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+}
+
+fn read(path: &Path) -> String {
+    fs::read_to_string(path)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", path.display()))
+}
+
+fn collect_rs(dir: &Path, out: &mut Vec<PathBuf>) {
+    let entries = fs::read_dir(dir)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", dir.display()));
+    for entry in entries.flatten() {
+        let path = entry.path();
+        if path.is_dir() {
+            collect_rs(&path, out);
+        } else if path.extension().and_then(|extension| extension.to_str()) == Some("rs") {
+            out.push(path);
+        }
+    }
+}
+
+/// Strip comments/string contents and omit `#[cfg(test)]` items. This is a
+/// deliberately small source tripwire, not a Rust parser.
+fn production_source(source: &str) -> String {
+    let mut output = String::new();
+    let mut pending_test_item = false;
+    let mut skipped_depth: Option<i32> = None;
+
+    for raw in source.lines() {
+        let line = strip_comments_and_strings(raw);
+        let delta = brace_delta(&line);
+
+        if let Some(depth) = skipped_depth.as_mut() {
+            *depth += delta;
+            if *depth <= 0 {
+                skipped_depth = None;
+            }
+            output.push('\n');
+            continue;
+        }
+
+        let trimmed = line.trim_start();
+        if trimmed.starts_with("#[cfg(test)]") {
+            pending_test_item = true;
+            output.push('\n');
+            continue;
+        }
+
+        if pending_test_item {
+            if trimmed.is_empty() || trimmed.starts_with("#[") {
+                output.push('\n');
+                continue;
+            }
+            if delta > 0 {
+                skipped_depth = Some(delta);
+            }
+            pending_test_item = false;
+            output.push('\n');
+            continue;
+        }
+
+        output.push_str(&line);
+        output.push('\n');
+    }
+
+    output
+}
+
+fn brace_delta(line: &str) -> i32 {
+    line.bytes().fold(0, |depth, byte| match byte {
+        b'{' => depth + 1,
+        b'}' => depth - 1,
+        _ => depth,
+    })
+}
+
+fn strip_comments_and_strings(line: &str) -> String {
+    let mut out = String::with_capacity(line.len());
+    let mut chars = line.chars().peekable();
+    let mut in_string = false;
+    let mut escaped = false;
+
+    while let Some(ch) = chars.next() {
+        if in_string {
+            if escaped {
+                escaped = false;
+            } else if ch == '\\' {
+                escaped = true;
+            } else if ch == '"' {
+                in_string = false;
+            }
+            out.push(' ');
+            continue;
+        }
+
+        if ch == '"' {
+            in_string = true;
+            out.push(' ');
+        } else if ch == '/' && chars.peek() == Some(&'/') {
+            break;
+        } else {
+            out.push(ch);
+        }
+    }
+
+    out
+}
