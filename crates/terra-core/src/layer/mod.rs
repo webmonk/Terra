@@ -66,9 +66,6 @@ pub struct LayerCommon {
     /// Explicit cache policy (v3+). When absent, derived from `cached`.
     #[serde(default)]
     pub cache_policy: Option<CachePolicy>,
-    /// Optional seed override for deterministic ops.
-    #[serde(default)]
-    pub seed: Option<u64>,
     /// Named outputs published for later mask / binding references.
     #[serde(default)]
     pub outputs: Vec<NamedOutputDecl>,
@@ -100,7 +97,6 @@ impl LayerCommon {
             color_tag: 0,
             cached: false,
             cache_policy: None,
-            seed: None,
             outputs: Vec::new(),
             param_bindings: Vec::new(),
             shape_transform: None,
