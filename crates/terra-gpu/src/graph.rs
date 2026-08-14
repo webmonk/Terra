@@ -4,7 +4,7 @@
 //! `GpuTerrainEngine` (deps, dirty policy, fusion hooks).
 
 use terra_core::layer::{FractalNoiseType, Layer, LayerId, LayerKind, LayerStack};
-use terra_core::mask::{MaskAsset, MaskSource};
+use terra_core::mask::{MaskAsset, MaskCombine, MaskSource};
 use terra_core::tiling::DirtyClass;
 
 /// Kind of GPU work a compiled pass performs.
@@ -63,19 +63,22 @@ fn gpu_mask_supported(layer: &Layer, assets: &[MaskAsset]) -> bool {
     if !layer.common.masks.nodes.is_empty() {
         return false;
     }
-    layer.common.masks.iter().all(|entry| {
-        matches!(
-            assets
-                .iter()
-                .find(|asset| asset.id == entry.mask.id)
-                .map(|asset| &asset.source),
-            Some(MaskSource::Constant(_))
-                | Some(MaskSource::Height { .. })
-                | Some(MaskSource::Slope { .. })
-                | Some(MaskSource::Curvature { .. })
-                | Some(MaskSource::Noise { .. })
-        )
-    })
+    let [entry] = layer.common.masks.entries.as_slice() else {
+        return layer.common.masks.entries.is_empty();
+    };
+    if entry.combine != MaskCombine::Multiply {
+        return false;
+    }
+    assets
+        .iter()
+        .find(|asset| asset.id == entry.mask.id)
+        .is_some_and(|asset| {
+            asset.ops.is_empty()
+                && matches!(
+                    asset.source,
+                    MaskSource::Constant(_) | MaskSource::Height { .. } | MaskSource::Slope { .. }
+                )
+        })
 }
 
 fn gpu_pass_for_layer(layer: &Layer, mask_assets: &[MaskAsset]) -> Option<GpuLayerPlan> {
@@ -175,16 +178,26 @@ pub fn dirty_class_for(policy: GpuDirtyPolicy) -> DirtyClass {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::collections::HashMap;
     use terra_core::layer::{
         BiomesParams, CoastalParams, EffectFilterKind, EffectFilterParams, FbmParams, FlatParams,
         Layer, LayerKind, LayerStack, LayerTypeRegistry, MaterialsParams, NoiseParams,
         VegetationParams,
+    };
+    use terra_core::mask::{
+        bake_distribution, bake_mask_assets, DistributionEntry, MaskId, MaskOp, MaskRef,
     };
 
     fn single_layer_graph(layer: Layer) -> GpuComputeGraph {
         let mut stack = LayerStack::new();
         stack.push(layer);
         compile_gpu_graph(&stack, &[])
+    }
+
+    fn masked_flat(asset: &MaskAsset) -> Layer {
+        let mut layer = Layer::new("masked", LayerKind::Flat(FlatParams::default()));
+        layer.common.masks.push(MaskRef::new(asset.id));
+        layer
     }
 
     #[test]
@@ -304,5 +317,111 @@ mod tests {
         assert_eq!(graph.cpu_from, Some(1));
         assert_eq!(graph.passes.len(), 1);
         assert_eq!(graph.passes[0].flat_index, 0);
+    }
+
+    #[test]
+    fn simple_single_entry_masks_are_the_only_gpu_supported_contract() {
+        for source in [
+            MaskSource::Constant(0.5),
+            MaskSource::Height {
+                min: 10.0,
+                max: 20.0,
+            },
+            MaskSource::Slope {
+                min_deg: 5.0,
+                max_deg: 35.0,
+            },
+        ] {
+            let asset = MaskAsset::new(MaskId::new(), "supported", source);
+            let layer = masked_flat(&asset);
+            assert!(layer_gpu_supported(&layer, std::slice::from_ref(&asset)));
+        }
+
+        let empty = Layer::new("empty", LayerKind::Flat(FlatParams::default()));
+        assert!(layer_gpu_supported(&empty, &[]));
+    }
+
+    #[test]
+    fn complex_or_unproven_masks_start_cpu_fallback_at_the_owner() {
+        let mut cases = Vec::new();
+
+        let missing = MaskAsset::new(MaskId::new(), "missing", MaskSource::Constant(0.5));
+        cases.push((masked_flat(&missing), Vec::new(), "missing asset"));
+
+        for source in [
+            MaskSource::Curvature {
+                min: -1.0,
+                max: 1.0,
+            },
+            MaskSource::Noise {
+                seed: 0x1_0000_0001,
+                frequency: 0.05,
+            },
+        ] {
+            let asset = MaskAsset::new(MaskId::new(), "unproven", source);
+            cases.push((masked_flat(&asset), vec![asset], "unproven source"));
+        }
+
+        let mut operated = MaskAsset::new(MaskId::new(), "operated", MaskSource::Constant(0.2));
+        operated.ops.push(MaskOp::Invert);
+        cases.push((masked_flat(&operated), vec![operated], "asset operation"));
+
+        let combined = MaskAsset::new(MaskId::new(), "combined", MaskSource::Constant(0.5));
+        let mut non_multiply = masked_flat(&combined);
+        non_multiply.common.masks.entries[0].combine = MaskCombine::Subtract;
+        cases.push((non_multiply, vec![combined], "non-Multiply combine"));
+
+        for (layer, assets, reason) in cases {
+            assert!(!layer_gpu_supported(&layer, &assets), "{reason}");
+            let mut stack = LayerStack::new();
+            stack.push(layer);
+            let graph = compile_gpu_graph(&stack, &assets);
+            assert_eq!(graph.cpu_from, Some(0), "{reason}");
+            assert!(graph.passes.is_empty(), "{reason}");
+        }
+    }
+
+    #[test]
+    fn ordered_distribution_fixture_is_non_commutative_and_cpu_bound() {
+        let metrics = terra_core::heightfield::HeightfieldMetrics::new(2, 2, 2.0, 2.0);
+        let first = MaskAsset::new(MaskId::new(), "first", MaskSource::Constant(0.8));
+        let second = MaskAsset::new(MaskId::new(), "second", MaskSource::Constant(0.25));
+        let assets = vec![first.clone(), second.clone()];
+        let baked = bake_mask_assets(
+            &assets,
+            &terra_core::heightfield::Heightfield::zeros(metrics),
+            metrics,
+            &HashMap::new(),
+        );
+
+        let mut layer = masked_flat(&first);
+        layer.common.masks.entries.push(DistributionEntry {
+            mask: MaskRef::new(second.id),
+            combine: MaskCombine::Subtract,
+        });
+        let oracle = bake_distribution(&layer.common.masks, &baked, metrics);
+        assert!((oracle.get(0, 0) - 0.55).abs() < 1.0e-6);
+        assert!(!layer_gpu_supported(&layer, &assets));
+
+        let mut stack = LayerStack::new();
+        stack.push(layer);
+        assert_eq!(compile_gpu_graph(&stack, &assets).cpu_from, Some(0));
+    }
+
+    #[test]
+    fn asset_operation_fixture_changes_the_cpu_mask_and_requires_fallback() {
+        let metrics = terra_core::heightfield::HeightfieldMetrics::new(2, 2, 2.0, 2.0);
+        let mut asset = MaskAsset::new(MaskId::new(), "invert", MaskSource::Constant(0.2));
+        asset.ops.push(MaskOp::Invert);
+        let baked = bake_mask_assets(
+            std::slice::from_ref(&asset),
+            &terra_core::heightfield::Heightfield::zeros(metrics),
+            metrics,
+            &HashMap::new(),
+        );
+        let layer = masked_flat(&asset);
+        let oracle = bake_distribution(&layer.common.masks, &baked, metrics);
+        assert!((oracle.get(0, 0) - 0.8).abs() < 1.0e-6);
+        assert!(!layer_gpu_supported(&layer, std::slice::from_ref(&asset)));
     }
 }
