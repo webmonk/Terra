@@ -1,14 +1,22 @@
 //! Persisted document-version compatibility contract.
 
 use terra_core::document::{TerrainDocument, DOCUMENT_VERSION};
-use terra_core::layer::{LayerId, LayerKind, OPEN_HEIGHT_MAX, OPEN_HEIGHT_MIN};
+use terra_core::layer::{
+    BiomeSection, BiomesParams, Layer, LayerId, LayerKind, MaterialsParams, StackNode,
+    OPEN_HEIGHT_MAX, OPEN_HEIGHT_MIN,
+};
 use terra_core::mask::{MaskCombine, MaskId, MaskSource};
+use terra_core::world_rules::{WorldRuleEffectKind, WorldRulePhase, WorldRuleScope};
 use uuid::Uuid;
 
 // Emitted by TerrainDocument::to_json at audited commit 7b336c4.
 const V1_FIXTURE: &str = include_str!("fixtures/document_v1_7b336c4.json");
+// Emitted by TerrainDocument::to_json at the authoring rewrite commit 8587974.
+const V1_REWRITE_FIXTURE: &str = include_str!("fixtures/document_v1_8587974.json");
 // Emitted by TerrainDocument::to_json at historical commit b450e72.
 const V2_FIXTURE: &str = include_str!("fixtures/document_v2_b450e72.json");
+// Full-feature document emitted by TerrainDocument::to_json at e4ea27f.
+const CURRENT_FULL_FIXTURE: &str = include_str!("fixtures/document_v2_e4ea27f_full.json");
 // Material/biome bounds emitted as null by serde_json at audited commit 7b336c4.
 const NULL_HEIGHT_BOUNDS_FIXTURE: &str =
     include_str!("fixtures/document_v1_null_height_bounds_7b336c4.json");
@@ -94,11 +102,143 @@ fn assert_fixture_round_trip(raw: &str, source_version: u32, expected_name: &str
     let saved = loaded.to_json().expect("normalized fixture must save");
     let saved_value: serde_json::Value = serde_json::from_str(&saved).expect("valid saved JSON");
     assert_eq!(saved_value["version"], DOCUMENT_VERSION);
-    assert!(DOCUMENT_VERSION >= 2);
+    assert!(DOCUMENT_VERSION >= source_version);
+    assert_required_height_bounds_are_numbers(&saved_value);
 
     let reloaded = TerrainDocument::from_json(&saved).expect("saved fixture must reload");
     assert_fixture_semantics(&reloaded, expected_name);
     assert_eq!(reloaded.stack.layer_ids(), normalized_layer_ids);
+}
+
+fn assert_required_height_bounds_are_numbers(value: &serde_json::Value) {
+    fn visit(value: &serde_json::Value, path: &str) {
+        match value {
+            serde_json::Value::Object(object) => {
+                for (key, child) in object {
+                    let child_path = format!("{path}.{key}");
+                    if matches!(key.as_str(), "min_height" | "max_height") {
+                        assert!(
+                            child.is_number(),
+                            "required numeric height bound at {child_path} was {child}"
+                        );
+                    }
+                    visit(child, &child_path);
+                }
+            }
+            serde_json::Value::Array(values) => {
+                for (index, child) in values.iter().enumerate() {
+                    visit(child, &format!("{path}[{index}]"));
+                }
+            }
+            _ => {}
+        }
+    }
+
+    visit(value, "document");
+}
+
+fn assert_current_fixture_semantics(doc: &TerrainDocument) {
+    let biome_id = layer_id("44444444-4444-4444-8444-444444444444");
+    let materials_id = layer_id("55555555-5555-4555-8555-555555555555");
+    let biomes_id = layer_id("66666666-6666-4666-8666-666666666666");
+    let height_mask_id = mask_id("33333333-3333-4333-8333-333333333333");
+    let noise_mask_id = mask_id("77777777-7777-4777-8777-777777777777");
+
+    assert_eq!(doc.version, DOCUMENT_VERSION);
+    assert_eq!(doc.name, "Current full feature compatibility fixture");
+    assert_eq!(doc.selected, Some(materials_id));
+    assert_eq!(doc.active_biome, Some(biome_id));
+    assert_eq!(doc.presets_used, ["Issue 71 Full Feature"]);
+
+    let biome = doc
+        .stack
+        .find_group(biome_id)
+        .expect("fixture biome survives");
+    let materials_section = biome
+        .find_section(BiomeSection::Materials)
+        .expect("fixture materials section survives");
+    let authored_children: Vec<_> = materials_section
+        .children
+        .iter()
+        .filter_map(|node| match node {
+            StackNode::Layer(layer) if matches!(layer.id(), id if id == materials_id || id == biomes_id) => {
+                Some(layer.id())
+            }
+            _ => None,
+        })
+        .collect();
+    assert_eq!(authored_children, [materials_id, biomes_id]);
+
+    let materials = doc
+        .stack
+        .find(materials_id)
+        .expect("materials layer survives");
+    let LayerKind::Materials(material_params) = &materials.kind else {
+        panic!("fixture materials kind changed");
+    };
+    assert!(!material_params.rules.is_empty());
+    assert_eq!(material_params.rules[0].min_height, OPEN_HEIGHT_MIN);
+    assert_eq!(material_params.rules[0].max_height, OPEN_HEIGHT_MAX);
+    assert_eq!(materials.common.masks.entries.len(), 2);
+    assert_eq!(materials.common.masks.entries[0].mask.id, height_mask_id);
+    assert_eq!(materials.common.masks.entries[0].mask.strength, 0.8);
+    assert_eq!(
+        materials.common.masks.entries[0].combine,
+        MaskCombine::Multiply
+    );
+    assert_eq!(materials.common.masks.entries[1].mask.id, noise_mask_id);
+    assert_eq!(materials.common.masks.entries[1].mask.strength, 0.35);
+    assert!(materials.common.masks.entries[1].mask.invert);
+    assert_eq!(materials.common.masks.entries[1].combine, MaskCombine::Add);
+
+    let biomes = doc.stack.find(biomes_id).expect("biomes layer survives");
+    let LayerKind::Biomes(biome_params) = &biomes.kind else {
+        panic!("fixture biomes kind changed");
+    };
+    assert!(!biome_params.bands.is_empty());
+    assert_eq!(biome_params.bands[0].max_height, OPEN_HEIGHT_MAX);
+
+    assert_eq!(doc.masks.len(), 2);
+    assert!(doc.masks.iter().any(|asset| {
+        asset.id == height_mask_id
+            && matches!(
+                asset.source,
+                MaskSource::Height {
+                    min: 40.0,
+                    max: 420.0
+                }
+            )
+    }));
+    assert!(doc.masks.iter().any(|asset| {
+        asset.id == noise_mask_id
+            && matches!(
+                asset.source,
+                MaskSource::Noise {
+                    seed: 8181,
+                    frequency: 0.0125
+                }
+            )
+    }));
+
+    let rule = doc.world_rules.rules.first().expect("world rule survives");
+    assert_eq!(rule.name, "Fixture Snow Rule");
+    assert_eq!(rule.priority, 7);
+    assert_eq!(rule.phase_override, Some(WorldRulePhase::Materials));
+    assert!(matches!(
+        rule.scope,
+        WorldRuleScope::PaintedRestriction {
+            paint_mask: Some(id)
+        } if id == height_mask_id
+    ));
+    assert!(matches!(
+        rule.effects.as_slice(),
+        [effect] if effect.kind == WorldRuleEffectKind::Material && effect.strength == 0.65
+    ));
+
+    assert_eq!(doc.viewport_lighting.sun_azimuth_deg, 123.0);
+    assert_eq!(doc.viewport_lighting.sun_elevation_deg, 37.0);
+    assert_eq!(doc.viewport_lighting.sky_color, [0.12, 0.18, 0.31]);
+    assert_eq!(doc.viewport_lighting.preset, "Issue 71 Fixture");
 }
 
 #[test]
@@ -109,6 +249,64 @@ fn original_version_2_writer_fixture_loads_and_round_trips() {
 #[test]
 fn regressed_version_1_writer_fixture_loads_and_round_trips() {
     assert_fixture_round_trip(V1_FIXTURE, 1, "Version 1 compatibility fixture");
+}
+
+#[test]
+fn rewrite_8587974_fixture_loads_normalizes_and_round_trips() {
+    assert_fixture_round_trip(V1_REWRITE_FIXTURE, 1, "Version 1 rewrite fixture");
+}
+
+#[test]
+fn current_full_feature_fixture_preserves_authored_semantics() {
+    let raw_value: serde_json::Value =
+        serde_json::from_str(CURRENT_FULL_FIXTURE).expect("valid current fixture");
+    assert_eq!(raw_value["version"], 2);
+    assert_required_height_bounds_are_numbers(&raw_value);
+
+    let loaded = TerrainDocument::from_json(CURRENT_FULL_FIXTURE).expect("current fixture loads");
+    assert_current_fixture_semantics(&loaded);
+    let authored_order = loaded.stack.layer_ids();
+
+    let saved = loaded.to_json().expect("current fixture saves");
+    let saved_value: serde_json::Value = serde_json::from_str(&saved).expect("valid saved JSON");
+    assert_eq!(saved_value["version"], DOCUMENT_VERSION);
+    assert_required_height_bounds_are_numbers(&saved_value);
+
+    let reloaded = TerrainDocument::from_json(&saved).expect("current fixture reloads");
+    assert_current_fixture_semantics(&reloaded);
+    assert_eq!(reloaded.stack.layer_ids(), authored_order);
+}
+
+#[test]
+fn historical_fixtures_default_new_additive_fields() {
+    for raw in [V2_FIXTURE, V1_REWRITE_FIXTURE] {
+        let loaded = TerrainDocument::from_json(raw).expect("historical fixture loads");
+        assert_eq!(
+            loaded.viewport_lighting,
+            terra_core::document::ViewportLighting::default()
+        );
+    }
+}
+
+#[test]
+fn default_materials_and_biomes_remain_writer_safe() {
+    let mut doc = TerrainDocument::new_default();
+    doc.add_layer(Layer::new(
+        "Compatibility Materials",
+        LayerKind::Materials(MaterialsParams::default()),
+    ));
+    doc.add_layer(Layer::new(
+        "Compatibility Biomes",
+        LayerKind::Biomes(BiomesParams::default()),
+    ));
+
+    let saved = doc.to_json().expect("default surface layers save");
+    let value: serde_json::Value = serde_json::from_str(&saved).expect("valid saved JSON");
+    assert_required_height_bounds_are_numbers(&value);
+    let reloaded = TerrainDocument::from_json(&saved).expect("default surface layers reload");
+    reloaded
+        .to_json()
+        .expect("default surface layers save after reload");
 }
 
 #[test]

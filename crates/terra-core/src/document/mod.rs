@@ -17,7 +17,12 @@ use crate::mask::{MaskAsset, MaskId};
 use serde::{Deserialize, Serialize};
 use std::collections::HashMap;
 
-/// Highest persisted document version ever emitted. This value is monotonic.
+/// Highest persisted document version ever emitted. This value is monotonic and
+/// must never be decremented. Readers accept supported older versions and reject
+/// only genuinely newer versions; normalization may add defaults but must retain
+/// authored identity and semantics. Persisted enum tags are additive (renames
+/// require aliases or migration), and every new persisted field requires a Serde
+/// default or an explicit migration. Writers always stamp this current version.
 pub const DOCUMENT_VERSION: u32 = 2;
 
 /// Presentation lighting for the 3D viewport, saved with the project so a custom
