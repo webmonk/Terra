@@ -2,7 +2,7 @@
 
 use terra_core::document::{TerrainDocument, DOCUMENT_VERSION};
 use terra_core::layer::{LayerId, LayerKind};
-use terra_core::mask::{MaskId, MaskSource};
+use terra_core::mask::{MaskCombine, MaskId, MaskSource};
 use uuid::Uuid;
 
 // Emitted by TerrainDocument::to_json at audited commit 7b336c4.
@@ -58,10 +58,13 @@ fn assert_fixture_semantics(doc: &TerrainDocument, expected_name: &str) {
         .entries
         .first()
         .expect("legacy mask reference survives");
+    assert_eq!(hills.common.masks.entries.len(), 1);
     assert_eq!(entry.mask.id, height_mask_id);
     assert_eq!(entry.mask.strength, 0.7);
     assert!(entry.mask.invert);
+    assert_eq!(entry.combine, MaskCombine::Multiply);
 
+    assert_eq!(doc.masks.len(), 1);
     let mask = doc
         .masks
         .iter()
