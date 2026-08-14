@@ -546,8 +546,12 @@ mod tests {
             seed: u64::from(u32::MAX) + 1,
             ..NoiseParams::default()
         };
+        assert!(layer_gpu_supported(
+            &Layer::new("low seed", LayerKind::NoiseValue(NoiseParams::default())),
+            &[]
+        ));
         let cases = [
-            Layer::new("high seed", LayerKind::NoisePerlin(high_seed)),
+            Layer::new("high seed", LayerKind::NoiseValue(high_seed)),
             Layer::new(
                 "domain warp",
                 LayerKind::DomainWarp(DomainWarpParams::default()),

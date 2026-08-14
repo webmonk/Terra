@@ -10,7 +10,7 @@
 //! - Werner / Nishimori-class aeolian dune & saltation models
 
 use crate::heightfield::Heightfield;
-use crate::noise::{self, hash2};
+use crate::noise::{self, canonical_seed32, hash2};
 
 const SQRT2: f32 = std::f32::consts::SQRT_2;
 const PI: f32 = std::f32::consts::PI;
@@ -356,7 +356,7 @@ fn sparse_gabor_raw(x: f32, z: f32, frequency: f32, seed: u64) -> f32 {
     let pz = z / cell;
     let ix = px.floor() as i32;
     let iz = pz.floor() as i32;
-    let seed_u = seed as u32;
+    let seed_u = canonical_seed32(seed);
     let mut sum = 0.0f32;
     let mut wsum = 0.0f32;
     // 3×3 neighborhood of impulse cells.
@@ -626,7 +626,7 @@ pub fn billow_mf(x: f32, z: f32, params: &crate::noise::NoiseParams) -> f32 {
 
 /// Deterministic white noise in [-1, 1] from grid indices.
 pub fn white_noise(i: u32, j: u32, seed: u64) -> f32 {
-    let h = hash2(i as i32, j as i32, seed as u32);
+    let h = hash2(i as i32, j as i32, canonical_seed32(seed));
     (h as f32 / 4294967295.0) * 2.0 - 1.0
 }
 
@@ -647,6 +647,28 @@ mod tests {
         let d = directional_phasor(3.0, 7.0, 0.05, 0.3, 0.8, 7);
         assert!(d.is_finite());
         assert_eq!(d, directional_phasor(3.0, 7.0, 0.05, 0.3, 0.8, 7));
+    }
+
+    #[test]
+    fn high_seed_bits_change_hash_backed_filter_kernels() {
+        let low = 7;
+        let high = low + (1u64 << 32);
+        let points = [(1.25, 3.5), (12.5, 8.25), (-3.75, 19.125)];
+        let gabor = |seed| {
+            points
+                .iter()
+                .map(|&(x, z)| sparse_gabor(x, z, 0.04, seed).to_bits())
+                .collect::<Vec<_>>()
+        };
+        let white = |seed| {
+            [(1, 3), (12, 8), (37, 19)]
+                .iter()
+                .map(|&(i, j)| white_noise(i, j, seed).to_bits())
+                .collect::<Vec<_>>()
+        };
+
+        assert_ne!(gabor(low), gabor(high));
+        assert_ne!(white(low), white(high));
     }
 
     #[test]

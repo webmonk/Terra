@@ -17,7 +17,8 @@ use std::path::{Path, PathBuf};
 const MAGIC: &[u8; 4] = b"TCS1";
 // Bump whenever terrain processors change in a way that makes baked outputs stale.
 // Version 2 invalidates checkpoints produced by the pre-fidelity procedural generators.
-const VERSION: u32 = 2;
+// Version 3 invalidates procedural outputs created before 64-bit seed canonicalization.
+const VERSION: u32 = 3;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DiskMeta {

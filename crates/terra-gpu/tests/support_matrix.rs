@@ -1,3 +1,5 @@
+use terra_core::eval::{EvalContext, StackEvaluator};
+use terra_core::heightfield::HeightfieldMetrics;
 use terra_core::layer::{
     BlendMode, EffectFilterKind, EffectFilterParams, FbmParams, FlatParams, FractalNoiseType,
     Layer, LayerKind, LayerStack, LayerTypeRegistry, NoiseParams,
@@ -102,18 +104,29 @@ fn fractal_noise_variants_and_blend_modes_are_explicitly_classified() {
 
 #[test]
 fn first_unsupported_configuration_owns_cpu_from() {
+    let low_seed = 7;
     let high_seed = NoiseParams {
-        seed: u64::from(u32::MAX) + 7,
+        seed: low_seed + (1u64 << 32),
         ..NoiseParams::default()
     };
+    assert!(layer_gpu_supported(
+        &Layer::new(
+            "low seed",
+            LayerKind::NoiseValue(NoiseParams {
+                seed: low_seed,
+                ..NoiseParams::default()
+            })
+        ),
+        &[]
+    ));
     let mut stack = LayerStack::new();
     stack.push(Layer::new(
         "prefix",
         LayerKind::Flat(FlatParams { height: 4.0 }),
     ));
     stack.push(Layer::new(
-        "truncated seed",
-        LayerKind::NoisePerlin(high_seed),
+        "canonical high seed",
+        LayerKind::NoiseValue(high_seed),
     ));
     let mut suffix = Layer::new("suffix", LayerKind::Flat(FlatParams { height: 2.0 }));
     suffix.common.blend = BlendMode::Add;
@@ -123,4 +136,42 @@ fn first_unsupported_configuration_owns_cpu_from() {
     assert_eq!(graph.cpu_from, Some(1));
     assert_eq!(graph.passes.len(), 1);
     assert_eq!(graph.passes[0].flat_index, 0);
+}
+
+#[test]
+fn high_seed_fallback_uses_the_repaired_cpu_field() {
+    fn cpu_bits(seed: u64) -> Vec<u32> {
+        let metrics = HeightfieldMetrics::new(24, 24, 120.0, 120.0);
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "value noise",
+            LayerKind::NoiseValue(NoiseParams {
+                seed,
+                frequency: 0.035,
+                amplitude: 20.0,
+                octaves: 3,
+                ..NoiseParams::default()
+            }),
+        ));
+        let mut evaluator = StackEvaluator::new();
+        evaluator
+            .rebuild_all(&stack, &mut EvalContext::new(metrics))
+            .expect("CPU high-seed fallback oracle")
+            .to_dense()
+            .iter()
+            .map(|value| value.to_bits())
+            .collect()
+    }
+
+    let low = 7;
+    let high = low + (1u64 << 32);
+    let high_layer = Layer::new(
+        "high seed",
+        LayerKind::NoiseValue(NoiseParams {
+            seed: high,
+            ..NoiseParams::default()
+        }),
+    );
+    assert_eq!(graph_for(high_layer).cpu_from, Some(0));
+    assert_ne!(cpu_bits(low), cpu_bits(high));
 }

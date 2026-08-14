@@ -643,7 +643,7 @@ pub(super) fn scatter_detail(input: &Heightfield, p: &EffectFilterParams) -> Hei
             let (wx, wz) = domain_warp_xz(x, z, p);
             let cx = (wx / cell).floor() as i32;
             let cz = (wz / cell).floor() as i32;
-            let h = crate::noise::hash2(cx, cz, p.seed as u32);
+            let h = crate::noise::hash2(cx, cz, crate::noise::canonical_seed32(p.seed));
             // Sparse: only ~12% of cells fire an impulse.
             if (h % 1000) > 120 {
                 continue;
