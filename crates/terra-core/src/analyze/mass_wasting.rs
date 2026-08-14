@@ -618,7 +618,10 @@ fn pick_receiver(
     let hash = seed
         .wrapping_mul(0x9E3779B97F4A7C15)
         .wrapping_add((idx as u64).wrapping_mul(0xBF58476D1CE4E5B9));
-    let r = ((hash >> 11) as f32 / (u32::MAX as f32)) * total;
+    // Use the top 24 hash bits so the integer is exactly representable as f32;
+    // scaling by 2^-24 produces a deterministic value in [0, 1).
+    let unit = (hash >> 40) as f32 * (1.0 / (1u32 << 24) as f32);
+    let r = unit * total;
     let mut acc = 0.0f32;
     for k in 0..n {
         acc += candidates[k].1;
@@ -1044,6 +1047,109 @@ pub fn mud_settle_mass(
 mod tests {
     use super::*;
     use crate::heightfield::HeightfieldMetrics;
+
+    const RECEIVER_SEED_SWEEP: u64 = 16_384;
+    const RECEIVER_COUNT_TOLERANCE: usize = RECEIVER_SEED_SWEEP.div_ceil(100) as usize;
+    const RECEIVER_INDICES: [usize; 4] = [3, 5, 1, 7];
+
+    fn receiver_surface(drops: [f32; 4]) -> Vec<f32> {
+        let mut surface = vec![10.0; 9];
+        for (idx, drop) in RECEIVER_INDICES.into_iter().zip(drops) {
+            surface[idx] -= drop;
+        }
+        surface
+    }
+
+    fn receiver_counts(drops: [f32; 4]) -> [usize; 4] {
+        let surface = receiver_surface(drops);
+        let mut counts = [0usize; 4];
+        for seed in 0..RECEIVER_SEED_SWEEP {
+            let receiver = pick_receiver(&surface, 3, 3, 1, 1, seed)
+                .expect("the center fixture has downhill candidates");
+            let direction = RECEIVER_INDICES
+                .iter()
+                .position(|&idx| idx == receiver)
+                .expect("receiver must be one of the four cardinal neighbors");
+            counts[direction] += 1;
+        }
+        counts
+    }
+
+    fn assert_receiver_count_near(actual: usize, expected_share: f64, direction: &str) {
+        let expected = expected_share * RECEIVER_SEED_SWEEP as f64;
+        let difference = (actual as f64 - expected).abs();
+        assert!(
+            difference <= RECEIVER_COUNT_TOLERANCE as f64,
+            "{direction} count {actual} differs from expected {expected:.1} by more than {}",
+            RECEIVER_COUNT_TOLERANCE
+        );
+    }
+
+    #[test]
+    fn pick_receiver_equal_drops_are_balanced() {
+        let counts = receiver_counts([1.0; 4]);
+        for (direction, count) in ["left", "right", "up", "down"].into_iter().zip(counts) {
+            assert_receiver_count_near(count, 0.25, direction);
+        }
+    }
+
+    #[test]
+    fn pick_receiver_follows_unequal_drop_weights() {
+        let counts = receiver_counts([1.0, 2.0, 3.0, 4.0]);
+        for ((direction, expected_share), count) in [
+            ("left", 0.10),
+            ("right", 0.20),
+            ("up", 0.30),
+            ("down", 0.40),
+        ]
+        .into_iter()
+        .zip(counts)
+        {
+            assert_receiver_count_near(count, expected_share, direction);
+        }
+    }
+
+    #[test]
+    fn pick_receiver_preserves_zero_and_one_candidate_behavior() {
+        let flat = receiver_surface([0.0; 4]);
+        let one_candidate = receiver_surface([1.0, 0.0, 0.0, 0.0]);
+        for seed in 0..RECEIVER_SEED_SWEEP {
+            assert_eq!(pick_receiver(&flat, 3, 3, 1, 1, seed), None);
+            assert_eq!(
+                pick_receiver(&one_candidate, 3, 3, 1, 1, seed),
+                Some(RECEIVER_INDICES[0])
+            );
+        }
+    }
+
+    #[test]
+    fn pick_receiver_is_repeatable_for_a_fixed_seed_and_surface() {
+        let surface = receiver_surface([1.0, 2.0, 3.0, 4.0]);
+        let expected = pick_receiver(&surface, 3, 3, 1, 1, 0x64);
+        for _ in 0..32 {
+            assert_eq!(pick_receiver(&surface, 3, 3, 1, 1, 0x64), expected);
+        }
+    }
+
+    #[test]
+    fn pick_receiver_distribution_rotates_with_the_fixture() {
+        let original = receiver_counts([1.0, 2.0, 3.0, 4.0]);
+        let rotated = receiver_counts([4.0, 3.0, 1.0, 2.0]);
+        // Clockwise rotation maps original left/right/up/down to rotated
+        // up/down/right/left respectively.
+        let rotated_in_original_order = [rotated[2], rotated[3], rotated[1], rotated[0]];
+
+        for ((direction, original_count), rotated_count) in ["left", "right", "up", "down"]
+            .into_iter()
+            .zip(original)
+            .zip(rotated_in_original_order)
+        {
+            assert!(
+                original_count.abs_diff(rotated_count) <= RECEIVER_COUNT_TOLERANCE,
+                "{direction} count did not rotate: original={original_count}, rotated={rotated_count}"
+            );
+        }
+    }
 
     #[test]
     fn layered_thermal_preserves_mass_approximately() {

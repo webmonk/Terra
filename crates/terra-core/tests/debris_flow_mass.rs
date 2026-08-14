@@ -197,6 +197,19 @@ fn debris_flow_is_deterministic_for_a_fixed_seed() {
     assert_eq!(first.bedrock.data(), second.bedrock.data());
     assert_eq!(first.debris.data(), second.debris.data());
     assert_eq!(first.sediment.data(), second.sediment.data());
+    assert_eq!(first.erosion.data(), second.erosion.data());
+    assert_eq!(first.deposition.data(), second.deposition.data());
+    assert_eq!(first.debris_erosion.data(), second.debris_erosion.data());
+    assert_eq!(
+        first.debris_deposition.data(),
+        second.debris_deposition.data()
+    );
+    assert_eq!(first.slide_path.data(), second.slide_path.data());
+    assert_eq!(first.instability.data(), second.instability.data());
+    assert_eq!(
+        first.flow_accumulation.data(),
+        second.flow_accumulation.data()
+    );
     assert_eq!(first.erosion_raw.data(), second.erosion_raw.data());
     assert_eq!(first.deposition_raw.data(), second.deposition_raw.data());
     assert_eq!(first.mass_ledger, second.mass_ledger);
