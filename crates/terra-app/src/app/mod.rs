@@ -129,7 +129,7 @@ pub struct TerraApp {
     session: EditorSession,
     ui_state: UiState,
     scheduler: EvalScheduler,
-    /// Sparse multi-resolution invalidation and prioritized terrain work metadata.
+    /// Final-output tile residency, revisioning, and progressive refinement state.
     terrain_runtime: terra_core::TerrainRuntime,
     runtime_started: Instant,
 
@@ -175,7 +175,7 @@ pub struct TerraApp {
     last_eval_fully_gpu: bool,
     /// Progressive final-output tile atlas used by the LOD renderer migration.
     tile_atlas: Option<GpuTileAtlas>,
-    /// (runtime revision, pyramid level, tile) awaiting a frame-budgeted GPU upload.
+    /// (output revision, pyramid level, tile) awaiting a frame-budgeted GPU upload.
     pending_tile_uploads: VecDeque<(u64, u8, TileId)>,
     gui_renderer: Option<GuiRenderer>,
     gui_state: GuiState,

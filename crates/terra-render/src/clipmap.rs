@@ -387,12 +387,16 @@ mod tests {
     #[test]
     fn resident_plan_falls_back_without_leaving_holes() {
         let mut pyramid = TerrainPyramid::new(terra_core::PyramidConfig::new(1024, 4096.0, 4096.0));
-        pyramid.publish(
+        pyramid.publish_resident(
             TerrainTileKey {
                 layer: None,
                 field: FieldId::Height,
                 level: 0,
                 tile: terra_core::TileId { tx: 0, tz: 0 },
+            },
+            terra_core::TilePageHandle {
+                slot: 0,
+                generation: 1,
             },
             1,
             1,

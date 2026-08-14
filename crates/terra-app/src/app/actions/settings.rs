@@ -134,7 +134,7 @@ mod tests {
         app.worker_mark_all_dirty = false;
         let cached_layer = seed_clean_evaluator_cache(&mut app);
         let token_before = app.eval_token;
-        let runtime_before = app.terrain_runtime.stats().revision;
+        let runtime_before = app.terrain_runtime.output_revision();
 
         app.apply_actions(vec![PanelAction::UpdateTerrainSettings(
             TerrainSettingsUpdate {
@@ -146,7 +146,7 @@ mod tests {
         assert_eq!(app.session.document.export_resolution, 4096);
         assert!(app.document_dirty);
         assert_eq!(app.eval_token, token_before);
-        assert_eq!(app.terrain_runtime.stats().revision, runtime_before);
+        assert_eq!(app.terrain_runtime.output_revision(), runtime_before);
         assert!(!app.pending_eval);
         assert!(!app.worker_mark_all_dirty);
         assert!(!app.scheduler.evaluator.cache.is_dirty(cached_layer));
@@ -160,7 +160,7 @@ mod tests {
         app.worker_mark_all_dirty = false;
         let cached_layer = seed_clean_evaluator_cache(&mut app);
         let token_before = app.eval_token;
-        let runtime_before = app.terrain_runtime.stats().revision;
+        let runtime_before = app.terrain_runtime.output_revision();
 
         app.apply_actions(vec![PanelAction::UpdateTerrainSettings(
             TerrainSettingsUpdate {
@@ -174,7 +174,7 @@ mod tests {
 
         assert!(!app.document_dirty);
         assert_eq!(app.eval_token, token_before);
-        assert_eq!(app.terrain_runtime.stats().revision, runtime_before);
+        assert_eq!(app.terrain_runtime.output_revision(), runtime_before);
         assert!(!app.pending_eval);
         assert!(!app.worker_mark_all_dirty);
         assert!(!app.scheduler.evaluator.cache.is_dirty(cached_layer));
@@ -186,7 +186,7 @@ mod tests {
         app.worker_mark_all_dirty = false;
         let cached_layer = seed_clean_evaluator_cache(&mut app);
         let token_before = app.eval_token;
-        let runtime_before = app.terrain_runtime.stats().revision;
+        let runtime_before = app.terrain_runtime.output_revision();
 
         app.apply_actions(vec![PanelAction::UpdateTerrainSettings(
             TerrainSettingsUpdate {
@@ -198,7 +198,7 @@ mod tests {
         assert_eq!(app.session.document.preview_resolution, 8192);
         assert!(app.document_dirty);
         assert_eq!(app.eval_token, token_before.wrapping_add(1));
-        assert_eq!(app.terrain_runtime.stats().revision, runtime_before + 1);
+        assert_eq!(app.terrain_runtime.output_revision(), runtime_before + 1);
         assert_eq!(app.terrain_runtime.pyramid.config.target_resolution, 8192);
         assert!(app.pending_eval);
         assert!(app.worker_mark_all_dirty);
@@ -212,7 +212,7 @@ mod tests {
         app.session.document.level_steps.hd_zone = [0.1, 0.2, 0.8, 0.9];
         app.session.document.level_steps.min_preview_wavelength_m = 3.5;
         let token_before = app.eval_token;
-        let runtime_before = app.terrain_runtime.stats().revision;
+        let runtime_before = app.terrain_runtime.output_revision();
 
         app.apply_actions(vec![PanelAction::UpdateTerrainSettings(
             TerrainSettingsUpdate {
@@ -235,7 +235,7 @@ mod tests {
         assert_eq!(level_steps.min_preview_wavelength_m, 3.5);
         assert!(app.document_dirty);
         assert_eq!(app.eval_token, token_before.wrapping_add(1));
-        assert_eq!(app.terrain_runtime.stats().revision, runtime_before + 1);
+        assert_eq!(app.terrain_runtime.output_revision(), runtime_before + 1);
         assert!(app.pending_eval);
         assert!(app.worker_mark_all_dirty);
     }

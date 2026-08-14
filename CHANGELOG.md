@@ -33,3 +33,5 @@ All notable changes to Terra will be documented in this file.
 - Retired the unconsumed `TerrainContext` bridge and parallel `terrain_eval` state, derived-cache,
   diagnostics, mode, determinism, and tiling scaffolding; live field helpers remain under
   `fields`, `heightfield`, and `layer`.
+- Retired the unexecuted per-layer terrain work scheduler and vector tile executor; viewport
+  residency now records only payload-backed tiles produced by the live final-output upload path.

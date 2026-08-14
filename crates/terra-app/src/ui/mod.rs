@@ -1197,11 +1197,6 @@ pub struct FrameProfile {
     pub disabled_layers: u32,
     pub slowest_layer: String,
     pub slowest_layer_us: u64,
-    pub terrain_revision: u64,
-    pub invalidated_tiles: usize,
-    pub terrain_work_queued: usize,
-    pub terrain_work_cancelled: u64,
-    pub refinement_state: &'static str,
     pub tile_cache_resident: usize,
     pub tile_cache_pinned: usize,
     pub tile_cache_used_mb: f32,
@@ -1269,19 +1264,6 @@ impl FrameProfile {
         }
     }
 
-    pub fn update_terrain_runtime(&mut self, stats: terra_core::TerrainRuntimeStats) {
-        self.terrain_revision = stats.revision;
-        self.invalidated_tiles = stats.invalidated_tiles;
-        self.terrain_work_queued = stats.work.queued;
-        self.terrain_work_cancelled = stats.work.cancelled + stats.work.stale_discarded;
-        self.refinement_state = match stats.refinement {
-            terra_core::EditorRefinementState::Interactive => "Interactive",
-            terra_core::EditorRefinementState::Settling => "Settling",
-            terra_core::EditorRefinementState::Refining => "Refining",
-            terra_core::EditorRefinementState::Converged => "Converged",
-            terra_core::EditorRefinementState::Export => "Export",
-        };
-    }
     pub fn update_tile_cache(&mut self, stats: terra_core::TileCacheStats, pending_uploads: usize) {
         const MIB: f32 = 1024.0 * 1024.0;
         self.tile_cache_resident = stats.resident_tiles;

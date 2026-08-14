@@ -110,12 +110,10 @@ pub use sparse_paint::{
     PaintPage, PaintPageCoord, PaintStrokeId, SparsePaintChannelKey, SparsePaintStore,
 };
 pub use terrain::{
-    DirtyEvent, EditorRefinementState, FrequencyBand, InvalidationKey, InvalidationSet,
-    NormalizedRect, OperationDescriptor, OperationLocality, PyramidConfig, RefinementController,
-    RefinementTimings, RegionSet, ResidentTile, TerrainCacheKey, TerrainLevel, TerrainPyramid, TerrainRuntime,
-    TerrainRuntimeStats, TerrainTileKey, TerrainWorkItem, TerrainWorkKind, TerrainWorkScheduler,
+    EditorRefinementState, NormalizedRect, PyramidConfig, RefinementController,
+    RefinementTimings, RegionSet, ResidentTile, TerrainCacheKey, TerrainLevel, TerrainPyramid,
+    TerrainRuntime, TerrainTileKey,
     TileCacheError, TileCacheInsert, TileCacheStats, TilePageHandle, TileRecord, TileResidencyCache,
-    TileState, WorkPriority, WorkSchedulerStats,
 };
 pub use world_archetype::{
     alpine_world, badlands_world, blank_world_design, build_world, coastal_world, desert_world,

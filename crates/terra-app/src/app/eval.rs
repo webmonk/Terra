@@ -147,7 +147,7 @@ impl TerraApp {
             .position(|candidate| candidate.resolution == height.metrics.width)
             .unwrap_or_else(|| self.terrain_runtime.pyramid.max_level() as usize)
             as u8;
-        let revision = self.terrain_runtime.stats().revision;
+        let revision = self.terrain_runtime.output_revision();
         self.pending_tile_uploads
             .extend(height.tiles().iter().map(|tile| (revision, level, tile.id)));
     }
@@ -163,7 +163,7 @@ impl TerraApp {
         } else {
             (budget_us / 250).clamp(1, 32) as usize
         };
-        let live_revision = self.terrain_runtime.stats().revision;
+        let live_revision = self.terrain_runtime.output_revision();
         let mut uploaded = 0;
         while uploaded < upload_limit {
             let Some((revision, level, tile_id)) = self.pending_tile_uploads.pop_front() else {
@@ -194,12 +194,15 @@ impl TerraApp {
                 revision,
             );
             match result {
-                Ok(_) => {
+                Ok(upload) => {
                     uploaded += 1;
                     let frame = self.runtime_started.elapsed().as_millis() as u64;
+                    for evicted in upload.evicted {
+                        self.terrain_runtime.pyramid.remove_resident(&evicted);
+                    }
                     self.terrain_runtime
                         .pyramid
-                        .publish(published_key, revision, revision, frame);
+                        .publish_resident(published_key, upload.handle, revision, revision, frame);
                 }
                 Err(error) => {
                     log::warn!("terrain tile upload failed: {error}");
@@ -272,7 +275,7 @@ impl TerraApp {
     pub(crate) fn mark_dirty_from(&mut self, id: LayerId) {
         let preview = self.session.document.preview_eval_stack();
         self.scheduler.evaluator.mark_dirty_from(&preview, id);
-        self.terrain_runtime.invalidate_layer(&preview, id);
+        self.terrain_runtime.advance_output_revision();
         self.track_worker_dirty_from(&preview, id);
         if let Some(gpu) = self.gpu_engine.as_mut() {
             gpu.mark_dirty_from(&preview, id);
@@ -282,7 +285,7 @@ impl TerraApp {
     pub(crate) fn mark_dirty_from_stage(&mut self, id: LayerId) {
         let preview = self.session.document.preview_eval_stack();
         self.scheduler.evaluator.mark_dirty_from_stage(&preview, id);
-        self.terrain_runtime.invalidate_layer(&preview, id);
+        self.terrain_runtime.advance_output_revision();
         self.track_worker_dirty_from(&preview, id);
         if let Some(gpu) = self.gpu_engine.as_mut() {
             // GPU path still uses suffix dirty; stage-aware CPU cache is the main win.

@@ -1,4 +1,4 @@
-//! B1 evaluator-authority ratchet (audits B1-D1 and B1-D2).
+//! B1 evaluator-authority ratchet (audits B1-D1, B1-D2, and B1-D3).
 //!
 //! `StackEvaluator` is the CPU executor. Terra-core must not grow another
 //! compiled graph until that graph lands with a production executor, a
@@ -115,6 +115,67 @@ fn unused_multi_field_state_stays_retired() {
         references.is_empty(),
         "production sources reference retired multi-field evaluator state:\n  {}\nA future replacement requires a production executor, caller, and end-to-end result test.",
         references.join("\n  ")
+    );
+}
+
+#[test]
+fn metadata_only_tile_evaluator_stays_retired() {
+    let terrain = manifest_dir().join("src/terrain");
+    for retired in ["executor.rs", "work.rs"] {
+        let path = terrain.join(retired);
+        assert!(
+            !path.exists(),
+            "{} reintroduced metadata-only tiled evaluation; a replacement requires a production executor, caller, payload publication, and end-to-end result test",
+            path.display()
+        );
+    }
+
+    let core_dir = manifest_dir();
+    let crates_dir = core_dir
+        .parent()
+        .expect("terra-core lives below the workspace crates directory");
+    let mut sources = Vec::new();
+    for entry in fs::read_dir(crates_dir)
+        .unwrap_or_else(|error| panic!("failed to read {}: {error}", crates_dir.display()))
+        .flatten()
+    {
+        let src = entry.path().join("src");
+        if src.is_dir() {
+            collect_rs(&src, &mut sources);
+        }
+    }
+
+    let forbidden = [
+        "execute_vector_height_tile",
+        "TerrainWorkScheduler",
+        "TerrainWorkItem",
+        "publish_fallback_result",
+    ];
+    let mut references = Vec::new();
+    for path in sources {
+        let source = production_source(&read(&path));
+        for (line_index, line) in source.lines().enumerate() {
+            let tokens: Vec<_> = line
+                .split(|ch: char| !(ch.is_ascii_alphanumeric() || ch == '_'))
+                .filter(|token| !token.is_empty())
+                .collect();
+            for retired in forbidden {
+                if tokens.contains(&retired) {
+                    references.push(format!("{}:{} ({retired})", path.display(), line_index + 1));
+                }
+            }
+        }
+    }
+    assert!(
+        references.is_empty(),
+        "production sources reference retired tiled-evaluator metadata:\n  {}",
+        references.join("\n  ")
+    );
+
+    let pyramid = read(&terrain.join("pyramid.rs"));
+    assert!(
+        pyramid.contains("handle: TilePageHandle") && pyramid.contains("pub fn publish_resident"),
+        "TerrainPyramid residency must require and store a backend payload handle"
     );
 }
 

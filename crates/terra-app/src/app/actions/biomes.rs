@@ -445,7 +445,7 @@ mod tests {
             let expected = instantiate_recipe(&recipe, &recipe.name);
             let expected_signature = group_signature(&expected);
             let token_before = app.eval_token;
-            let runtime_before = app.terrain_runtime.stats().revision;
+            let runtime_before = app.terrain_runtime.output_revision();
 
             app.apply_actions(vec![PanelAction::InstantiateRecipe {
                 recipe_name: recipe.name.clone(),
@@ -473,7 +473,7 @@ mod tests {
             assert_eq!(app.ui_state.status, expected_status, "{}", recipe.name);
             assert!(app.document_dirty, "{}", recipe.name);
             assert_eq!(app.eval_token, token_before.wrapping_add(1), "{}", recipe.name);
-            assert_eq!(app.terrain_runtime.stats().revision, runtime_before + 1, "{}", recipe.name);
+            assert_eq!(app.terrain_runtime.output_revision(), runtime_before + 1, "{}", recipe.name);
             assert!(app.pending_eval, "{}", recipe.name);
             assert!(app.worker_mark_all_dirty, "{}", recipe.name);
         }
@@ -485,7 +485,7 @@ mod tests {
         app.worker_mark_all_dirty = false;
         let document_before = app.session.document.to_json().expect("serialize document");
         let token_before = app.eval_token;
-        let runtime_before = app.terrain_runtime.stats().revision;
+        let runtime_before = app.terrain_runtime.output_revision();
         let mut ctx = ApplyCtx::new();
 
         let result = try_apply(
@@ -501,7 +501,7 @@ mod tests {
         assert!(!ctx.doc_mutated);
         assert!(!app.document_dirty);
         assert_eq!(app.eval_token, token_before);
-        assert_eq!(app.terrain_runtime.stats().revision, runtime_before);
+        assert_eq!(app.terrain_runtime.output_revision(), runtime_before);
         assert!(!app.pending_eval);
         assert!(!app.worker_mark_all_dirty);
         assert_eq!(app.ui_state.status, "Unknown recipe: Missing Recipe");

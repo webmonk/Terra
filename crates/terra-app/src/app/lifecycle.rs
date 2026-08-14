@@ -457,10 +457,6 @@ impl ApplicationHandler for TerraApp {
                         .simulation_iteration_cap(),
                 );
             }
-            self.ui_state
-                .profile
-                .update_terrain_runtime(self.terrain_runtime.stats());
-
             // The worker is never awaited: consume its newest matching result, if available.
             if let Some(result) = self.eval_worker.try_recv_matching(self.eval_token) {
                 let quality = result.quality;
@@ -499,13 +495,7 @@ impl ApplicationHandler for TerraApp {
                         }
                     }
                 }
-                let runtime_frame = self.runtime_started.elapsed().as_millis() as u64;
-                self.terrain_runtime
-                    .publish_fallback_result(self.eval_token, runtime_frame);
                 self.queue_final_tile_uploads();
-                self.ui_state
-                    .profile
-                    .update_terrain_runtime(self.terrain_runtime.stats());
                 self.preview_dirty = true;
                 self.needs_height_upload = true;
                 self.worker_refine_pending = false;

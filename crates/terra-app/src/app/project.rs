@@ -783,6 +783,14 @@ mod tests {
             .expect("atlas before reset")
             .lookup(&old_key)
             .expect("old page resident");
+        assert_eq!(
+            app.terrain_runtime
+                .pyramid
+                .record(&old_key)
+                .expect("pyramid mirrors uploaded page")
+                .handle,
+            old_handle
+        );
         assert!(app
             .renderer
             .as_ref()
@@ -802,6 +810,7 @@ mod tests {
         );
         assert_eq!(atlas.residency().stats().resident_tiles, 0);
         assert_eq!(atlas.residency().resolve_handle(old_handle), None);
+        assert!(app.terrain_runtime.pyramid.record(&old_key).is_none());
         assert!(app.pending_tile_uploads.is_empty());
         assert!(!app
             .renderer
@@ -824,6 +833,14 @@ mod tests {
         };
         let atlas = app.tile_atlas.as_mut().expect("atlas after upload");
         let new_handle = atlas.lookup(&new_key).expect("new page resident");
+        assert_eq!(
+            app.terrain_runtime
+                .pyramid
+                .record(&new_key)
+                .expect("pyramid mirrors replacement page")
+                .handle,
+            new_handle
+        );
         assert_eq!(new_handle.slot, old_handle.slot);
         assert_ne!(new_handle.generation, old_handle.generation);
         assert_eq!(atlas.residency().resolve_handle(old_handle), None);
