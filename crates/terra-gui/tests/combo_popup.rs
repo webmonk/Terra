@@ -40,9 +40,20 @@ fn first_combo_field_point(win: Rect) -> (f32, f32) {
 fn window_combo_frame(state: &mut GuiState, input: GuiInput, win: Rect, open: &mut bool) {
     let mut scroll = 0.0;
     let mut ctx = GuiContext::begin(SW, SH, 1.0, input, state);
-    if ctx.begin_window(Id::new("repro_window"), "Viewport Rendering", win, open, &mut scroll) {
+    if ctx.begin_window(
+        Id::new("repro_window"),
+        "Viewport Rendering",
+        win,
+        open,
+        &mut scroll,
+    ) {
         let mut sel = 0usize;
-        combo(&mut ctx, "Mode", &mut sel, &["Rasterized", "Hybrid", "Progressive"]);
+        combo(
+            &mut ctx,
+            "Mode",
+            &mut sel,
+            &["Rasterized", "Hybrid", "Progressive"],
+        );
         ctx.end_window(&mut scroll);
     }
     ctx.end();
@@ -83,9 +94,19 @@ fn combo_in_window_stays_open_after_click() {
 fn panel_combo_frame(state: &mut GuiState, input: GuiInput, panel: Rect) {
     let mut scroll = 0.0;
     let mut ctx = GuiContext::begin(SW, SH, 1.0, input, state);
-    ctx.begin_panel_scrolled(Id::new("repro_panel"), panel, terra_gui::Color::rgb(0.1, 0.1, 0.1), &mut scroll);
+    ctx.begin_panel_scrolled(
+        Id::new("repro_panel"),
+        panel,
+        terra_gui::Color::rgb(0.1, 0.1, 0.1),
+        &mut scroll,
+    );
     let mut sel = 0usize;
-    combo(&mut ctx, "Mode", &mut sel, &["Rasterized", "Hybrid", "Progressive"]);
+    combo(
+        &mut ctx,
+        "Mode",
+        &mut sel,
+        &["Rasterized", "Hybrid", "Progressive"],
+    );
     ctx.end_panel_scrolled(&mut scroll);
     ctx.end();
 }
@@ -119,7 +140,10 @@ fn open_combo_closes_on_press_outside() {
         &mut open,
     );
     window_combo_frame(&mut state, press_frame(field), win, &mut open);
-    assert!(state.open_combo.is_some(), "combo should be open after click");
+    assert!(
+        state.open_combo.is_some(),
+        "combo should be open after click"
+    );
 
     // Release, then press somewhere far from the field and its menu.
     window_combo_frame(
@@ -155,10 +179,20 @@ fn open_combo_selects_item_on_click() {
     let mut frame = |state: &mut GuiState, input: GuiInput| {
         let mut scroll = 0.0;
         let mut ctx = GuiContext::begin(SW, SH, 1.0, input, state);
-        if ctx.begin_window(Id::new("repro_window"), "Viewport Rendering", win, &mut open, &mut scroll)
-        {
+        if ctx.begin_window(
+            Id::new("repro_window"),
+            "Viewport Rendering",
+            win,
+            &mut open,
+            &mut scroll,
+        ) {
             let mut sel = 0usize;
-            if combo(&mut ctx, "Mode", &mut sel, &["Rasterized", "Hybrid", "Progressive"]) {
+            if combo(
+                &mut ctx,
+                "Mode",
+                &mut sel,
+                &["Rasterized", "Hybrid", "Progressive"],
+            ) {
                 picked = Some(sel);
             }
             ctx.end_window(&mut scroll);
@@ -198,7 +232,10 @@ fn open_combo_selects_item_on_click() {
         },
     );
 
-    assert_eq!(state.open_combo, None, "selecting an item closes the dropdown");
+    assert_eq!(
+        state.open_combo, None,
+        "selecting an item closes the dropdown"
+    );
     assert_eq!(picked, Some(1), "clicking row 1 should select index 1");
 }
 

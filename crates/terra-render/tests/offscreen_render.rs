@@ -1,4 +1,4 @@
-//! First end-to-end offscreen render of the full `TerrainRenderer`.
+//! First end-to-end offscreen render of the full `TerrainRenderer` (#6).
 //!
 //! Skips silently when no GPU adapter is available (the terra-test-gpu
 //! convention), so the suite stays green on machines without a GPU.
@@ -12,7 +12,7 @@
 //! test rather than adding another that pushes error scopes.
 
 use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
-use terra_render::{TerrainRenderer, ViewportRendererMode};
+use terra_render::{GpuContext, TerrainRenderer, ViewportRendererMode};
 
 const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const W: u32 = 64;
@@ -52,8 +52,15 @@ fn raster_frame_covers_offscreen_target() {
         return;
     };
 
-    let mut renderer =
-        TerrainRenderer::new_headless(gpu.device.clone(), gpu.queue.clone(), FORMAT, W, H);
+    // Same GpuContext path the app takes: hand the renderer the device/queue,
+    // never source them back through it. Cloning shares the harness's one device,
+    // so the validation error scopes below still target the renderer's device.
+    let ctx = GpuContext {
+        device: gpu.device.clone(),
+        queue: gpu.queue.clone(),
+        surface_format: FORMAT,
+    };
+    let mut renderer = TerrainRenderer::new_headless(&ctx, W, H);
     // Raster is already the default; pin it so a future default change cannot
     // silently turn this into a path-tracer test — only the RasterLit backend
     // clears every pixel with the opaque atmosphere colour.
@@ -79,6 +86,39 @@ fn raster_frame_covers_offscreen_target() {
     renderer.upload_heightfield(&heights);
     renderer.render_to_view(&target.view, W, H);
     let err = pollster::block_on(gpu.device.pop_error_scope());
-    assert!(err.is_none(), "validation error after height upload: {err:?}");
+    assert!(
+        err.is_none(),
+        "validation error after height upload: {err:?}"
+    );
     assert_fully_overwritten(&gpu.read_rgba8(&target), "uploaded frame");
+
+    // Frame 3: enable raster cast shadows (dormant until wired to shadow_strength)
+    // so the directional depth pass actually runs — guard it against validation
+    // errors and confirm the frame still fully covers the target.
+    renderer.lighting.shadow_strength = 1.0;
+    gpu.fill(&target, MAGENTA);
+    gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+    renderer.render_to_view(&target.view, W, H);
+    let err = pollster::block_on(gpu.device.pop_error_scope());
+    assert!(
+        err.is_none(),
+        "validation error with shadows enabled: {err:?}"
+    );
+    assert_fully_overwritten(&gpu.read_rgba8(&target), "shadowed frame");
+
+    // Frame 4: switch to the progressive path tracer so the frame graph takes
+    // the ProgressivePt branch. This exercises the schedule's pt_dispatch gating
+    // and runs the end-of-frame debug_assert that the recorded passes match the
+    // plan for a non-raster backend. Pixel coverage is not asserted — only the
+    // RasterLit backend clears every pixel with the opaque atmosphere colour —
+    // but the frame must still record without validation errors.
+    renderer.set_renderer_mode(ViewportRendererMode::ProgressiveRayTraced);
+    gpu.fill(&target, MAGENTA);
+    gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
+    renderer.render_to_view(&target.view, W, H);
+    let err = pollster::block_on(gpu.device.pop_error_scope());
+    assert!(
+        err.is_none(),
+        "validation error in path-traced frame: {err:?}"
+    );
 }

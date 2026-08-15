@@ -515,7 +515,7 @@ impl<'a> GuiContext<'a> {
             return changed;
         }
 
-        // Left chrome | viewport splitter (tools panel, or Mask-view dock).
+        // Left chrome | viewport splitter (tools panel, or full-height left dock).
         if self.state.layout.left_dock_w.is_some() || !self.state.layout.tool_panel_collapsed {
             let x = self.state.layout.left_chrome_w();
             let hit = Rect::from_pos_size(x - SPLITTER_HIT * 0.5, top, SPLITTER_HIT, bottom - top);
