@@ -152,7 +152,10 @@ impl LayerGroup {
         }
     }
 
-    /// Ensure Filters / Materials / Objects / Local Sims children exist (idempotent).
+    /// Ensure Filters / Materials / Objects / Local Sims children exist
+    /// (idempotent, additive). Sections are kept in canonical order at the
+    /// front; other children keep their authored positions after them —
+    /// this never re-parents a node.
     pub fn ensure_biome_sections(&mut self) {
         for &section in BiomeSection::all() {
             let exists = self.children.iter().any(|n| match n {
@@ -164,7 +167,6 @@ impl LayerGroup {
                     .push(StackNode::Group(Self::biome_section(section)));
             }
         }
-        // Keep sections in canonical order at the front; leave other children after.
         let mut sections = Vec::new();
         let mut rest = Vec::new();
         for n in self.children.drain(..) {
@@ -183,24 +185,33 @@ impl LayerGroup {
             },
             _ => 4,
         });
-        // Orphan layers that aren't under a section go into Filters.
-        for n in rest {
+        sections.extend(rest);
+        self.children = sections;
+    }
+
+    /// Legacy-document migration: relocate direct child layers that predate
+    /// biome sections into their matching section. Destructive to authored
+    /// order — call only when loading documents older than the current
+    /// format version, never on routine loads.
+    pub fn migrate_orphans_into_sections(&mut self) {
+        self.ensure_biome_sections();
+        let mut orphans = Vec::new();
+        let mut kept = Vec::new();
+        for n in self.children.drain(..) {
             match n {
-                StackNode::Layer(l) => {
-                    let section = BiomeSection::for_operation(l.category());
-                    if let Some(sec) = sections.iter_mut().find_map(|sn| match sn {
-                        StackNode::Group(g) if g.biome_section_kind() == Some(section) => Some(g),
-                        _ => None,
-                    }) {
-                        sec.children.push(StackNode::Layer(l));
-                    } else {
-                        sections.push(StackNode::Layer(l));
-                    }
-                }
-                other => sections.push(other),
+                StackNode::Layer(l) => orphans.push(l),
+                other => kept.push(other),
             }
         }
-        self.children = sections;
+        self.children = kept;
+        for l in orphans {
+            let section = BiomeSection::for_operation(l.category());
+            if let Some(sec) = self.find_section_mut(section) {
+                sec.children.push(StackNode::Layer(l));
+            } else {
+                self.children.push(StackNode::Layer(l));
+            }
+        }
     }
 
     pub fn find_section(&self, section: BiomeSection) -> Option<&LayerGroup> {

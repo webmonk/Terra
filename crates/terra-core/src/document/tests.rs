@@ -36,6 +36,50 @@ fn legacy_document_without_lighting_loads_with_default() {
 }
 
 #[test]
+fn authored_arrangement_round_trips_at_current_version() {
+    use crate::layer::{FlatParams, LayerKind};
+
+    let mut doc = TerrainDocument::new_default();
+    // Author a deliberately "non-canonical" arrangement: a loose root layer
+    // (as MoveToRoot produces) and a plain layer directly under a biome
+    // (outside any section).
+    let loose = Layer::new("Loose", LayerKind::Flat(FlatParams { height: 5.0 }));
+    let loose_id = loose.id();
+    doc.stack.nodes.push(StackNode::Layer(loose));
+    let biome_id = doc.stack.ensure_default_biome();
+    let direct = Layer::new("Direct", LayerKind::Flat(FlatParams { height: 7.0 }));
+    let direct_id = direct.id();
+    doc.stack
+        .find_group_mut(biome_id)
+        .unwrap()
+        .children
+        .push(StackNode::Layer(direct));
+
+    let json = doc.to_json().expect("serialize");
+    let back = TerrainDocument::from_json(&json).expect("load");
+    assert_eq!(
+        back.stack.sibling_location(loose_id),
+        Some((None, doc.stack.index_of(loose_id).unwrap())),
+        "current-version load must not hoist authored root nodes"
+    );
+    assert_eq!(
+        back.stack.sibling_location(direct_id).map(|(p, _)| p),
+        Some(Some(biome_id)),
+        "current-version load must not relocate a biome's direct child into a section"
+    );
+
+    // A legacy (older-version) document still gets the full migration.
+    let mut value: serde_json::Value = serde_json::from_str(&json).unwrap();
+    value["version"] = serde_json::json!(DOCUMENT_VERSION - 1);
+    let legacy = TerrainDocument::from_json(&serde_json::to_string(&value).unwrap()).unwrap();
+    assert_ne!(
+        legacy.stack.sibling_location(loose_id).map(|(p, _)| p),
+        Some(None),
+        "legacy load hoists loose root layers into the WC tree"
+    );
+}
+
+#[test]
 fn mask_reference_scan_finds_first_consumer() {
     use crate::layer::{FlatParams, LayerGroup, LayerKind, StackNode};
     use crate::mask::MaskRef;

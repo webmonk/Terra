@@ -23,7 +23,11 @@ use std::collections::HashMap;
 /// authored identity and semantics. Persisted enum tags are additive (renames
 /// require aliases or migration), and every new persisted field requires a Serde
 /// default or an explicit migration. Writers always stamp this current version.
-pub const DOCUMENT_VERSION: u32 = 2;
+///
+/// v3: documents are trusted on load — only additive repair runs
+/// ([`TerrainDocument::repair_wc_tree`]). Documents older than v3 get the
+/// full destructive normalization once ([`TerrainDocument::normalize_wc_tree`]).
+pub const DOCUMENT_VERSION: u32 = 3;
 
 /// Presentation lighting for the 3D viewport, saved with the project so a custom
 /// look is restored on load. Angles are degrees; strengths are renderer multipliers.
@@ -264,9 +268,52 @@ impl TerrainDocument {
 
     /// Ensure WC category folders + default biome exist, and relocate any loose
     /// root layers into Shape / Default Biome (idempotent).
+    ///
+    /// Full normalization = legacy migration (may re-parent nodes) followed
+    /// by additive repair. Used by template constructors and when loading
+    /// documents older than [`DOCUMENT_VERSION`]. Routine loads of
+    /// current-version documents run only [`Self::repair_wc_tree`], so an
+    /// artist's authored arrangement round-trips untouched.
     pub fn normalize_wc_tree(&mut self) {
+        self.migrate_legacy_tree();
+        self.repair_wc_tree();
+    }
+
+    /// Additive structural repair, safe on every load: creates missing
+    /// category folders and biome sections, tags folder kinds, seeds the
+    /// active biome and biome paint layer. Never moves or re-parents an
+    /// authored node.
+    pub fn repair_wc_tree(&mut self) {
         self.stack.ensure_category_folders();
-        // Mark existing category folders.
+        for n in &mut self.stack.nodes {
+            if let StackNode::Group(g) = n {
+                if g.category.is_some() {
+                    g.group_kind = GroupKind::CategoryFolder;
+                }
+            }
+        }
+        ensure_all_biome_sections(&mut self.stack.nodes);
+        let biome_id = self.stack.ensure_default_biome();
+        if self.active_biome.is_none()
+            || !self
+                .active_biome
+                .and_then(|id| self.stack.find_group(id))
+                .is_some_and(|g| g.is_biome())
+        {
+            self.active_biome = Some(biome_id);
+        }
+        if self.biome_layers.is_empty() {
+            let mut bl = crate::biome_paint::BiomeLayer::new("Biome Paint");
+            bl.show_biome_colors = true;
+            self.selected_biome_layer = Some(bl.id);
+            self.biome_layers.push(bl);
+        }
+        self.version = DOCUMENT_VERSION;
+    }
+
+    /// Legacy-format migration (destructive to authored arrangement).
+    fn migrate_legacy_tree(&mut self) {
+        self.stack.ensure_category_folders();
         for n in &mut self.stack.nodes {
             if let StackNode::Group(g) = n {
                 if g.category.is_some() {
@@ -331,8 +378,8 @@ impl TerrainDocument {
             }
         }
 
-        let biome_id = self.stack.ensure_default_biome();
-        // Promote isolated recipe groups under Biomes that lack Biome kind.
+        // Promote isolated recipe groups under Biomes that lack Biome kind,
+        // and fold pre-section child layers into their matching section.
         if let Some(surface) = self.stack.find_category_mut(StackCategory::Surface) {
             for child in &mut surface.children {
                 if let StackNode::Group(g) = child {
@@ -340,27 +387,11 @@ impl TerrainDocument {
                         g.group_kind = GroupKind::Biome;
                     }
                     if g.is_biome() {
-                        g.ensure_biome_sections();
+                        g.migrate_orphans_into_sections();
                     }
                 }
             }
         }
-        ensure_all_biome_sections(&mut self.stack.nodes);
-        if self.active_biome.is_none()
-            || !self
-                .active_biome
-                .and_then(|id| self.stack.find_group(id))
-                .is_some_and(|g| g.is_biome())
-        {
-            self.active_biome = Some(biome_id);
-        }
-        if self.biome_layers.is_empty() {
-            let mut bl = crate::biome_paint::BiomeLayer::new("Biome Paint");
-            bl.show_biome_colors = true;
-            self.selected_biome_layer = Some(bl.id);
-            self.biome_layers.push(bl);
-        }
-        self.version = DOCUMENT_VERSION;
     }
 
     /// Build a WC-structured document from a flat preset/template layer list.
@@ -422,7 +453,11 @@ impl TerrainDocument {
                 doc.version, DOCUMENT_VERSION
             )));
         }
-        doc.normalize_wc_tree();
+        if doc.version < DOCUMENT_VERSION {
+            doc.normalize_wc_tree();
+        } else {
+            doc.repair_wc_tree();
+        }
         doc.prune_orphan_owned_masks();
         Ok(doc)
     }
