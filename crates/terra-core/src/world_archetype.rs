@@ -1,4 +1,4 @@
-//! Editable New World templates — Phase 11 cause→effect stacks.
+//! Editable New World templates - Phase 11 cause->effect stacks.
 //!
 //! Presets are parameter sets over real algorithms (see [`crate::landscape_style`]).
 //! Do not bake unique hardcoded generators per look.
@@ -81,22 +81,22 @@ impl WorldTemplate {
 
     pub fn description(self) -> &'static str {
         match self {
-            Self::Blank => "Scaffold only: blueprint, shapes, biome library — no baked evolution.",
+            Self::Blank => "Scaffold only: blueprint, shapes, biome library - no baked evolution.",
             Self::TropicalIsland => {
-                "Island landmass → evolution → shore profile → geomorphic detail."
+                "Island landmass -> evolution -> shore profile -> geomorphic detail."
             }
-            Self::Alpine => "Uplift → materials → landscape evolution → debris → talus → detail.",
-            Self::Desert => "Mesa + canyon → layered strata → evolution → thermal talus → detail.",
+            Self::Alpine => "Uplift -> materials -> landscape evolution -> debris -> talus -> detail.",
+            Self::Desert => "Mesa + canyon -> layered strata -> evolution -> thermal talus -> detail.",
             Self::RiverValley => {
-                "Valley uplift → SPE → floodplain fill → river carve → coastal edge."
+                "Valley uplift -> SPE -> floodplain fill -> river carve -> coastal edge."
             }
-            Self::Badlands => "Soft mesa → soft strata → dense SPE → thermal → detail.",
+            Self::Badlands => "Soft mesa -> soft strata -> dense SPE -> thermal -> detail.",
             Self::YoungMountains => {
-                "Strong uplift → short evolution → immature SPE → debris → detail."
+                "Strong uplift -> short evolution -> immature SPE -> debris -> detail."
             }
-            Self::OldMountains => "Broad uplift → long evolution → mild SPE → deposition → detail.",
-            Self::DuneField => "Hard floor → substrate → dunes → sand transport → detail.",
-            Self::Coastal => "Coastal landmass → uplift → SPE to sea → shore → detail.",
+            Self::OldMountains => "Broad uplift -> long evolution -> mild SPE -> deposition -> detail.",
+            Self::DuneField => "Hard floor -> substrate -> dunes -> sand transport -> detail.",
+            Self::Coastal => "Coastal landmass -> uplift -> SPE to sea -> shore -> detail.",
         }
     }
 
@@ -141,7 +141,7 @@ impl WorldTemplate {
     }
 }
 
-/// Build any New World template from a shared cause→effect recipe.
+/// Build any New World template from a shared cause->effect recipe.
 pub fn build_world(
     template: WorldTemplate,
     world_size_m: f32,
@@ -205,7 +205,7 @@ pub fn build_world(
     doc
 }
 
-// —— Public thin wrappers (stable API) ————————————————————————————————
+// -- Public thin wrappers (stable API) --------------------------------
 
 pub fn blank_world_design(world_size_m: f32, preview_res: u32) -> TerrainDocument {
     WorldTemplate::Blank.build(world_size_m, preview_res)
@@ -247,7 +247,7 @@ pub fn coastal_world(world_size_m: f32, preview_res: u32) -> TerrainDocument {
     WorldTemplate::Coastal.build(world_size_m, preview_res)
 }
 
-// —— Scaffold / shared helpers ————————————————————————————————————————
+// -- Scaffold / shared helpers ----------------------------------------
 
 fn scaffold_doc(
     template: WorldTemplate,
@@ -308,7 +308,7 @@ fn push_gradient_reconstruct(doc: &mut TerrainDocument, iterations: u32, strengt
     ));
 }
 
-/// Shared process chain: geology → evolution → hydro repair → meso extras → micro detail.
+/// Shared process chain: geology -> evolution -> hydro repair -> meso extras -> micro detail.
 fn push_process_chain(
     doc: &mut TerrainDocument,
     template: WorldTemplate,
@@ -478,7 +478,7 @@ fn finish_biomes(doc: &mut TerrainDocument, biomes: BiomeLibrary, mps: f32, hd_o
     doc.normalize_wc_tree();
 }
 
-// —— Macro stages ————————————————————————————————————————————————————
+// -- Macro stages ----------------------------------------------------
 
 fn push_blank_shapes(doc: &mut TerrainDocument) {
     let mut landmass = ShapeObject::new("Initial Landmass", ShapeKind::LandmassPolygon);
@@ -737,7 +737,7 @@ mod tests {
     use super::*;
 
     fn process_kinds(doc: &TerrainDocument) -> Vec<LayerKind> {
-        // Exclude biome-group contents — biome recipes may carry EffectFilters.
+        // Exclude biome-group contents - biome recipes may carry EffectFilters.
         let mut out = Vec::new();
         for cat in [
             crate::layer::StackCategory::Foundation,

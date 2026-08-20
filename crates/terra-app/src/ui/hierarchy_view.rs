@@ -41,7 +41,7 @@ pub enum ArtistConcept {
     MaskStack = 11,
     /// Mask Layers folder (WC).
     Masks = 12,
-    /// Biome Layers — painted weight / placement layers (WC).
+    /// Biome Layers - painted weight / placement layers (WC).
     BiomeLayers = 13,
 }
 
@@ -65,7 +65,7 @@ impl ArtistConcept {
 
     /// World Creator terrain stack order (under Terrain root).
 
-    /// WC: Biomes → Biome Layers → Shape Layers → Mask Layers → Simulation Layers.
+    /// WC: Biomes -> Biome Layers -> Shape Layers -> Mask Layers -> Simulation Layers.
     pub fn terrain_order() -> &'static [ArtistConcept] {
         &[
             Self::Biomes,
@@ -80,7 +80,7 @@ impl ArtistConcept {
         Self::terrain_order()
     }
 
-    /// Biome child section order (WC: Filters → Materials → Objects; Local Sims last).
+    /// Biome child section order (WC: Filters -> Materials -> Objects; Local Sims last).
     pub fn biome_section_order() -> &'static [terra_core::layer::BiomeSection] {
         &[
             terra_core::layer::BiomeSection::Filters,
@@ -167,7 +167,7 @@ pub fn mask_stack_row_id(biome_id: LayerId) -> LayerId {
     LayerId::from_u128(MASK_STACK_BASE ^ (biome_id.0.as_u128() & 0xFFFF_FFFF_FFFF_FFFF))
 }
 
-/// Biome summary line: coverage · enabled · priority · health.
+/// Biome summary line: coverage - enabled - priority - health.
 pub fn biome_summary_meta(
     g: &LayerGroup,
     library: &BiomeLibrary,
@@ -176,7 +176,7 @@ pub fn biome_summary_meta(
     let def = library.by_group(g.id);
     let priority = def.map(|d| d.placement.priority).unwrap_or(0);
     let coverage = if g.masks.is_empty() {
-        "Coverage —"
+        "Coverage -"
     } else {
         "Coverage rules"
     };
@@ -192,7 +192,7 @@ pub fn biome_summary_meta(
     if def.map(|d| d.placement.rules.is_none()).unwrap_or(true) && g.masks.is_empty() {
         parts.push("Warning".into());
     }
-    parts.join(" · ")
+    parts.join(" - ")
 }
 
 /// Simulation build badge for hierarchy rows.
@@ -236,7 +236,7 @@ pub fn simulation_scenario_meta(
 ) -> String {
     let passes = scenario.enabled_passes().count();
     format!(
-        "{} · {} pass{}",
+        "{} - {} pass{}",
         if scenario.enabled { "On" } else { "Off" },
         passes,
         if passes == 1 { "" } else { "es" }
@@ -264,7 +264,7 @@ pub fn emphasis_dims(
 /// World Rules summary.
 pub fn world_rules_meta(enabled: bool, has_match: bool, phase: &str) -> String {
     format!(
-        "{} · {} · {} · {}",
+        "{} - {} - {} - {}",
         if enabled { "On" } else { "Off" },
         if has_match {
             "Matches terrain"
@@ -284,7 +284,7 @@ pub fn world_rule_entity_meta(rule: &terra_core::world_rules::WorldRule) -> Stri
         "No match yet".into()
     };
     format!(
-        "{} · {} · {} · {}",
+        "{} - {} - {} - {}",
         if rule.enabled { "On" } else { "Off" },
         match_label,
         rule.resolved_phase().label(),
@@ -350,7 +350,7 @@ pub fn concept_for_top_level(node: &StackNode, _global: bool) -> ArtistConcept {
                 | DomainRole::ObjectLayer
                 | DomainRole::TerrainFilter => ArtistConcept::Biomes,
                 DomainRole::MaskLayer => ArtistConcept::Masks,
-                // Climate LUT / uplift leftovers — never dump climate into Shape.
+                // Climate LUT / uplift leftovers - never dump climate into Shape.
                 DomainRole::CompatibilityLegacy => match other {
                     StackNode::Layer(l) if matches!(l.kind, LayerKind::Biomes(_)) => {
                         ArtistConcept::Biomes

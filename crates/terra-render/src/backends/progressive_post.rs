@@ -1,6 +1,6 @@
 //! Progressive post: temporal + denoise + composite over typed HDR/GBuffer.
 //!
-//! No optional `scene_override` — callers always pass explicit frames.
+//! No optional `scene_override` - callers always pass explicit frames.
 
 use glam::Mat4;
 
@@ -17,7 +17,7 @@ pub struct GBufferViews<'a> {
     pub normal: Option<&'a wgpu::TextureView>,
 }
 
-/// Thin façade — delegates to [`crate::progressive::ProgressiveRenderer`] until
+/// Thin façade - delegates to [`crate::progressive::ProgressiveRenderer`] until
 /// the post stack is fully moved here.
 pub struct ProgressivePostPipeline;
 

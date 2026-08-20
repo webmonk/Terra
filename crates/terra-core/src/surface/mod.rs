@@ -17,7 +17,7 @@ use std::collections::HashMap;
 /// 2. Slope/height rules (last matching rule wins)
 /// 3. Top stratum ID when a strata stack is present
 ///
-/// Hardness is consistent with the same ID → rule/stratum lookup.
+/// Hardness is consistent with the same ID -> rule/stratum lookup.
 pub fn bake_materials(
     hf: &Heightfield,
     p: &MaterialsParams,
@@ -242,7 +242,7 @@ pub fn vegetation_density(
         let (i, j) = hf.metrics.sample_index(x, z);
         dens.set(i, j, 1.0);
     }
-    // Soften — larger blur so Draft (256) still shows a forest canopy tint.
+    // Soften - larger blur so Draft (256) still shows a forest canopy tint.
     let blur_r = if hf.metrics.width <= 512 { 2 } else { 1 };
     crate::mask::apply_mask_ops(&mut dens, &[crate::mask::MaskOp::Blur { radius: blur_r }]);
     for j in 0..hf.metrics.height {

@@ -13,7 +13,7 @@ pub fn behavioural_differences() -> &'static [(&'static str, &'static str)] {
         ),
         (
             "climate_biomes_kind",
-            "LayerKind::Biomes (climate bands) is CompatibilityLegacy — distinct from WC Biome groups / BiomeDefinition.",
+            "LayerKind::Biomes (climate bands) is CompatibilityLegacy - distinct from WC Biome groups / BiomeDefinition.",
         ),
         (
             "claim_residual",

@@ -254,8 +254,8 @@ fn breach_depressions(hf: &Heightfield, params: BreachParams) -> DepressionResul
         } else {
             params.max_path_cells
         };
-        // Walk downhill on the filled DEM until we leave the pit (height ≤ spill
-        // and original already ≤ spill), carving original cells down to a
+        // Walk downhill on the filled DEM until we leave the pit (height <= spill
+        // and original already <= spill), carving original cells down to a
         // gently descending profile.
         let mut target = spill;
         loop {

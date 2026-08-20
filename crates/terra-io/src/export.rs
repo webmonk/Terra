@@ -17,7 +17,7 @@ pub struct ExportRequest {
     pub include_normal: bool,
     /// When true, color map uses only procedural tints (no texture lookups).
     pub tint_only: bool,
-    /// Write `splat_ids.json` listing stable material ID → RGBA channel mapping.
+    /// Write `splat_ids.json` listing stable material ID -> RGBA channel mapping.
     pub include_splat_ids: bool,
     /// Write `vegetation_instances.json` from Poisson sampling of Vegetation layers.
     pub include_vegetation_instances: bool,
@@ -640,7 +640,7 @@ pub fn write_normal_png(hf: &Heightfield, path: &std::path::Path) -> Result<(), 
             let zy = if j + 1 < h { hf.get(i, j + 1) } else { z };
             let gx = (zx - z) / dx;
             let gy = (zy - z) / dz;
-            // Object-space normal → tangent-ish encoding for DCC.
+            // Object-space normal -> tangent-ish encoding for DCC.
             let nx = -gx;
             let ny = 1.0;
             let nz = -gy;

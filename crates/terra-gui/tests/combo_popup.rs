@@ -3,7 +3,7 @@
 //! Mirrors the "Viewport Rendering" window, whose Mode / Quality / Debug combos
 //! reportedly "appear for a moment then collapse". These tests drive the real
 //! `GuiContext` frame lifecycle (press edge, then hold) with no GPU and assert on
-//! `open_combo` — the persistent flag that keeps a dropdown visible across frames.
+//! `open_combo` - the persistent flag that keeps a dropdown visible across frames.
 
 use terra_gui::{combo, GuiContext, GuiInput, GuiState, Id, Rect};
 
@@ -80,7 +80,7 @@ fn combo_in_window_stays_open_after_click() {
     );
     assert_eq!(state.open_combo, None, "combo starts closed");
 
-    // Frame 1: press on the combo field (down edge) — this should OPEN the dropdown.
+    // Frame 1: press on the combo field (down edge) - this should OPEN the dropdown.
     window_combo_frame(&mut state, press_frame(field), win, &mut open);
 
     assert_eq!(
@@ -200,7 +200,7 @@ fn open_combo_selects_item_on_click() {
         ctx.end();
     };
 
-    // Settle → open.
+    // Settle -> open.
     frame(
         &mut state,
         GuiInput {

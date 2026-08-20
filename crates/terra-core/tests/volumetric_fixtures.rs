@@ -39,7 +39,7 @@ fn overhang_outside_bounds_unchanged() {
         ..OverhangStampParams::default()
     };
     let r = apply_overhang_stamp(&hf, &p);
-    // Far corner on low side — never inside stamp.
+    // Far corner on low side - never inside stamp.
     assert!((r.height.get(1, 1) - hf.get(1, 1)).abs() < 1e-5);
     assert!(r.mask.get(1, 1) < 1e-5);
     assert!((r.ceiling.get(1, 1) - hf.get(1, 1)).abs() < 1e-5);

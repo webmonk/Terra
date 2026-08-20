@@ -115,7 +115,7 @@ pub enum MaskSource {
     Sediment,
     Erosion,
     Deposition,
-    /// Bedrock hardness K ∈ \[0,1\] from sims / materials bake.
+    /// Bedrock hardness K in \[0,1\] from sims / materials bake.
     Hardness,
     /// Phase H climate aux (normalized \[0,1\]).
     Temperature,
@@ -131,7 +131,7 @@ pub enum MaskSource {
     },
 }
 
-/// Default viewport overlay colour for masks (visual only — not used in eval).
+/// Default viewport overlay colour for masks (visual only - not used in eval).
 pub fn default_mask_display_color() -> [f32; 3] {
     [0.20, 0.75, 0.95]
 }
@@ -170,7 +170,7 @@ pub struct MaskAsset {
     /// Optional editable UV-space paint data. Missing data remains compatible with old projects.
     #[serde(default)]
     pub paint: Option<PaintBuffer>,
-    /// Viewport overlay colour (RGB 0–1). Visual only — does not affect evaluation.
+    /// Viewport overlay colour (RGB 0-1). Visual only - does not affect evaluation.
     #[serde(default = "default_mask_display_color")]
     pub display_color: [f32; 3],
     /// Owning layer/group for per-layer masks. Owned masks are managed with

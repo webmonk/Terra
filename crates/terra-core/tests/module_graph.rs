@@ -13,31 +13,31 @@
 //! - **Rule 2** (`module_graph_cycles_match_allowlist`): the set of production
 //!   cross-module edges that participate in a cycle must equal [`CYCLIC_EDGES`]
 //!   exactly. Two-sided: a new cyclic edge fails immediately, and a fix that
-//!   removes an edge must delete its allowlist entry in the same commit — the
+//!   removes an edge must delete its allowlist entry in the same commit - the
 //!   list only shrinks, consciously.
 //! - **Rule 3** (`clean_modules_stay_acyclic`): the modules currently outside
-//!   every cycle ([`CLEAN_MODULES`]) must stay outside — the knot cannot recruit
+//!   every cycle ([`CLEAN_MODULES`]) must stay outside - the knot cannot recruit
 //!   them.
 //!
-//! Kept deliberately dumb — line scanning, no `syn`/`regex` — so it grows no
+//! Kept deliberately dumb - line scanning, no `syn`/`regex` - so it grows no
 //! dependencies and cannot rot, exactly like `purity.rs` and `dead_seams.rs`.
 //! The scanning conventions and their consequences:
 //!
-//! - Line comments (`//`, `///`, `//!`) and the contents of `"…"` string
+//! - Line comments (`//`, `///`, `//!`) and the contents of `"..."` string
 //!   literals are blanked before scanning, so a `crate::layer` mentioned in a
 //!   doc-comment or string is not counted as an edge, and braces inside strings
 //!   do not perturb the `#[cfg(test)]` block tracker. Char literals are left
-//!   intact (blanking `'…'` would eat lifetimes like `&'a T`); block comments
-//!   (`/* … */`) are treated as code — both tolerated tripwire gaps.
+//!   intact (blanking `'...'` would eat lifetimes like `&'a T`); block comments
+//!   (`/* ... */`) are treated as code - both tolerated tripwire gaps.
 //! - **Production only.** `#[cfg(test)]`-attributed modules/items are skipped, so
 //!   a test-only `use crate::foo` is not an edge. This matches the audit's
 //!   headline inventory (the 29-module production SCC; `#[cfg(test)]` edges were
 //!   tracked separately).
-//! - Cross-module edges are read solely from `crate::<module>::…` paths (in
+//! - Cross-module edges are read solely from `crate::<module>::...` paths (in
 //!   `use` statements and inline). Verified sufficient at this commit: no
 //!   production `super::`-to-root chains exist (every `super::` in a top-level
 //!   file is `use super::*` inside a test module), and the only bare
-//!   `use crate::{…}` group is test-only. Crate-root-qualified references
+//!   `use crate::{...}` group is test-only. Crate-root-qualified references
 //!   (`crate::LayerKind`, via the lib.rs convenience surface) are intentionally
 //!   *not* attributed to their defining module; the audit's mechanism is the
 //!   submodule-qualified path the crate's own rules prefer.
@@ -48,7 +48,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// Production cross-module edges `(from, to)` that participate in a cycle at this
-/// commit — i.e. `from` and `to` are in the same strongly-connected component.
+/// commit - i.e. `from` and `to` are in the same strongly-connected component.
 /// Exact set (Rule 2). Seeded to today's graph; each A3 fix deletes the edges it
 /// removes in the same commit. Sorted for readable diffs.
 const CYCLIC_EDGES: &[(&str, &str)] = &[
@@ -172,7 +172,7 @@ const FORBIDDEN_SOURCE_TOKENS: &[&str] = &[
 ];
 
 // ===========================================================================
-// Rule 1 — purity
+// Rule 1 - purity
 // ===========================================================================
 
 #[test]
@@ -213,7 +213,7 @@ fn terra_core_is_pure() {
 }
 
 // ===========================================================================
-// Rule 2 — module-graph ratchet
+// Rule 2 - module-graph ratchet
 // ===========================================================================
 
 #[test]
@@ -231,14 +231,14 @@ fn module_graph_cycles_match_allowlist() {
     let mut msg = String::new();
     if !extra.is_empty() {
         msg.push_str(
-            "\nNEW cyclic edges — break them, or (if genuinely intended) add to CYCLIC_EDGES:\n",
+            "\nNEW cyclic edges - break them, or (if genuinely intended) add to CYCLIC_EDGES:\n",
         );
         for (a, b) in &extra {
             msg.push_str(&format!("    (\"{a}\", \"{b}\"),\n"));
         }
     }
     if !missing.is_empty() {
-        msg.push_str("\nStale CYCLIC_EDGES entries — a fix removed these; delete the entries:\n");
+        msg.push_str("\nStale CYCLIC_EDGES entries - a fix removed these; delete the entries:\n");
         for (a, b) in &missing {
             msg.push_str(&format!("    (\"{a}\", \"{b}\"),\n"));
         }
@@ -254,7 +254,7 @@ fn module_graph_cycles_match_allowlist() {
 }
 
 // ===========================================================================
-// Rule 3 — the clean set stays clean
+// Rule 3 - the clean set stays clean
 // ===========================================================================
 
 #[test]
@@ -372,8 +372,8 @@ fn pub_mod_name(code: &str) -> Option<String> {
     }
 }
 
-/// Every `crate::<module>::…` target named on `code`, including the modules
-/// inside a `crate::{ … }` group. Only names in `modules` are returned.
+/// Every `crate::<module>::...` target named on `code`, including the modules
+/// inside a `crate::{ ... }` group. Only names in `modules` are returned.
 fn extract_targets(code: &str, modules: &BTreeSet<String>) -> Vec<String> {
     const NEEDLE: &str = "crate::";
     let bytes = code.as_bytes();
@@ -531,7 +531,7 @@ fn manifest_dir() -> &'static Path {
 }
 
 /// Top-level module owning a file at `rel` (relative to the crate root, e.g.
-/// `src/layer/kinds/noise.rs` → `layer`). `lib.rs`/`main.rs` own no module.
+/// `src/layer/kinds/noise.rs` -> `layer`). `lib.rs`/`main.rs` own no module.
 fn module_of(rel: &Path) -> Option<String> {
     let mut comps = rel.components().map(|c| c.as_os_str().to_string_lossy());
     let first = comps.next()?;
@@ -546,7 +546,7 @@ fn module_of(rel: &Path) -> Option<String> {
             Some(name) => Some(name.to_string()),
         }
     } else {
-        // A file under `src/<module>/…`.
+        // A file under `src/<module>/...`.
         Some(second.to_string())
     }
 }
@@ -627,7 +627,7 @@ fn brace_delta(code: &str) -> i32 {
     opens - closes
 }
 
-/// Blank line comments (`//…`) and the contents of `"…"` string literals,
+/// Blank line comments (`//...`) and the contents of `"..."` string literals,
 /// leaving code (and char literals / block comments) intact. Escapes inside
 /// strings are honoured so `"\""` does not reopen the string.
 fn strip_comment_and_strings(line: &str) -> String {
@@ -659,8 +659,8 @@ fn strip_comment_and_strings(line: &str) -> String {
 }
 
 /// Section (`dependencies` / `build-dependencies`) and crate name of every
-/// dependency declared in `toml`, covering both `name = …` rows and
-/// `[dependencies.name]` sub-tables. Deliberately tiny — enough for the guard.
+/// dependency declared in `toml`, covering both `name = ...` rows and
+/// `[dependencies.name]` sub-tables. Deliberately tiny - enough for the guard.
 fn dependency_names(toml: &str) -> Vec<(String, String)> {
     const SECTIONS: &[&str] = &["dependencies", "build-dependencies"];
     let mut out = Vec::new();
@@ -674,7 +674,7 @@ fn dependency_names(toml: &str) -> Vec<(String, String)> {
                 if header == *sec {
                     active = Some((*sec).to_string());
                 } else if let Some(rest) = header.strip_prefix(&format!("{sec}.")) {
-                    // `[dependencies.wgpu]` — the name is the sub-table.
+                    // `[dependencies.wgpu]` - the name is the sub-table.
                     out.push(((*sec).to_string(), leading_ident(rest).to_string()));
                 }
             }

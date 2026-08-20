@@ -1,7 +1,7 @@
-//! Static XZ terrain grid — never rebuilt when heights change.
+//! Static XZ terrain grid - never rebuilt when heights change.
 //!
 //! Includes vertical skirt walls and a flat underside so the heightfield reads as a
-//! solid block (World Creator–style) rather than a paper-thin sheet.
+//! solid block (World Creator-style) rather than a paper-thin sheet.
 
 use bytemuck::{Pod, Zeroable};
 use wgpu::util::DeviceExt;
@@ -35,14 +35,14 @@ pub struct TerrainGrid {
 impl TerrainGrid {
     /// Largest `4n+1` grid that fits vertex + index buffers under [`MAX_BUFFER_BYTES`].
     ///
-    /// Dense Full previews want 1 vertex ≈ 1 height sample, but a 4097² solid grid
+    /// Dense Full previews want 1 vertex ~ 1 height sample, but a 4097^2 solid grid
     /// overflows the default 256 MiB buffer limit (verts + skirts).
     pub fn max_resolution_for_device_limits() -> u32 {
         let vert_bytes = std::mem::size_of::<GridVertex>() as u64;
         // Surface indices dominate: 6 * (r-1)^2 * 4 bytes.
         let max_cells = ((MAX_BUFFER_BYTES / 24) as f64).sqrt().floor() as u32;
         let max_from_idx = max_cells.saturating_add(1);
-        // Verts ≈ r² + 8r + 4 (surface + border walls + underside).
+        // Verts ~ r^2 + 8r + 4 (surface + border walls + underside).
         let max_verts = MAX_BUFFER_BYTES / vert_bytes;
         let max_from_vert = {
             let disc = 64.0f64 + 4.0 * ((max_verts as f64) - 4.0);
@@ -50,7 +50,7 @@ impl TerrainGrid {
         };
         // Edge line-list: 4*r*(r-1) u32 indices.
         let max_from_edges = {
-            // 16*r*(r-1) <= MAX → r² - r - MAX/16 <= 0
+            // 16*r*(r-1) <= MAX -> r^2 - r - MAX/16 <= 0
             let m = (MAX_BUFFER_BYTES / 16) as f64;
             let disc = 1.0 + 4.0 * m;
             ((1.0 + disc.sqrt()) * 0.5).floor() as u32
@@ -158,15 +158,15 @@ fn build_solid_grid(res: u32) -> (Vec<GridVertex>, Vec<u32>, u32, Vec<u32>) {
             sid
         };
 
-    // Walk each border CCW (from +Y) so outward = right of travel → correct backface winding.
+    // Walk each border CCW (from +Y) so outward = right of travel -> correct backface winding.
     let edge_chains: [[(u32, u32); 2]; 4] = [
-        // -Z (z = 0): x 0 → res-1
+        // -Z (z = 0): x 0 -> res-1
         [(0, 0), (res - 1, 0)],
-        // +X (x = res-1): z 0 → res-1
+        // +X (x = res-1): z 0 -> res-1
         [(res - 1, 0), (res - 1, res - 1)],
-        // +Z (z = res-1): x res-1 → 0
+        // +Z (z = res-1): x res-1 -> 0
         [(res - 1, res - 1), (0, res - 1)],
-        // -X (x = 0): z res-1 → 0
+        // -X (x = 0): z res-1 -> 0
         [(0, res - 1), (0, 0)],
     ];
 
@@ -192,7 +192,7 @@ fn build_solid_grid(res: u32) -> (Vec<GridVertex>, Vec<u32>, u32, Vec<u32>) {
         }
     }
 
-    // Underside — flat quad at slab base.
+    // Underside - flat quad at slab base.
     let u0 = verts.len() as u32;
     for uv in [[0.0, 0.0], [1.0, 0.0], [1.0, 1.0], [0.0, 1.0]] {
         verts.push(GridVertex {

@@ -6,7 +6,7 @@
 //! **display** slot first. The GPU-to-GPU path does exactly that seed copy
 //! (`copy_from_texture_region_and_swap`, "Seed write slot from last display"),
 //! so the two paths disagree. Consequence: everything outside the dirty rect
-//! reverts to whatever stale content the write slot happened to hold — zeros on
+//! reverts to whatever stale content the write slot happened to hold - zeros on
 //! its first reuse.
 //!
 //! The check is upload-path equivalence: uploading identical data either as one
@@ -24,7 +24,7 @@ const FORMAT: wgpu::TextureFormat = wgpu::TextureFormat::Rgba8Unorm;
 const W: u32 = 128;
 const H: u32 = 128;
 /// Matches `HeightGpu`'s initial texture size so neither upload reallocates the
-/// double-buffer slots — this isolates the seed-copy defect from resize churn.
+/// double-buffer slots - this isolates the seed-copy defect from resize churn.
 const RES: u32 = 256;
 
 /// Count differing pixels and report the first mismatch for a legible failure.
@@ -68,7 +68,7 @@ fn partial_upload_preserves_texels_outside_dirty_rect() {
 
     let target = gpu.target(W, H, FORMAT);
 
-    // A west→east height ramp: the collapse is visible in both geometry and the
+    // A west->east height ramp: the collapse is visible in both geometry and the
     // height tint. min/max are stable across both uploads, so camera framing
     // (latched on the first present) does not move between the two renders.
     let metrics = HeightfieldMetrics::new(RES, RES, 1024.0, 1024.0);
@@ -79,7 +79,7 @@ fn partial_upload_preserves_texels_outside_dirty_rect() {
         }
     }
 
-    // Full upload → reference frame.
+    // Full upload -> reference frame.
     renderer.upload_heightfield(&field);
     renderer.render_to_view(&target.view, W, H);
     let full_frame = gpu.read_rgba8(&target);

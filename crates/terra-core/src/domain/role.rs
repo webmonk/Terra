@@ -11,7 +11,7 @@ pub enum DomainRole {
     ShapeLayer,
     /// Biome mask stack contribution (DistNode / paint / procedural).
     MaskLayer,
-    /// Biome-local height character (mountains, filters, …).
+    /// Biome-local height character (mountains, filters, ...).
     TerrainFilter,
     /// Expensive iterative sim (biome-local or terrain-level).
     SimulationLayer,
@@ -19,7 +19,7 @@ pub enum DomainRole {
     MaterialLayer,
     /// Density / instance scatter.
     ScatterLayer,
-    /// Deliberate object placement (landmarks, layouts, …).
+    /// Deliberate object placement (landmarks, layouts, ...).
     ObjectLayer,
     /// Still loads and evaluates, but is not a first-class hierarchy citizen yet.
     CompatibilityLegacy,

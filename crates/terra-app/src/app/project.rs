@@ -61,10 +61,10 @@ impl TerraApp {
 
     pub(crate) fn begin_background_save(&mut self, path: PathBuf) {
         if self.project_io.is_busy() {
-            self.ui_state.status = "Save already in progressâ€¦".into();
+            self.ui_state.status = "Save already in progress...".into();
             return;
         }
-        self.ui_state.status = "Savingâ€¦".into();
+        self.ui_state.status = "Saving...".into();
         self.sync_lighting_to_document();
         self.project_io
             .start_save(self.session.document.clone(), path);
@@ -168,8 +168,8 @@ impl TerraApp {
                 let dirty = if self.document_dirty { "*" } else { "" };
                 let name = &self.session.document.name;
                 match &self.project_path {
-                    Some(path) => format!("Terra â€” {name}{dirty} â€” {}", path.display()),
-                    None => format!("Terra â€” {name}{dirty}"),
+                    Some(path) => format!("Terra - {name}{dirty} - {}", path.display()),
+                    None => format!("Terra - {name}{dirty}"),
                 }
             }
         };
@@ -291,10 +291,10 @@ impl TerraApp {
 
     pub(crate) fn open_project_at(&mut self, path: PathBuf) {
         if self.project_io.is_busy() {
-            self.ui_state.status = "Load already in progressâ€¦".into();
+            self.ui_state.status = "Load already in progress...".into();
             return;
         }
-        self.ui_state.status = "Loadingâ€¦".into();
+        self.ui_state.status = "Loading...".into();
         self.project_io.start_load(path);
         if let Some(w) = &self.window {
             w.request_redraw();
@@ -317,7 +317,7 @@ impl TerraApp {
         self.force_draft = false;
         self.pending_eval = false;
 
-        // Fresh session (undo stacks, outdated sims, rebuild feedback) — same as a cold open.
+        // Fresh session (undo stacks, outdated sims, rebuild feedback) - same as a cold open.
         let world_size = (document.metrics.world_size_x, document.metrics.world_size_z);
         let ocean = Some(document.blueprint.sea_level).filter(|v| v.is_finite());
         let mut session = EditorSession::new();

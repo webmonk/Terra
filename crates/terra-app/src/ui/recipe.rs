@@ -236,7 +236,7 @@ pub fn instantiate_recipe(recipe: &GroupRecipe, instance_name: &str) -> LayerGro
     if g.is_biome() {
         g.group_kind = GroupKind::Biome;
         // Generators in biome templates land in Filters; keep LocalSims for pure sims.
-        // push_into_section already routed Mountains→Filters and Hydraulic→LocalSims.
+        // push_into_section already routed Mountains->Filters and Hydraulic->LocalSims.
         let _ = BiomeSection::Filters;
     }
     g

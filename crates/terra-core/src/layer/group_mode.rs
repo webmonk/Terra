@@ -34,11 +34,11 @@ pub fn is_default_preview_color(c: [f32; 3]) -> bool {
     (c[0] - d[0]).abs() < 0.02 && (c[1] - d[1]).abs() < 0.02 && (c[2] - d[2]).abs() < 0.02
 }
 
-/// World Creator–style terrain category folders under the root stack.
+/// World Creator-style terrain category folders under the root stack.
 ///
-/// Evaluation remains one ordered tree (bottom → top). Folder roles organise
+/// Evaluation remains one ordered tree (bottom -> top). Folder roles organise
 /// the UI and route Add Layer:
-/// Foundation → Shape → Biomes → Mask → Simulation (global).
+/// Foundation -> Shape -> Biomes -> Mask -> Simulation (global).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum StackCategory {
     /// Sculpt / import foundation (usually lives as a root layer, not a folder).
@@ -49,7 +49,7 @@ pub enum StackCategory {
     Simulation,
     /// Mask-producing / mask-bound authoring layers (WC "Mask Layers").
     Mask,
-    /// Biome container root (WC "Biomes") — not climate classification.
+    /// Biome container root (WC "Biomes") - not climate classification.
     Surface,
 }
 

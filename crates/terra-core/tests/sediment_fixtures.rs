@@ -8,7 +8,7 @@ use terra_core::heightfield::{Heightfield, HeightfieldMetrics};
 use terra_core::layer::HydraulicErosionParams;
 use terra_core::mask::MaskField;
 
-/// Steep mountain (left) dropping onto a flat plain (right) — classic fan fixture.
+/// Steep mountain (left) dropping onto a flat plain (right) - classic fan fixture.
 fn mountain_plain(res: u32) -> Heightfield {
     let m = HeightfieldMetrics::new(res, res, res as f32 * 2.0, res as f32 * 2.0);
     let mut hf = Heightfield::zeros(m);

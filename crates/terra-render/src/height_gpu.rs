@@ -408,7 +408,7 @@ impl HeightGpu {
         hf: &Heightfield,
         regions: Option<&[SampleRect]>,
     ) {
-        // CPU owns the viewport again — drop any borrowed GPU-engine view so
+        // CPU owns the viewport again - drop any borrowed GPU-engine view so
         // display_height_view() samples the slot we are about to write.
         // Without this, interactive filter stamps / async CPU results upload
         // invisibly while the terrain keeps showing a stale shared texture.
@@ -430,8 +430,8 @@ impl HeightGpu {
 
         // A partial upload writes only its dirty rects into the write slot, which
         // still holds stale content from two frames ago (zeros on its first reuse).
-        // Seed the write slot from the current display slot first — mirroring the
-        // GPU-to-GPU path's "seed write slot from last display" — so texels outside
+        // Seed the write slot from the current display slot first - mirroring the
+        // GPU-to-GPU path's "seed write slot from last display" - so texels outside
         // the dirty rects survive the display swap. Normals are then recomputed over
         // the whole reconstructed field (below) rather than just the dirty union.
         let partial = !use_dense
@@ -538,7 +538,7 @@ impl HeightGpu {
 
         let normal_region = if partial {
             // The write slot was seeded from display and patched, so it now holds
-            // the complete field — recompute every normal from it, not just the
+            // the complete field - recompute every normal from it, not just the
             // dirty union (whose neighbours would otherwise stay stale).
             full
         } else {
@@ -562,7 +562,7 @@ impl HeightGpu {
         );
     }
 
-    /// GPU→GPU path: copy a height texture into the write slot (no CPU readback).
+    /// GPU->GPU path: copy a height texture into the write slot (no CPU readback).
     pub fn copy_from_texture_and_swap(
         &mut self,
         device: &wgpu::Device,
@@ -1052,7 +1052,7 @@ impl HeightGpu {
         &self.placement_tint.view
     }
 
-    /// Upload painted biome placement colours (RGBA8, row-major). Empty → 1×1 transparent.
+    /// Upload painted biome placement colours (RGBA8, row-major). Empty -> 1×1 transparent.
     pub fn upload_placement_tint(
         &mut self,
         device: &wgpu::Device,

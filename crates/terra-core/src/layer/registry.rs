@@ -1,4 +1,4 @@
-//! Layer type registry / factory — UI discovers types via metadata.
+//! Layer type registry / factory - UI discovers types via metadata.
 //!
 //! [`LayerKind`] is the single source of truth for core type identity (stable id,
 //! display name, and workflow stage). This registry derives those fields from its
@@ -352,7 +352,7 @@ impl LayerTypeRegistry {
         );
         entry!(
             "sparkles",
-            "WC-style effect filters (smooth, distortion, shore, strata, …).",
+            "WC-style effect filters (smooth, distortion, shore, strata, ...).",
             || LayerKind::EffectFilter(EffectFilterParams::default()),
             true,
             &["shape"],
@@ -384,7 +384,7 @@ impl LayerTypeRegistry {
         );
         entry!(
             "box",
-            "3D mesh stamp — samples an OBJ or height image into the heightfield.",
+            "3D mesh stamp - samples an OBJ or height image into the heightfield.",
             || LayerKind::Stamp3d(Stamp3dParams::default()),
             true,
             &["shape"],

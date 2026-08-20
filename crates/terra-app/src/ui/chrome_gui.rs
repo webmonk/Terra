@@ -1,4 +1,4 @@
-//! Top application bar — brand, menus, project chip, export, window caption.
+//! Top application bar - brand, menus, project chip, export, window caption.
 
 use crate::ui::style::{self, FONT_SCALE, PAD, TOOLBAR_BTN_H, TYPE_BODY, TYPE_LABEL};
 use crate::ui::{FrameUiOutput, UiState, WindowResizeEdge};
@@ -227,7 +227,7 @@ pub fn draw_menu_bar(
     let mut x = PAD;
     let mut interactive = false;
 
-    // Brand logo (wide wordmark — height-fit, preserve aspect).
+    // Brand logo (wide wordmark - height-fit, preserve aspect).
     let (lw, lh, rgba) = crate::ui::brand::brand_logo();
     let logo_h = (TOOLBAR_BTN_H - 6.0).clamp(20.0, 26.0);
     let logo_w = logo_h * (*lw as f32 / (*lh as f32).max(1.0));
@@ -247,7 +247,7 @@ pub fn draw_menu_bar(
         interactive = true;
     }
 
-    // Right cluster: project · world size · undo · redo · EXPORT · [caption].
+    // Right cluster: project - world size - undo - redo - EXPORT - [caption].
     let icon_w = 32.0;
     let gap = 8.0;
 
@@ -364,7 +364,7 @@ pub fn draw_menu_bar(
         state.right_open = None;
     }
 
-    // Primary EXPORT CTA — file export is not ready yet.
+    // Primary EXPORT CTA - file export is not ready yet.
     let build_id = Id::new("tb_build");
     let build_hovered = ui.pointer_in(build_r);
     if build_hovered {
@@ -402,7 +402,7 @@ pub fn draw_menu_bar(
 }
 
 fn world_size_label(doc: &TerrainDocument) -> String {
-    // ASCII `x` only — the baked UI font is printable ASCII (× → "?").
+    // ASCII `x` only - the baked UI font is printable ASCII (× -> "?").
     let wx = doc.metrics.world_size_x.max(0.0);
     let wz = doc.metrics.world_size_z.max(0.0);
     if wx >= 1000.0 || wz >= 1000.0 {

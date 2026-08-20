@@ -7,7 +7,7 @@ use terra_core::layer::{BiomesParams, ClimateParams, OPEN_HEIGHT_MAX, OPEN_HEIGH
 use terra_core::mask::MaskField;
 use terra_core::surface::bake_biomes_climate;
 
-/// North–south ridge: steep west face, gentle east face (wind from west = 90°).
+/// North-south ridge: steep west face, gentle east face (wind from west = 90 deg).
 fn ridge_rain_shadow(res: u32) -> Heightfield {
     let m = HeightfieldMetrics::new(res, res, res as f32 * 4.0, res as f32 * 4.0);
     let mut hf = Heightfield::filled(m, 8.0);
@@ -117,7 +117,7 @@ fn windward_wetter_than_leeward() {
 #[test]
 fn biome_classification_uses_climate_not_height_alone() {
     let m = HeightfieldMetrics::new(20, 20, 80.0, 80.0);
-    // Flat mid-elevation plateau — height alone would be one band; climate
+    // Flat mid-elevation plateau - height alone would be one band; climate
     // splits dry vs wet via precip.
     let hf = Heightfield::filled(m, 60.0);
     let dry = BiomesParams {

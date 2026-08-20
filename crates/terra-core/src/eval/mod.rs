@@ -223,7 +223,7 @@ impl StackEvaluator {
         self.cache.clear();
     }
 
-    /// Full rebuild (Phase 1 path) — tree walk so scoped groups compose correctly.
+    /// Full rebuild (Phase 1 path) - tree walk so scoped groups compose correctly.
     pub fn rebuild_all(
         &mut self,
         stack: &LayerStack,
@@ -302,7 +302,7 @@ impl StackEvaluator {
         Ok(current)
     }
 
-    /// Evaluate a node list bottom→top, composing scoped groups as units.
+    /// Evaluate a node list bottom->top, composing scoped groups as units.
     pub fn evaluate_nodes(
         &mut self,
         nodes: &[StackNode],
@@ -710,7 +710,7 @@ fn mean_mask(field: Option<&MaskField>) -> f32 {
     }
     let mut sum = 0.0f32;
     let mut n = 0u32;
-    // Subsample for speed — binding modulation uses mean influence, not every cell.
+    // Subsample for speed - binding modulation uses mean influence, not every cell.
     let step = ((w.max(h) / 64).max(1)) as u32;
     let mut j = 0u32;
     while j < h {
@@ -825,7 +825,7 @@ fn mix_height_delta(
 }
 
 /// Merge child aux maps into the parent context, weighted by the group mask
-/// and composited with the group's blend mode (weight-field semantics — see
+/// and composited with the group's blend mode (weight-field semantics - see
 /// `blend_weights` for which modes participate).
 fn merge_aux_masked(
     ctx: &mut EvalContext,
@@ -942,7 +942,7 @@ fn height_fingerprint(h: &Heightfield) -> u64 {
 /// `out = prior * (1 - w) + written * w`, with zeros standing in for a
 /// channel the layer introduced. Channels the processor never wrote (still
 /// sharing storage with the pre-layer snapshot) are left untouched, as are
-/// the slope/curvature caches — those must always describe the actual
+/// the slope/curvature caches - those must always describe the actual
 /// current height, not a blend of two heights' derivatives.
 fn scope_aux_writes(
     ctx: &mut EvalContext,

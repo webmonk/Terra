@@ -1,7 +1,7 @@
-//! Contextual creation — owner inference and execute paths for viewport / hierarchy Add.
+//! Contextual creation - owner inference and execute paths for viewport / hierarchy Add.
 //!
 //! Artists create entities from any workspace without a fixed sequence. Owners are
-//! inferred from selection, cursor, and active Biome — never silently attached
+//! inferred from selection, cursor, and active Biome - never silently attached
 //! when the context is ambiguous.
 
 use crate::biome_paint::BiomeLayer;
@@ -124,7 +124,7 @@ pub enum CreateOwner {
     /// Document layer stack.
     Global,
     Biome(LayerId),
-    /// Ambiguous — must be chosen explicitly before create.
+    /// Ambiguous - must be chosen explicitly before create.
     Unspecified,
 }
 
@@ -361,7 +361,7 @@ pub fn available_kinds(ctx: &CreateContext) -> Vec<CreateKind> {
     kinds
 }
 
-/// Emphasised (not exclusive) kinds for a workspace — used for hierarchy Add shortcuts.
+/// Emphasised (not exclusive) kinds for a workspace - used for hierarchy Add shortcuts.
 pub fn emphasised_kinds(workspace: CreateWorkspace) -> &'static [CreateKind] {
     match workspace {
         CreateWorkspace::World => &[CreateKind::Biome, CreateKind::WorldRule],
@@ -472,7 +472,7 @@ fn propose_biome_owner(
             };
         }
     }
-    // Single biome in project → clear.
+    // Single biome in project -> clear.
     if alts.len() == 1 {
         if let (CreateOwner::Biome(id), label) = &alts[0] {
             return OwnerProposal {
@@ -485,7 +485,7 @@ fn propose_biome_owner(
     }
     OwnerProposal {
         owner: CreateOwner::Unspecified,
-        label: "Choose a Biome…".into(),
+        label: "Choose a Biome...".into(),
         ambiguous: true,
         alternatives: alts,
     }

@@ -196,7 +196,7 @@ fn spe_respects_base_level() {
 }
 
 /// Draft drainage-reuse SPE stays within ε of export-stride SPE on a smooth ramp.
-/// Documented as "preview approximate" — not bit-identical.
+/// Documented as "preview approximate" - not bit-identical.
 #[test]
 fn spe_draft_drainage_reuse_within_eps() {
     let m = HeightfieldMetrics::new(32, 32, 640.0, 640.0);

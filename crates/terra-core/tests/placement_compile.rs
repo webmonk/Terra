@@ -265,7 +265,7 @@ fn content_hash_invalidation() {
     }));
     p.recompute_hash();
     assert_ne!(p.content_hash, h0);
-    // Hash feeds deterministic DistNode ids — compile seed changes.
+    // Hash feeds deterministic DistNode ids - compile seed changes.
     let id_before_edit_would_differ = alpine_rules().compile().nodes[0].id.0;
     assert_ne!(p.compile().nodes[0].id.0, id_before_edit_would_differ);
 }
@@ -290,7 +290,7 @@ fn group_any_bake_max_not_ones() {
     let masks = HashMap::new();
     let ctx = DistBakeContext::masks_only(&masks);
     let field = bake_dist_nodes(&dist.nodes, metrics, &ctx);
-    // Sparse high threshold noise — coverage estimate should be << 1.
+    // Sparse high threshold noise - coverage estimate should be << 1.
     let est = coverage_estimate(&p, metrics, &ctx);
     assert!(est < 0.5, "est={est} field00={}", field.get(0, 0));
 }

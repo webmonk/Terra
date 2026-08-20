@@ -33,7 +33,7 @@ const MAGENTA_RGBA: [u8; 4] = [255, 0, 255, 255];
 fn assert_fully_overwritten(pixels: &terra_test_gpu::Pixels, label: &str) {
     assert!(
         !pixels.any(MAGENTA_RGBA),
-        "{label}: magenta prefill survived — the frame did not cover the target"
+        "{label}: magenta prefill survived - the frame did not cover the target"
     );
     for y in 0..pixels.height() {
         for x in 0..pixels.width() {
@@ -62,13 +62,13 @@ fn raster_frame_covers_offscreen_target() {
     };
     let mut renderer = TerrainRenderer::new_headless(&ctx, W, H);
     // Raster is already the default; pin it so a future default change cannot
-    // silently turn this into a path-tracer test — only the RasterLit backend
+    // silently turn this into a path-tracer test - only the RasterLit backend
     // clears every pixel with the opaque atmosphere colour.
     renderer.set_renderer_mode(ViewportRendererMode::Raster);
 
     let target = gpu.target(W, H, FORMAT);
 
-    // Frame 1: no heightfield uploaded — the placeholder world must still cover
+    // Frame 1: no heightfield uploaded - the placeholder world must still cover
     // the whole target.
     gpu.fill(&target, MAGENTA);
     gpu.device.push_error_scope(wgpu::ErrorFilter::Validation);
@@ -78,7 +78,7 @@ fn raster_frame_covers_offscreen_target() {
     assert_fully_overwritten(&gpu.read_rgba8(&target), "bare frame");
 
     // Frame 2: upload real height data through the staging path, then render
-    // again — exercises the height upload, clipmap rebuild, camera framing, and
+    // again - exercises the height upload, clipmap rebuild, camera framing, and
     // frame-index advance on top of the render itself.
     let heights = Heightfield::filled(HeightfieldMetrics::new(64, 64, 1024.0, 1024.0), 25.0);
     gpu.fill(&target, MAGENTA);
@@ -93,7 +93,7 @@ fn raster_frame_covers_offscreen_target() {
     assert_fully_overwritten(&gpu.read_rgba8(&target), "uploaded frame");
 
     // Frame 3: enable raster cast shadows (dormant until wired to shadow_strength)
-    // so the directional depth pass actually runs — guard it against validation
+    // so the directional depth pass actually runs - guard it against validation
     // errors and confirm the frame still fully covers the target.
     renderer.lighting.shadow_strength = 1.0;
     gpu.fill(&target, MAGENTA);
@@ -109,8 +109,8 @@ fn raster_frame_covers_offscreen_target() {
     // Frame 4: switch to the progressive path tracer so the frame graph takes
     // the ProgressivePt branch. This exercises the schedule's pt_dispatch gating
     // and runs the end-of-frame debug_assert that the recorded passes match the
-    // plan for a non-raster backend. Pixel coverage is not asserted — only the
-    // RasterLit backend clears every pixel with the opaque atmosphere colour —
+    // plan for a non-raster backend. Pixel coverage is not asserted - only the
+    // RasterLit backend clears every pixel with the opaque atmosphere colour -
     // but the frame must still record without validation errors.
     renderer.set_renderer_mode(ViewportRendererMode::ProgressiveRayTraced);
     gpu.fill(&target, MAGENTA);

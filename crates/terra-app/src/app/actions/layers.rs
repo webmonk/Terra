@@ -24,7 +24,7 @@ pub(crate) fn try_apply(
                 }
             }
             let id = layer.id();
-            // Prefer explicit Quick Add target (biome / Filters / Materials…).
+            // Prefer explicit Quick Add target (biome / Filters / Materials...).
             if let Some(parent) = app.ui_state.quick_add_into {
                 if let Some(group) = app.session.document.stack.find_group_mut(parent) {
                     if group.is_biome() {
@@ -383,7 +383,7 @@ pub(crate) fn try_apply(
                 }
                 app.session.document.active_biome = Some(biome);
                 app.session.document.selected = Some(id);
-                // Placement stays Entire Biome / local â€” inheritance is by enclosure.
+                // Placement stays Entire Biome / local - inheritance is by enclosure.
                 app.mark_all_layers_dirty();
                 app.request_rebuild();
                 ctx.doc_mutated = true;
@@ -407,7 +407,7 @@ pub(crate) fn try_apply(
                 }
             };
             let Some(section) = category.biome_section() else {
-                // Placement category â†’ focus biome inspector.
+                // Placement category -> focus biome inspector.
                 app.session.document.selected = Some(biome_id);
                 {
                     ctx.continue_loop = true;
@@ -587,7 +587,7 @@ pub(crate) fn try_apply(
                 app.dragging_layer_point = None;
             }
             if tool != prev {
-                // New tool â†’ new stroke session (unless ContinueSelected).
+                // New tool -> new stroke session (unless ContinueSelected).
                 if app.ui_state.shape_edit_mode
                     == terra_core::shape_history::ShapeEditMode::NewLayerPerSession
                 {
@@ -663,7 +663,7 @@ pub(crate) fn try_apply(
             app.ui_state.quick_add_concept = None;
             app.ui_state.quick_add_biome_section = None;
             app.ui_state.quick_add_distribution = None;
-            // Biomes folder + → create biome; otherwise add into that folder.
+            // Biomes folder + -> create biome; otherwise add into that folder.
             app.ui_state.quick_add_into = app.session.document.stack.category_id(category);
             if matches!(category, terra_core::layer::StackCategory::Surface) {
                 // Prefer adding a new biome when targeting Biomes root.
@@ -676,7 +676,7 @@ pub(crate) fn try_apply(
             app.ui_state.quick_add_category = concept.stack_category();
             app.ui_state.quick_add_biome_section = None;
             app.ui_state.quick_add_distribution = None;
-            // Masks / world rules are project assets — not nested into a stack folder.
+            // Masks / world rules are project assets - not nested into a stack folder.
             app.ui_state.quick_add_into = match concept {
                 crate::ui::ArtistConcept::Masks
                 | crate::ui::ArtistConcept::MaskStack
@@ -742,7 +742,7 @@ pub(crate) fn try_apply(
             let id = layer.id();
             if let Some(group) = app.session.document.stack.find_group(parent) {
                 if group.is_biome() {
-                    // Route filters→Filters, materials→Materials, etc.; shapes stay on Shape.
+                    // Route filters->Filters, materials->Materials, etc.; shapes stay on Shape.
                     app.session
                         .document
                         .stack
@@ -871,7 +871,7 @@ pub(crate) fn try_apply(
             }
             app.ui_state.app_workspace = crate::ui::AppWorkspace::Landforms;
             app.ui_state.editor_tool = crate::ui::EditorTool::Move;
-            app.ui_state.status = "Shape created â€” drag control points on terrain".into();
+            app.ui_state.status = "Shape created - drag control points on terrain".into();
             ctx.doc_mutated = true;
         }
         PanelAction::TranslateShape { id, du, dv } => {
@@ -1156,7 +1156,7 @@ pub(crate) fn try_apply(
                         .join("\n")
                 ));
                 app.session.rebuild_feedback.last_why = Some(why);
-                app.ui_state.status = "See inspector â€” Why outdated?".into();
+                app.ui_state.status = "See inspector - Why outdated?".into();
             } else {
                 app.ui_state.status = "Select a layer or region first".into();
             }

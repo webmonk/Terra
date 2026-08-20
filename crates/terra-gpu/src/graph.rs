@@ -77,9 +77,9 @@ impl GpuKernel {
 /// Dirty policy for a pass.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum GpuDirtyPolicy {
-    /// Local ops — honor SampleRect + halo.
+    /// Local ops - honor SampleRect + halo.
     Local,
-    /// Basin / global coupling — full field (or level-step coarse).
+    /// Basin / global coupling - full field (or level-step coarse).
     FullField,
 }
 

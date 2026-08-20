@@ -1,4 +1,4 @@
-//! Tool catalog — maps workflow modes to sculpt tools and layer kinds.
+//! Tool catalog - maps workflow modes to sculpt tools and layer kinds.
 //!
 //! Layer-type metadata (names, icons, creatable flags) should prefer
 //! [`terra_core::layer::LayerTypeRegistry`] as the source of truth. This catalog
@@ -263,7 +263,7 @@ fn veg_with_coverage(mut params: VegetationParams, nodes: Vec<DistNode>) -> Vege
 pub fn all_tools() -> Vec<ToolDef> {
     let mut tools = Vec::new();
 
-    // —— Terrain: Shape Layer types (WC-style) ——————————————————————
+    // -- Terrain: Shape Layer types (WC-style) ----------------------
     tools.push(registered_layer_tool(
         "shape.sculpt",
         WorkspaceMode::Terrain,
@@ -326,7 +326,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         tools.push(registered_layer_tool(id, WorkspaceMode::Terrain, type_id));
     }
 
-    // —— Terrain: height brushes ————————————————————————————————————
+    // -- Terrain: height brushes ------------------------------------
     tools.push(sculpt(
         "sculpt.raise",
         "Raise",
@@ -351,7 +351,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         Icon::Blend,
         WorkspaceMode::Terrain,
         EditorTool::Smooth,
-        "Smooths terrain beneath the brush — writes a Shape Layer stroke.",
+        "Smooths terrain beneath the brush - writes a Shape Layer stroke.",
         Some("S"),
     ));
     tools.push(sculpt(
@@ -472,7 +472,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         None,
     ));
 
-    // —— Biomes ————————————————————————————————————————————————————
+    // -- Biomes ----------------------------------------------------
     tools.push(biome_brush(
         "biome.paint",
         "Paint Biome",
@@ -545,7 +545,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         "climate_biomes",
     ));
 
-    // —— Simulation: processes —————————————————————————————————————
+    // -- Simulation: processes -------------------------------------
     tools.push(registered_layer_tool(
         "sim.landscape_evolution",
         WorkspaceMode::Simulation,
@@ -639,7 +639,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         ));
     }
 
-    // —— Simulation: hydrology —————————————————————————————————————
+    // -- Simulation: hydrology -------------------------------------
     tools.push(registered_layer_tool(
         "sim.river",
         WorkspaceMode::Simulation,
@@ -822,7 +822,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         "Sharp-riser terraces.",
     ));
 
-    // —— Materials —————————————————————————————————————————————————
+    // -- Materials -------------------------------------------------
     tools.push(registered_layer_tool(
         "mat.material",
         WorkspaceMode::Materials,
@@ -929,7 +929,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         "Grass / soft ground material.",
     ));
 
-    // —— Objects (scatter) —————————————————————————————————————————
+    // -- Objects (scatter) -----------------------------------------
     tools.push(registered_layer_tool(
         "obj.trees",
         WorkspaceMode::Objects,
@@ -1068,7 +1068,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         "Scatter gated by height band.",
     ));
 
-    // —— Masks —————————————————————————————————————————————————————
+    // -- Masks -----------------------------------------------------
     tools.push(add_mask(
         "mask.height",
         "Height",
@@ -1154,7 +1154,7 @@ pub fn all_tools() -> Vec<ToolDef> {
         MaskSource::Painted {
             mask_id: MaskId::nil(),
         },
-        "Hand-painted mask — creates the asset and arms paint mode.",
+        "Hand-painted mask - creates the asset and arms paint mode.",
     ));
     tools.push(add_mask(
         "mask.combined",
@@ -1165,10 +1165,10 @@ pub fn all_tools() -> Vec<ToolDef> {
             seed: 3,
             frequency: 0.02,
         },
-        "Noise starter mask — combine with height/slope DistNodes in the stack.",
+        "Noise starter mask - combine with height/slope DistNodes in the stack.",
     ));
 
-    // Utilities (Move / Measure) live on the viewport hotbar — no left-rail catalog entries.
+    // Utilities (Move / Measure) live on the viewport hotbar - no left-rail catalog entries.
 
     for (id, type_id) in [
         ("filter.general.effect_filter", "effect_filter"),
@@ -1207,7 +1207,7 @@ pub(crate) fn all_tools_cached() -> &'static [ToolDef] {
     TOOLS.get_or_init(all_tools).as_slice()
 }
 
-/// World Creator–style Filters workspace catalog (grouped by WC category).
+/// World Creator-style Filters workspace catalog (grouped by WC category).
 pub fn wc_filter_catalog_tools() -> Vec<ToolDef> {
     let m = WorkspaceMode::Filters;
     let f = |id, label, icon, name, kind, desc| add(id, label, icon, m, name, kind, desc);
@@ -1216,7 +1216,7 @@ pub fn wc_filter_catalog_tools() -> Vec<ToolDef> {
     };
 
     vec![
-        // —— General ————————————————————————————————————————————————
+        // -- General ------------------------------------------------
         registered_layer_tool(
             "filter.general.geomorphic_detail",
             WorkspaceMode::Filters,
@@ -1254,7 +1254,7 @@ pub fn wc_filter_catalog_tools() -> Vec<ToolDef> {
             EffectFilterParams::zero_edge(),
             "Fade edges to min height.",
         ),
-        // —— Design —————————————————————————————————————————————————
+        // -- Design -------------------------------------------------
         ef(
             "filter.design.curve",
             "Curve",
@@ -1287,7 +1287,7 @@ pub fn wc_filter_catalog_tools() -> Vec<ToolDef> {
             EffectFilterParams::design_voronoi(),
             "Voronoi cell imprint on height.",
         ),
-        // —— Effect —————————————————————————————————————————————————
+        // -- Effect -------------------------------------------------
         ef(
             "filter.effect.angle_blur",
             "Angle Blur",
@@ -1456,7 +1456,7 @@ pub fn wc_filter_catalog_tools() -> Vec<ToolDef> {
             EffectFilterParams::washed_off(),
             "Smooth and lower steep slopes.",
         ),
-        // —— Noise ——————————————————————————————————————————————————
+        // -- Noise --------------------------------------------------
         ef(
             "filter.noise.billow",
             "Billow",
@@ -1537,7 +1537,7 @@ pub fn wc_filter_catalog_tools() -> Vec<ToolDef> {
             EffectFilterParams::noise_white(),
             "White noise height speckles.",
         ),
-        // —— Arid ———————————————————————————————————————————————————
+        // -- Arid ---------------------------------------------------
         ef(
             "filter.effect.cliff_reinforce",
             "Cliff Reinforce",
@@ -1618,7 +1618,7 @@ pub fn wc_filter_catalog_tools() -> Vec<ToolDef> {
             EffectFilterParams::rocky_wide(),
             "Broad rocky banding.",
         ),
-        // —— Terrace ————————————————————————————————————————————————
+        // -- Terrace ------------------------------------------------
         ef(
             "filter.terrace.irregular",
             "Irregular",
@@ -1643,7 +1643,7 @@ pub fn wc_filter_catalog_tools() -> Vec<ToolDef> {
             EffectFilterParams::terrace_steep(),
             "Sharp-riser terraces.",
         ),
-        // —— Drift ——————————————————————————————————————————————————
+        // -- Drift --------------------------------------------------
         ef(
             "filter.drift.angle_break",
             "Angle Break",
@@ -1660,7 +1660,7 @@ pub fn wc_filter_catalog_tools() -> Vec<ToolDef> {
             EffectFilterParams::wind_carve(),
             "Directional wind carve via aeolian transport.",
         ),
-        // —— Basic erosion ——————————————————————————————————————————
+        // -- Basic erosion ------------------------------------------
         f(
             "filter.basic.hydraulic",
             "Hydraulic",
@@ -1693,7 +1693,7 @@ pub fn wc_filter_catalog_tools() -> Vec<ToolDef> {
             EffectFilterParams::soft_flows(),
             "Broad drainage carve.",
         ),
-        // —— Advanced erosion ———————————————————————————————————————
+        // -- Advanced erosion ---------------------------------------
         ef(
             "filter.advanced.hydraulic_sediment",
             "Hydraulic Sediment",
@@ -1726,7 +1726,7 @@ pub fn wc_filter_catalog_tools() -> Vec<ToolDef> {
             EffectFilterParams::wide_flows(),
             "Valley broadening.",
         ),
-        // —— Sediment ———————————————————————————————————————————————
+        // -- Sediment -----------------------------------------------
         ef(
             "filter.sediment.fill_soft",
             "Fill Soft",

@@ -133,14 +133,14 @@ pub struct ShapeObject {
     pub id: ShapeObjectId,
     pub name: String,
     pub kind: ShapeKind,
-    /// Control points in normalized UV (0–1) for compile compatibility with authoring.
+    /// Control points in normalized UV (0-1) for compile compatibility with authoring.
     pub points: Vec<SculptPoint>,
     /// Width / influence in metres.
     pub width_m: f32,
-    /// Inner falloff (0–1 of width).
+    /// Inner falloff (0-1 of width).
     #[serde(default)]
     pub inner_falloff: f32,
-    /// Outer falloff (0–1 of width).
+    /// Outer falloff (0-1 of width).
     #[serde(default = "default_outer")]
     pub outer_falloff: f32,
     /// Constraint value (elevation delta, protect strength, etc.).

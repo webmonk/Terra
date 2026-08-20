@@ -1,4 +1,4 @@
-//! Compute heightfield path tracer (Phase 3–6).
+//! Compute heightfield path tracer (Phase 3-6).
 //!
 //! GPU compilation requires a wgpu device; see `shader_tests::path_trace_shader_parses`.
 

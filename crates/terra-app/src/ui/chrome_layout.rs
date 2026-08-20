@@ -12,7 +12,7 @@ pub const TOOL_CARD_GAP: f32 = 6.0;
 pub const TOOL_CARD_2COL_MIN_W: f32 = 150.0;
 pub const BRUSH_BAR_H: f32 = 48.0;
 pub const VIEWPORT_TOOLBAR_H: f32 = 36.0;
-/// Bottom viewport tool-mode bar (Move / Sculpt / Mask / …).
+/// Bottom viewport tool-mode bar (Move / Sculpt / Mask / ...).
 pub const VIEWPORT_TOOL_MODE_BAR_H: f32 = 56.0;
 
 pub const LAYER_ROW_H: f32 = 46.0;

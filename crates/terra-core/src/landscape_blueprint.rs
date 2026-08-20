@@ -1,4 +1,4 @@
-//! Landscape blueprint — world-scale artist boundary conditions.
+//! Landscape blueprint - world-scale artist boundary conditions.
 
 use serde::{Deserialize, Serialize};
 
@@ -68,7 +68,7 @@ pub struct LandscapeBlueprint {
     pub rainfall: f32,
     /// Coastal energy [0, 1].
     pub coastal_energy: f32,
-    /// Geological age [0, 1] → effective landscape-evolution time.
+    /// Geological age [0, 1] -> effective landscape-evolution time.
     ///
     /// Serde alias keeps older documents that stored `surface_maturity`.
     #[serde(alias = "surface_maturity", default = "default_geological_age")]
@@ -259,10 +259,10 @@ impl LandscapeBlueprint {
     }
 }
 
-/// World Creator–style Resolution → interactive preview samples.
+/// World Creator-style Resolution -> interactive preview samples.
 ///
 /// WC's Resolution is world extent in metres; at default 1 m precision, sample
-/// count matches that extent (4096 m → 4096²). We only clamp extreme worlds so
+/// count matches that extent (4096 m -> 4096^2). We only clamp extreme worlds so
 /// interactive preview stays on the same 1 sample/metre footing as WC.
 pub fn preview_resolution_for_world_size(world_size_m: f32) -> u32 {
     world_size_m.round().clamp(128.0, 8192.0) as u32

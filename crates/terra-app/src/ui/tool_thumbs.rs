@@ -1,6 +1,6 @@
 //! Baked tool thumbnail icons (mockup-style grayscale landform previews).
 //!
-//! Source assets are large (1024²) PNGs. Decoding + downscale is done on a
+//! Source assets are large (1024^2) PNGs. Decoding + downscale is done on a
 //! small background pool so the UI can show Lucide placeholders until ready.
 //! Prefer [`prefetch_all`] at startup so Quick Add / Tools don't hitch on first open.
 
@@ -16,7 +16,7 @@ type ThumbJob = Box<dyn FnOnce() + Send + 'static>;
 static THUMB_READY: AtomicBool = AtomicBool::new(false);
 static THUMBS_PENDING: AtomicUsize = AtomicUsize::new(0);
 
-/// Display size baked into the thumb cache (source assets are 1024²).
+/// Display size baked into the thumb cache (source assets are 1024^2).
 const THUMB_PX: u32 = 128;
 
 pub struct ToolThumb {
@@ -141,7 +141,7 @@ macro_rules! thumb {
     };
 }
 
-// —— Landforms ————————————————————————————————————————————————
+// -- Landforms ------------------------------------------------
 thumb!(mountain, "../../../../assets/tools/tool_mountain.png");
 thumb!(hill, "../../../../assets/tools/tool_hill.png");
 thumb!(mesa, "../../../../assets/tools/tool_mesa.png");
@@ -159,7 +159,7 @@ thumb!(fbm, "../../../../assets/tools/tool_fbm.png");
 thumb!(ridged, "../../../../assets/tools/tool_ridged.png");
 thumb!(cellular, "../../../../assets/tools/tool_cellular.png");
 
-// —— Hydrology / simulation ————————————————————————————————————
+// -- Hydrology / simulation ------------------------------------
 thumb!(river, "../../../../assets/tools/tool_river.png");
 thumb!(lake, "../../../../assets/tools/tool_lake.png");
 thumb!(waterfall, "../../../../assets/tools/tool_waterfall.png");
@@ -175,14 +175,14 @@ thumb!(
 thumb!(talus, "../../../../assets/tools/tool_talus.png");
 thumb!(weathering, "../../../../assets/tools/tool_weathering.png");
 
-// —— Brushes ———————————————————————————————————————————————————
+// -- Brushes ---------------------------------------------------
 thumb!(raise, "../../../../assets/tools/tool_raise.png");
 thumb!(lower, "../../../../assets/tools/tool_lower.png");
 thumb!(smooth, "../../../../assets/tools/tool_smooth.png");
 thumb!(pinch, "../../../../assets/tools/tool_pinch.png");
 thumb!(inflate, "../../../../assets/tools/tool_inflate.png");
 
-// —— Shape layers ——————————————————————————————————————————————
+// -- Shape layers ----------------------------------------------
 thumb!(
     shape_sculpt,
     "../../../../assets/tools/tool_shape_sculpt.png"
@@ -209,7 +209,7 @@ thumb!(
     "../../../../assets/tools/tool_shape_heightmap.png"
 );
 
-// —— Biomes ————————————————————————————————————————————————————
+// -- Biomes ----------------------------------------------------
 thumb!(biome_paint, "../../../../assets/tools/tool_biome_paint.png");
 thumb!(biome_erase, "../../../../assets/tools/tool_biome_erase.png");
 thumb!(
@@ -234,7 +234,7 @@ thumb!(
     "../../../../assets/tools/tool_biome_create.png"
 );
 
-// —— Materials —————————————————————————————————————————————————
+// -- Materials -------------------------------------------------
 thumb!(
     mat_material,
     "../../../../assets/tools/tool_mat_material.png"
@@ -245,7 +245,7 @@ thumb!(mat_snow, "../../../../assets/tools/tool_mat_snow.png");
 thumb!(mat_rock, "../../../../assets/tools/tool_mat_rock.png");
 thumb!(mat_grass, "../../../../assets/tools/tool_mat_grass.png");
 
-// —— Objects ———————————————————————————————————————————————————
+// -- Objects ---------------------------------------------------
 thumb!(obj_trees, "../../../../assets/tools/tool_obj_trees.png");
 thumb!(obj_rocks, "../../../../assets/tools/tool_obj_rocks.png");
 thumb!(obj_grass, "../../../../assets/tools/tool_obj_grass.png");
@@ -260,7 +260,7 @@ thumb!(
 thumb!(obj_slope, "../../../../assets/tools/tool_obj_slope.png");
 thumb!(obj_height, "../../../../assets/tools/tool_obj_height.png");
 
-// —— Masks —————————————————————————————————————————————————————
+// -- Masks -----------------------------------------------------
 thumb!(mask_height, "../../../../assets/tools/tool_mask_height.png");
 thumb!(mask_slope, "../../../../assets/tools/tool_mask_slope.png");
 thumb!(
@@ -290,7 +290,7 @@ thumb!(
     "../../../../assets/tools/tool_mask_combined.png"
 );
 
-// —— Utilities —————————————————————————————————————————————————
+// -- Utilities -------------------------------------------------
 thumb!(util_move, "../../../../assets/tools/tool_util_move.png");
 thumb!(
     util_measure,
@@ -298,7 +298,7 @@ thumb!(
 );
 thumb!(util_bake, "../../../../assets/tools/tool_util_bake.png");
 
-// —— Filters (WC Develop) ——————————————————————————————————————
+// -- Filters (WC Develop) --------------------------------------
 thumb!(
     filter_add_set,
     "../../../../assets/tools/tool_filter_add_set.png"
@@ -563,7 +563,7 @@ pub fn thumb_for_tool(id: &str) -> Option<&'static ToolThumb> {
         "biome.create" => biome_create(),
         "biome.climate" => biome_create(),
 
-        // Organisation shortcuts (Quick Add) — reuse closest catalog art.
+        // Organisation shortcuts (Quick Add) - reuse closest catalog art.
         "org.biome" => biome_create(),
         "org.biome_paint" => biome_paint(),
         "org.hole" => filter_zero_edge(),
@@ -607,7 +607,7 @@ pub fn thumb_for_tool(id: &str) -> Option<&'static ToolThumb> {
         "util.measure" => util_measure(),
         "util.bake" => util_bake(),
 
-        // Filters — unique art
+        // Filters - unique art
         "filter.general.add_set" => filter_add_set(),
         "filter.general.border_blend" => filter_border_blend(),
         "filter.general.zero_edge" => filter_zero_edge(),

@@ -69,10 +69,10 @@ impl Default for PathParams {
 /// the viewport can draw an overhang silhouette. Layer masks further limit the region.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct OverhangStampParams {
-    /// UV center U âˆˆ \[0,1\].
+    /// UV center U in \[0,1\].
     #[serde(default = "default_overhang_u")]
     pub u: f32,
-    /// UV center V âˆˆ \[0,1\].
+    /// UV center V in \[0,1\].
     #[serde(default = "default_overhang_v")]
     pub v: f32,
     /// Stamp radius in UV space.
@@ -270,7 +270,7 @@ impl LocalSdfParams {
     }
 }
 
-// —— WC-style Shape Layer params ————————————————————————————————————
+// -- WC-style Shape Layer params ------------------------------------
 
 /// Generator picker for [`LayerKind::ProceduralShape`].
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -321,7 +321,7 @@ impl ProceduralGenerator {
     }
 }
 
-/// Procedural landscape shape â€” one layer type, many generators.
+/// Procedural landscape shape - one layer type, many generators.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ProceduralShapeParams {
     pub generator: ProceduralGenerator,
@@ -416,7 +416,7 @@ impl Default for PolygonHeightMode {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PolygonHeightParams {
-    /// Normalized UV vertices (0â€“1). Need â‰¥ 3 for a fill.
+    /// Normalized UV vertices (0-1). Need >= 3 for a fill.
     pub points: Vec<[f32; 2]>,
     /// Absolute target height (meters) when raising; carve depth when `carve`.
     pub height: f32,

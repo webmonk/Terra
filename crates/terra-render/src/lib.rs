@@ -1,4 +1,4 @@
-//! wgpu terrain viewport — GPU height textures + world-fixed grid displacement.
+//! wgpu terrain viewport - GPU height textures + world-fixed grid displacement.
 //!
 //! Long-term layout: [`frame_graph`], [`backends`].
 //! [`TerrainRenderer`] remains the strangler host until Phase E cleanup.
@@ -15,15 +15,15 @@
 //! 2. The app creates a [`wgpu::TextureView`] of *that returned frame* and
 //!    builds the GUI against it.
 //! 3. `terra_gui::GuiRenderer::render` records and submits a **second** encoder
-//!    whose pass uses `LoadOp::Load` — it composites over the terrain output
+//!    whose pass uses `LoadOp::Load` - it composites over the terrain output
 //!    instead of clearing it.
-//! 4. The app presents (`SurfaceTexture::present`) — the sole present — only
+//! 4. The app presents (`SurfaceTexture::present`) - the sole present - only
 //!    *after* both encoders are submitted.
 //!
-//! Nothing in the type system enforces steps 2–4: a `LoadOp::Clear` in the GUI
+//! Nothing in the type system enforces steps 2-4: a `LoadOp::Clear` in the GUI
 //! pass would erase the viewport, and a present before the GUI submit would show
 //! a stale frame, both without a compile error. Two tests stand in for that
-//! missing pushback — `terra-gui/tests/frame_seam.rs` locks the GUI pass's
+//! missing pushback - `terra-gui/tests/frame_seam.rs` locks the GUI pass's
 //! `LoadOp::Load` against a plain backdrop, and `terra-app/tests/`
 //! `frame_compositing.rs` drives the real terrain and GUI renderers into one
 //! offscreen target and asserts the GUI lands while the terrain outside it
@@ -231,7 +231,7 @@ pub struct TerrainRenderer {
     pub bind_group: wgpu::BindGroup,
     /// Authored tint/roughness/metalness indexed by the material-ID map.
     material_palette_buf: wgpu::Buffer,
-    /// RGBA8 albedo texture array — one layer per material slot (neutral grey when unused).
+    /// RGBA8 albedo texture array - one layer per material slot (neutral grey when unused).
     albedo_array: wgpu::Texture,
     albedo_array_view: wgpu::TextureView,
     albedo_sampler: wgpu::Sampler,
@@ -240,7 +240,7 @@ pub struct TerrainRenderer {
     pub depth: wgpu::TextureView,
     /// Unit UV grid spanning the full world (coarse fallback).
     pub grid: TerrainGrid,
-    /// Camera-centered nested LOD rings (fine → coarse draw order).
+    /// Camera-centered nested LOD rings (fine -> coarse draw order).
     pub ring_grids: Vec<TerrainGrid>,
     /// Per-ring uniform buffers so mid-pass `write_buffer` is not required.
     ring_uniform_bufs: Vec<wgpu::Buffer>,
@@ -252,7 +252,7 @@ pub struct TerrainRenderer {
     pub heights: HeightGpu,
     pub camera: OrbitCamera,
     pub size: winit::dpi::PhysicalSize<u32>,
-    /// Last CPU→GPU height upload microseconds.
+    /// Last CPU->GPU height upload microseconds.
     pub last_upload_us: u64,
     /// Last resolved GPU pass timings (0 when TIMESTAMP_QUERY unavailable).
     pub last_gpu_timings: GpuTimings,
@@ -292,9 +292,9 @@ pub struct TerrainRenderer {
     quality: ViewportQualityManager,
     /// Per-tile adaptive sampling state (Phase 11).
     adaptive: AdaptiveSamplingState,
-    /// Monotonic frame counter — never reset on invalidation.
+    /// Monotonic frame counter - never reset on invalidation.
     global_frame_index: u64,
-    /// Last internal render scale — detects resolution invalidation.
+    /// Last internal render scale - detects resolution invalidation.
     last_internal_scale: f32,
     /// Editor interaction state for quality budgeting (set via [`Self::set_interaction_state`]).
     last_interaction_state: EditorRefinementState,
@@ -306,7 +306,7 @@ pub struct TerrainRenderer {
     frame_graph: FrameGraph,
     /// Directional shadow map (stable Fast Lit shadows).
     shadow_map: shadows::ShadowMap,
-    /// CPU→GPU staging ring for large height uploads.
+    /// CPU->GPU staging ring for large height uploads.
     staging: staging::StagingRing,
     /// Keep dummy tile atlas texture alive for bind group 15 when streaming is off.
     #[allow(dead_code)]
@@ -357,7 +357,7 @@ impl Default for EnvironmentLighting {
 pub struct GpuContext {
     pub device: wgpu::Device,
     pub queue: wgpu::Queue,
-    /// Color format the renderer's targets are built for — negotiated from the
+    /// Color format the renderer's targets are built for - negotiated from the
     /// window surface at runtime, or chosen directly for headless/offscreen use.
     pub surface_format: wgpu::TextureFormat,
 }
@@ -373,7 +373,7 @@ pub struct SurfaceTarget {
     size: winit::dpi::PhysicalSize<u32>,
 }
 
-/// Bring up the instance → surface → adapter → device chain for `window`.
+/// Bring up the instance -> surface -> adapter -> device chain for `window`.
 ///
 /// This is the app's single runtime GPU initialization and owns the only
 /// non-test `request_device` in the workspace. The returned [`GpuContext`] is
@@ -492,7 +492,7 @@ impl TerrainRenderer {
         )
     }
 
-    /// Current swapchain dimensions in physical pixels (each always ≥ 1).
+    /// Current swapchain dimensions in physical pixels (each always >= 1).
     pub fn size(&self) -> (u32, u32) {
         (self.config.width, self.config.height)
     }
@@ -504,7 +504,7 @@ impl TerrainRenderer {
 
     /// Construct a renderer with no window or surface, for offscreen rendering.
     ///
-    /// Takes the same app-owned [`GpuContext`] as [`Self::new`] — the device and
+    /// Takes the same app-owned [`GpuContext`] as [`Self::new`] - the device and
     /// queue are cloned (cheap refcount bumps), and the render targets are built
     /// for `ctx.surface_format`. Draw with [`Self::render_to_view`] into
     /// caller-supplied views of that format at exactly `width`×`height`;
@@ -532,7 +532,7 @@ impl TerrainRenderer {
 
     /// Shared constructor tail: every device-only resource, after surface and
     /// adapter negotiation. `config` doubles as the render-target description when
-    /// `surface` is `None` — `format` bakes the color-target pipelines and
+    /// `surface` is `None` - `format` bakes the color-target pipelines and
     /// `width`/`height` size the depth/progressive/path-tracer targets; the
     /// present-mode and alpha-mode fields are inert without a surface.
     fn init(
@@ -544,7 +544,7 @@ impl TerrainRenderer {
     ) -> Self {
         let format = config.format;
 
-        log::info!("terra-render: compiling terrain shader/pipelines…");
+        log::info!("terra-render: compiling terrain shader/pipelines...");
         let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
             label: Some("terrain"),
             source: wgpu::ShaderSource::Wgsl(include_str!("shaders/terrain.wgsl").into()),
@@ -1021,7 +1021,7 @@ impl TerrainRenderer {
         }
     }
 
-    // (pipeline compile complete — logged via terrain shader message above)
+    // (pipeline compile complete - logged via terrain shader message above)
 
     fn make_bind_group(
         device: &wgpu::Device,
@@ -1152,7 +1152,7 @@ impl TerrainRenderer {
     ///
     /// Unlike `resize`, the config is unchanged, so the depth buffer,
     /// progressive history, and path-tracer targets are deliberately left
-    /// intact — `render_to_view`'s size/format contract still holds and
+    /// intact - `render_to_view`'s size/format contract still holds and
     /// accumulation is preserved. Actual size changes route through `resize`
     /// via `WindowEvent::Resized`; if an `Outdated` was caused by a resize
     /// whose event has not arrived yet, reconfiguring at the current size is
@@ -1222,7 +1222,7 @@ impl TerrainRenderer {
         }
     }
 
-    /// Select presentation backend from mode (single map — no dual progressive flag).
+    /// Select presentation backend from mode (single map - no dual progressive flag).
     pub fn set_renderer_mode(&mut self, mode: ViewportRendererMode) {
         if self.quality.config.mode == mode {
             return;
@@ -1336,7 +1336,7 @@ impl TerrainRenderer {
         self.notify_invalidation(InvalidationReason::MaterialChanged);
     }
 
-    /// Present a GPU-resident height texture (Wave C — no CPU readback).
+    /// Present a GPU-resident height texture (Wave C - no CPU readback).
     pub fn present_gpu_height(
         &mut self,
         src: &wgpu::Texture,
@@ -1658,7 +1658,7 @@ impl TerrainRenderer {
         self.use_tile_stream = false;
         self.heights
             .reset_project_state(&self.device, &self.queue, world_size);
-        // Empty vegetation overlay (no density → clear instances).
+        // Empty vegetation overlay (no density -> clear instances).
         let blank = terra_core::heightfield::Heightfield::zeros(
             terra_core::heightfield::HeightfieldMetrics {
                 width: 8,
@@ -1710,7 +1710,7 @@ impl TerrainRenderer {
         });
     }
 
-    /// 0 = hide placement tint; ~0.55–0.7 is a readable artist overlay.
+    /// 0 = hide placement tint; ~0.55-0.7 is a readable artist overlay.
     pub fn set_biome_tint_strength(&mut self, strength: f32) {
         let strength = strength.clamp(0.0, 1.0);
         if (self.biome_tint_strength - strength).abs() > 1e-4 {
@@ -1755,8 +1755,8 @@ impl TerrainRenderer {
     /// windowed entry point; the terrain half of the [frame seam](crate#frame-seam).
     ///
     /// Caller obligations (nothing here enforces them):
-    /// - Build the GUI view from the returned frame's texture — the same frame,
-    ///   not a fresh `get_current_texture` — so both passes target one surface.
+    /// - Build the GUI view from the returned frame's texture - the same frame,
+    ///   not a fresh `get_current_texture` - so both passes target one surface.
     /// - Run exactly one GUI pass into that view with `LoadOp::Load`. Queue
     ///   submission order is the only thing sequencing GUI-after-terrain, so the
     ///   GUI encoder must be submitted after this call returns.
@@ -1766,11 +1766,11 @@ impl TerrainRenderer {
     /// # Errors
     ///
     /// - [`RenderError::Surface`] wraps `wgpu::SurfaceError` unmapped so the app
-    ///   can match and recover: `Timeout` → skip the frame; `Outdated`/`Lost` →
-    ///   [`reconfigure`](Self::reconfigure) and repaint; `OutOfMemory` → exit;
-    ///   `Other` → skip.
+    ///   can match and recover: `Timeout` -> skip the frame; `Outdated`/`Lost` ->
+    ///   [`reconfigure`](Self::reconfigure) and repaint; `OutOfMemory` -> exit;
+    ///   `Other` -> skip.
     /// - [`RenderError::Msg`] only when called on a headless renderer (no
-    ///   surface) — use [`render_to_view`](Self::render_to_view) instead.
+    ///   surface) - use [`render_to_view`](Self::render_to_view) instead.
     pub fn render_terrain(&mut self) -> Result<wgpu::SurfaceTexture, RenderError> {
         let Some(surface) = &self.surface else {
             return Err(RenderError::Msg(
@@ -1790,7 +1790,7 @@ impl TerrainRenderer {
     ///
     /// Target contract, until sizing is decoupled from the surface configuration:
     /// - `view` must be a RENDER_ATTACHMENT-usable view whose texture format equals
-    ///   `self.config.format` — the terrain/ocean/wireframe/overlay/composite
+    ///   `self.config.format` - the terrain/ocean/wireframe/overlay/composite
     ///   pipelines were baked against that format at construction. wgpu 24 exposes
     ///   no format getter on `TextureView`, so this cannot be asserted here.
     /// - `width`/`height` must equal `self.config.width`/`.height`: the depth
@@ -2019,7 +2019,7 @@ impl TerrainRenderer {
 
         match backend {
             PresentationBackendId::ProgressivePt => {
-                // Converged ⇒ spp 0 still presents last HDR via progressive post.
+                // Converged => spp 0 still presents last HDR via progressive post.
                 if self.frame_graph.schedule.pt_dispatch {
                     self.frame_graph.mark(PassKind::ProgressivePt);
                     let mask = self.adaptive.prepare_all_active_mask();
@@ -2519,7 +2519,7 @@ fn write_albedo_layer(
 /// Backend selection for instance creation.
 ///
 /// Explicit `backends` in `InstanceDescriptor` ignores `WGPU_BACKEND`, so we parse it
-/// ourselves. On Windows, default to DX12 — Vulkan + OBS/Overwolf/Medal implicit layers
+/// ourselves. On Windows, default to DX12 - Vulkan + OBS/Overwolf/Medal implicit layers
 /// has been observed to STATUS_STACK_OVERFLOW inside `vkCreateDevice`.
 fn preferred_backends() -> wgpu::Backends {
     if let Ok(raw) = std::env::var("WGPU_BACKEND") {

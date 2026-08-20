@@ -5,15 +5,15 @@
 //!
 //! Building blocks:
 //! - cliff detection (multi-scale relief + slope + profile curvature)
-//! - geological strata (warped elevation → hardness / erodibility)
+//! - geological strata (warped elevation -> hardness / erodibility)
 //! - fracturing (multi-scale anisotropic breakup field)
 //! - ridge enhancement (ridge-aware sharpening)
-//! - channel incision (hydrology → discharge → cross-sections)
+//! - channel incision (hydrology -> discharge -> cross-sections)
 //! - differential erosion (hard ridges persist, soft rock strips)
 //! - talus deposition (thermal apron under steep faces)
 //!
-//! Citations: Tarboton 1997 (D∞), Horton–Strahler, stream-power incision,
-//! Zevenbergen–Thorne curvatures, Musgrave thermal / angle of repose,
+//! Citations: Tarboton 1997 (Dinf), Horton-Strahler, stream-power incision,
+//! Zevenbergen-Thorne curvatures, Musgrave thermal / angle of repose,
 //! Cordonnier / Génevaux drainage-driven landforms.
 
 use crate::geomorph::{
@@ -95,7 +95,7 @@ impl CliffControls {
 
 // ── 1. Cliff detection ──────────────────────────────────────────────────────
 
-/// Multi-scale cliff candidate mask ∈ \[0,1\].
+/// Multi-scale cliff candidate mask in \[0,1\].
 ///
 /// Combines local elevation range, slope, and profile curvature so cliffs are
 /// detected from relief structure rather than a single height-delta threshold.
@@ -112,7 +112,7 @@ pub fn detect_cliffs(
     let thr = relief_threshold.max(1e-3);
     let mut out = MaskField::zeros(m);
 
-    // Profile curvature at primary scale (world metres ≈ radius * dx).
+    // Profile curvature at primary scale (world metres ~ radius * dx).
     let radius_m = r as f32 * m.dx().max(1e-3);
     let profile = profile_curvature(hf, radius_m);
     let slope = slope_magnitude(hf, radius_m);
@@ -190,7 +190,7 @@ pub fn expose_strata(
 
 // ── 3. Fracturing ───────────────────────────────────────────────────────────
 
-/// Multi-scale fracture / chip field ∈ approximately \[-1, 1\].
+/// Multi-scale fracture / chip field in approximately \[-1, 1\].
 pub fn fracture_sample(x: f32, z: f32, frequency: f32, seed: u64, scales: u32) -> f32 {
     let freq = frequency.max(1e-5);
     let mut sum = 0.0f32;
@@ -297,20 +297,20 @@ pub fn enhance_ridges(
 
 /// Hydrology-driven canyon incision with distance-based cross-sections.
 ///
-/// Pipeline: depressions → D8 routing → accumulation → Strahler channels →
-/// discharge-scaled incision → wall profile → lithology-limited wall retreat.
+/// Pipeline: depressions -> D8 routing -> accumulation -> Strahler channels ->
+/// discharge-scaled incision -> wall profile -> lithology-limited wall retreat.
 pub fn incise_channels(hf: &Heightfield, c: &CanyonControls) -> Heightfield {
     let m = hf.metrics;
     let w = m.width as usize;
     let h = m.height as usize;
 
-    // 1–3. Hydrology + high-order channels + accumulation.
+    // 1-3. Hydrology + high-order channels + accumulation.
     let dep = handle_depressions(hf, DepressionMode::Fill);
     let graph = build_flow_graph(&dep.height, FlowModel::D8);
     let area = accumulate_drainage_area(&graph, &Precipitation::uniform(1.0));
     let area_norm = normalize_field(&area);
 
-    // Tributary influence: lower threshold → more tributaries participate.
+    // Tributary influence: lower threshold -> more tributaries participate.
     // Scale with terrain size so small preview grids still form channels.
     let cell_count = (w * h) as f32;
     let base_thr = (cell_count.sqrt() * 0.35).max(2.0);
@@ -327,8 +327,8 @@ pub fn incise_channels(hf: &Heightfield, c: &CanyonControls) -> Heightfield {
 
     let has_channels = streams.channel_mask.data().iter().any(|&v| v > 0.5);
 
-    // Fallback: lightweight D∞ accumulation when Strahler extract is empty
-    // (very flat / tiny grids). Still channel-driven — not Voronoi/noise.
+    // Fallback: lightweight Dinf accumulation when Strahler extract is empty
+    // (very flat / tiny grids). Still channel-driven - not Voronoi/noise.
     let dinf_norm = if has_channels {
         None
     } else {
@@ -345,9 +345,9 @@ pub fn incise_channels(hf: &Heightfield, c: &CanyonControls) -> Heightfield {
     let mut out = hf.clone();
     let width_cells = c.canyon_width.max(1.0);
     let floor_w = width_cells * (0.15 + c.valley_floor_width * 0.55);
-    let wall_power = 1.1 + c.wall_steepness * 2.2; // higher → steeper walls
+    let wall_power = 1.1 + c.wall_steepness * 2.2; // higher -> steeper walls
     let incision = c.incision.max(0.0);
-    // `distance_to_channel` is normalised by grid diagonal — convert back to cells.
+    // `distance_to_channel` is normalised by grid diagonal - convert back to cells.
     let diag = ((w * w + h * h) as f32).sqrt().max(1.0);
     let flow_gate = (0.08 + (1.0 - c.tributary_influence) * 0.35).clamp(0.05, 0.55);
 
@@ -375,7 +375,7 @@ pub fn incise_channels(hf: &Heightfield, c: &CanyonControls) -> Heightfield {
             let d = if has_channels {
                 dist.get(iu, ju) * diag
             } else {
-                // Approximate distance from channel-ness: high flow → d≈0.
+                // Approximate distance from channel-ness: high flow -> d~0.
                 (1.0 - o) * width_cells * 1.25
             };
 
@@ -393,7 +393,7 @@ pub fn incise_channels(hf: &Heightfield, c: &CanyonControls) -> Heightfield {
             let soft = 1.0 - hardness.get(iu, ju) * c.rock_hardness;
             let depth = incision * discharge * (0.55 + soft * 0.45) * (0.6 + o * 0.4);
 
-            // 5–6. Cross-section: flat floor near channel, rising walls.
+            // 5-6. Cross-section: flat floor near channel, rising walls.
             let t = if d <= floor_w {
                 1.0
             } else {
@@ -674,7 +674,7 @@ pub fn apply_chipped(hf: &Heightfield, p: &EffectFilterParams) -> Heightfield {
             }
             let soft = 1.0 - hardness.get(i, j);
             let n = frac[(j as usize) * w + i as usize];
-            // Only remove (negative chips) from rock faces — no random bumps.
+            // Only remove (negative chips) from rock faces - no random bumps.
             let chip = if n > 0.12 {
                 -(n - 0.12) * amt * (0.55 + soft * 0.9)
             } else {
@@ -691,13 +691,13 @@ pub fn apply_canyon(hf: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     let c = CanyonControls::from_params(p);
     let mut out = incise_channels(hf, &c);
     if c.talus > 1e-3 {
-        // Talus only on steep walls — protect the freshly carved floor from refill.
+        // Talus only on steep walls - protect the freshly carved floor from refill.
         let k = lithology_hardness(&out, c.rock_hardness, 0.02, c.seed);
         let walls = detect_cliffs(&out, 2, 0.12, 28.0);
         let mut wall_hard = k.clone();
         for j in 0..hf.metrics.height {
             for i in 0..hf.metrics.width {
-                // High hardness on valley floors → thermal moves less into channels.
+                // High hardness on valley floors -> thermal moves less into channels.
                 let floor = 1.0 - walls.get(i, j);
                 let h = k.get(i, j).max(floor * 0.92);
                 wall_hard.set(i, j, h);
@@ -714,7 +714,7 @@ pub fn apply_canyon(hf: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     out
 }
 
-/// Rocky Sharp — ridge-aware anisotropic sharpening + light controlled erosion.
+/// Rocky Sharp - ridge-aware anisotropic sharpening + light controlled erosion.
 pub fn apply_rocky_sharp(hf: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     let enhanced = enhance_ridges(
         hf,
@@ -729,7 +729,7 @@ pub fn apply_rocky_sharp(hf: &Heightfield, p: &EffectFilterParams) -> Heightfiel
     differential_erode(&enhanced, &k, p.amount * 0.12, 1, true)
 }
 
-/// Rocky Wide — lower-frequency ridge/rock enhancement + broad lithology.
+/// Rocky Wide - lower-frequency ridge/rock enhancement + broad lithology.
 pub fn apply_rocky_wide(hf: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     let enhanced = enhance_ridges(
         hf,
@@ -749,7 +749,7 @@ pub fn apply_rocky_wide(hf: &Heightfield, p: &EffectFilterParams) -> Heightfield
     differential_erode(&enhanced, &k, p.amount * 0.18, 2, true)
 }
 
-/// Rocky Layers — warped strata exposure on cliff faces.
+/// Rocky Layers - warped strata exposure on cliff faces.
 pub fn apply_rocky_layers(hf: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     let cliffs = detect_cliffs(hf, p.radius.max(1) + 1, 0.12, p.slope_min.max(12.0));
     let (hardness, _) = strata_fields(hf, p.frequency.max(0.01), p.seed, p.rock_hardness);
@@ -775,7 +775,7 @@ pub fn apply_rocky_layers(hf: &Heightfield, p: &EffectFilterParams) -> Heightfie
     out
 }
 
-/// Rocky Cliffs — cliff detect + multi-scale fracture + talus + fine erosion.
+/// Rocky Cliffs - cliff detect + multi-scale fracture + talus + fine erosion.
 pub fn apply_rocky_cliffs(hf: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     let mut sharp = apply_rocky_sharp(hf, p);
     let cliffs = detect_cliffs(
@@ -830,7 +830,7 @@ pub fn apply_rocky_cliffs(hf: &Heightfield, p: &EffectFilterParams) -> Heightfie
     sharp
 }
 
-/// Rocky Hard — low erodibility substrate + differential stripping of soft surrounds.
+/// Rocky Hard - low erodibility substrate + differential stripping of soft surrounds.
 pub fn apply_rocky_hard(hf: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     let mut p2 = p.clone();
     p2.rock_hardness = p.rock_hardness.max(0.72);
@@ -854,7 +854,7 @@ pub fn apply_rocky_hard(hf: &Heightfield, p: &EffectFilterParams) -> Heightfield
     )
 }
 
-/// Rocky Plateaus — preserve flats, scarp at margins, incision, talus, optional strata.
+/// Rocky Plateaus - preserve flats, scarp at margins, incision, talus, optional strata.
 pub fn apply_rocky_plateaus(hf: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     let m = hf.metrics;
     let step = p.amount.max(2.0);
@@ -926,7 +926,7 @@ pub fn apply_rocky_plateaus(hf: &Heightfield, p: &EffectFilterParams) -> Heightf
     incised
 }
 
-/// Generic Rocky — soft drainage + rocky sharp mix.
+/// Generic Rocky - soft drainage + rocky sharp mix.
 pub fn apply_rocky(
     hf: &Heightfield,
     p: &EffectFilterParams,

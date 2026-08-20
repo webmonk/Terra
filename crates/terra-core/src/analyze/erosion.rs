@@ -7,7 +7,7 @@ use crate::mask::MaskField;
 /// Thermal erosion via talus-angle redistribution (CPU reference).
 /// Returns (height, erosion_mask, deposition_mask).
 ///
-/// Hardness `K ∈ [0,1]` modulates move amount as `(1-K)` (Musgrave-style talus with
+/// Hardness `K in [0,1]` modulates move amount as `(1-K)` (Musgrave-style talus with
 /// material resistance). When `hardness` is `None`, uses constant `p.hardness`.
 pub fn thermal_erode(
     input: &Heightfield,
@@ -263,9 +263,9 @@ pub struct HydraulicResult {
     pub water_raw: MaskField,
     /// Final non-normalized suspended sediment load (for debug / invariants).
     pub sediment_raw: MaskField,
-    /// Cumulative eroded height (meters, non-normalized) — mass accounting.
+    /// Cumulative eroded height (meters, non-normalized) - mass accounting.
     pub erosion_raw: MaskField,
-    /// Cumulative deposited height (meters, non-normalized) — mass accounting / fans.
+    /// Cumulative deposited height (meters, non-normalized) - mass accounting / fans.
     pub deposition_raw: MaskField,
 }
 
@@ -274,11 +274,11 @@ pub const SEDIMENT_MATERIAL_ID: u32 = 3;
 
 /// Simplified shallow-water hydraulic erosion (Mei-lite / Beneš steps, CPU oracle).
 ///
-/// Each iteration: rain → compute 4-neighbor outflow → erode/deposit → transport
-/// water+sediment to neighbors → evaporate. Hardness modulates erosion as `(1-K)`.
+/// Each iteration: rain -> compute 4-neighbor outflow -> erode/deposit -> transport
+/// water+sediment to neighbors -> evaporate. Hardness modulates erosion as `(1-K)`.
 ///
 /// Phase G landforms: slope-break fan boost, floodplain bias, stagnant-pool settle,
-/// optional post-pass bank slippage (thermal), and sediment→softness hooks via
+/// optional post-pass bank slippage (thermal), and sediment->softness hooks via
 /// [`HydraulicResult::deposition_raw`].
 pub fn hydraulic_erode(input: &Heightfield, p: &HydraulicErosionParams) -> HydraulicResult {
     let k_field = MaskField::filled(input.metrics, p.hardness.clamp(0.0, 1.0));
@@ -522,7 +522,7 @@ fn hydraulic_erode_inner(
                 let upslope = max_neighbor_slope(&h_snap, i, j, w, hh, dx);
                 let flat_t = (1.0 - (terrain_slope / (terrain_slope + 0.08)).clamp(0.0, 1.0))
                     .clamp(0.0, 1.0);
-                // Fan only on flats below a steeper neighbor (steep→flat exit), not mid-slope.
+                // Fan only on flats below a steeper neighbor (steep->flat exit), not mid-slope.
                 let break_t = if flat_t > 0.4 && upslope > terrain_slope + 0.05 {
                     ((upslope - terrain_slope) / (upslope + 1e-4)).clamp(0.0, 1.0) * flat_t
                 } else {
@@ -536,7 +536,7 @@ fn hydraulic_erode_inner(
 
                 // Capacity: flux slope + terrain slope; stagnant water keeps a tiny floor
                 // so suspended load settles on flats (Beneš-style low-velocity deposit).
-                // Slope-break / floodplain lower effective capacity → deposit sooner (fans).
+                // Slope-break / floodplain lower effective capacity -> deposit sooner (fans).
                 let slope_term = (flow * 0.25).max(terrain_slope * 0.5);
                 let transport = flow.max(water_next[idx] * 0.08);
                 let cap_scale = (1.0
@@ -567,7 +567,7 @@ fn hydraulic_erode_inner(
                         sed_next[idx] = (sed_next[idx] - dep).max(0.0);
                         deposition[idx] += dep;
                     } else if flow < 1e-6 && s > 1e-8 && flat_t > 0.35 {
-                        // Stagnant pool settle — raises valley floors / fan toes.
+                        // Stagnant pool settle - raises valley floors / fan toes.
                         let settle = s * p.deposition * (0.2 + 0.8 * flat_t) * (0.5 + 0.5 * flood);
                         let dep = settle.min(s);
                         height[idx] += dep;

@@ -183,7 +183,7 @@ impl TerraApp {
                         start_height: node.height,
                     });
                     self.ui_state.status =
-                        "Dragging path node Â· Shift: elevation Â· Ctrl-click: delete".into();
+                        "Dragging path node - Shift: elevation - Ctrl-click: delete".into();
                     return;
                 }
                 p.nodes.push(terra_core::layer::PathNode {
@@ -222,7 +222,7 @@ impl TerraApp {
                         start_height: p.height,
                     });
                     self.ui_state.status =
-                        "Dragging polygon vertex Â· Shift: height Â· Ctrl-click: delete".into();
+                        "Dragging polygon vertex - Shift: height - Ctrl-click: delete".into();
                     return;
                 }
                 p.points.push([u, v]);

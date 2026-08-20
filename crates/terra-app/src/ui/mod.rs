@@ -1,4 +1,4 @@
-//! Terra product UI — editor chrome built on `terra-gui`.
+//! Terra product UI - editor chrome built on `terra-gui`.
 
 mod actions;
 mod bookmarks_gui;
@@ -22,7 +22,7 @@ mod project_home_gui;
 mod quick_add;
 mod recipe;
 mod style;
-mod thumbnails;
+pub(crate) mod thumbnails;
 mod tool_catalog;
 mod tool_thumbs;
 mod tools_gui;
@@ -120,17 +120,17 @@ pub struct UiState {
     pub editor_tool: EditorTool,
     /// Last height/sculpt brush armed from the catalog or tool bar (restored by Sculpt).
     pub last_sculpt_tool: Option<EditorTool>,
-    /// Active task workspace (non-linear focus — not a workflow step).
+    /// Active task workspace (non-linear focus - not a workflow step).
     pub active_workspace: WorkspaceId,
     /// Legacy tool-catalog category (derived from active workspace).
     pub workspace_mode: WorkspaceMode,
-    /// Application workspace tab (Terrain / Materials / â€¦).
+    /// Application workspace tab (Terrain / Materials / ...).
     pub app_workspace: AppWorkspace,
     /// When false, inspector shows a short Simple param set (default).
     pub inspector_advanced: bool,
     /// Sculpt brush radius in normalized UV (Base raise/lower/smooth).
     pub sculpt_radius: f32,
-    /// Raise/lower peak meters per stamp, or smooth blend 0â€“1.
+    /// Raise/lower peak meters per stamp, or smooth blend 0-1.
     pub sculpt_strength: f32,
     /// Brush edge hardness: 0 is soft and 1 is hard.
     pub brush_falloff: f32,
@@ -175,7 +175,7 @@ pub struct UiState {
     /// When set, new layers are inserted into this group (biome / section).
     pub quick_add_into: Option<terra_core::layer::LayerId>,
     /// When set with [`Self::quick_add_into`], limit the catalog to this biome section.
-    /// `None` while targeting a biome root means “any biome-routable content”.
+    /// `None` while targeting a biome root means "any biome-routable content".
     pub quick_add_biome_section: Option<terra_core::layer::BiomeSection>,
     /// When set, Quick Add lists DistNode generators/modifiers for this biome.
     pub quick_add_distribution: Option<terra_core::layer::LayerId>,
@@ -226,13 +226,13 @@ pub struct UiState {
     pub brush_symmetry: bool,
     /// Dock layout (resizable / collapsible panels).
     pub layout: terra_gui::LayoutPrefs,
-    /// Preferred task workspace id (`sculpt`, `biomes`, …). Editor preference,
+    /// Preferred task workspace id (`sculpt`, `biomes`, ...). Editor preference,
     /// persisted in the app's editor prefs file (not the dock-geometry blob).
     pub preferred_workspace: String,
     /// When true, creating an entity may switch to its home workspace.
-    /// Default false — artists stay in the current workspace unless they opt in.
+    /// Default false - artists stay in the current workspace unless they opt in.
     pub auto_switch_workspace_on_create: bool,
-    /// Biome Focus — definition currently being polished (WHAT + WHERE).
+    /// Biome Focus - definition currently being polished (WHAT + WHERE).
     pub biome_focus: Option<terra_core::biome_definition::BiomeDefinitionId>,
     /// Bookmarks floating window visible.
     pub show_bookmarks: bool,
@@ -242,7 +242,7 @@ pub struct UiState {
     pub pending_bookmark_save: Option<usize>,
     /// Pending camera bookmark recall slot (0..8), consumed by the app.
     pub pending_bookmark_recall: Option<usize>,
-    /// Dirty flag — editor prefs (dock geometry + workspace + render settings)
+    /// Dirty flag - editor prefs (dock geometry + workspace + render settings)
     /// should be written to disk.
     pub layout_dirty: bool,
     /// Snapshot of dirty tile IDs `(tx, tz)` for the dirty-tiles overlay.
@@ -250,11 +250,11 @@ pub struct UiState {
     /// Tile grid dimensions matching the last GPU/CPU eval metrics.
     pub dirty_tile_grid: (u32, u32),
     /// Opt-in Phase 2 geomorph debug overlay (command palette). Not part of
-    /// the default artist mode bar — clears when set back to `None`.
+    /// the default artist mode bar - clears when set back to `None`.
     pub geomorph_debug_field: Option<terra_core::GeomorphDebugField>,
     /// Set by command palette when debug overlay changes; consumed by preview bake.
     pub force_preview_refresh: bool,
-    /// Active brush mode for the Paint Biome tool (Paint / Erase / Raise+Paint / â€¦).
+    /// Active brush mode for the Paint Biome tool (Paint / Erase / Raise+Paint / ...).
     pub biome_paint_tool: terra_core::biome_paint::BiomePaintTool,
     /// Shape history: new layer per stroke session vs continue selected.
     pub shape_edit_mode: terra_core::shape_history::ShapeEditMode,
@@ -263,15 +263,15 @@ pub struct UiState {
     /// When true, next full eval after stroke end is requested (draft while painting).
     pub shape_commit_full: bool,
     /// Workspace-owned biome colour overlay (presentation). Prefer over
-    /// `BiomeLayer.show_biome_colors` — switching workspace must not write project data.
+    /// `BiomeLayer.show_biome_colors` - switching workspace must not write project data.
     pub biome_color_preview: bool,
     /// Temporary editor-only isolate. Must never write project `Region.solo` / layer solo.
     pub temp_solo: crate::ui::workspace::TempSoloState,
     /// Viewport / hierarchy Create-here context menu.
     pub viewport_context_menu: Option<crate::ui::contextual_create_gui::ViewportContextMenu>,
-    /// Compact â€œUpdating: â€¦â€ dependency feedback (non-blocking).
+    /// Compact -œUpdating: -¦- dependency feedback (non-blocking).
     pub affected_feedback: Option<String>,
-    /// Expanded â€œWhy outdated?â€ text for the inspector / dock.
+    /// Expanded -œWhy outdated?- text for the inspector / dock.
     pub why_rebuild_text: Option<String>,
     /// Layer ids with outdated cached results (synced from session).
     pub outdated_layer_ids: Vec<terra_core::layer::LayerId>,
@@ -345,7 +345,7 @@ impl LightingPreset {
 }
 
 /// Convert a sun azimuth (degrees, compass bearing around +Y) and elevation
-/// (degrees above the horizon) into a `light_dir` xyz — the direction *from* the
+/// (degrees above the horizon) into a `light_dir` xyz - the direction *from* the
 /// light *toward* the scene, matching `EnvironmentLighting::light_dir`. The
 /// result is unit length (the renderer normalizes it anyway); sun intensity is
 /// carried separately in `light_dir.w`.
@@ -353,7 +353,7 @@ pub fn sun_dir_from_az_el(azimuth_deg: f32, elevation_deg: f32) -> [f32; 3] {
     let az = azimuth_deg.to_radians();
     let el = elevation_deg.to_radians();
     let ce = el.cos();
-    // toward-sun = (ce·cos az, sin el, ce·sin az); light_dir points the other way.
+    // toward-sun = (ce-cos az, sin el, ce-sin az); light_dir points the other way.
     [-(ce * az.cos()), -el.sin(), -(ce * az.sin())]
 }
 
@@ -382,7 +382,7 @@ mod sun_dir_tests {
             let dir = sun_dir_from_az_el(az, el);
             let (az2, el2) = sun_az_el_from_dir(dir);
             assert!((el - el2).abs() < 1e-2, "elevation {el} -> {el2}");
-            // Compare azimuth modulo 360 so 359° vs 359° does not read as a 360° gap.
+            // Compare azimuth modulo 360 so 359 deg vs 359 deg does not read as a 360 deg gap.
             let daz = ((az - az2 + 540.0) % 360.0 - 180.0).abs();
             assert!(daz < 1e-2, "azimuth {az} -> {az2}");
         }
@@ -398,7 +398,7 @@ mod sun_dir_tests {
 
 /// Persisted, serde-stable form of the viewport render controls (user preference).
 ///
-/// This is the on-disk vocabulary — render `mode`/`preset` are stored as strings so
+/// This is the on-disk vocabulary - render `mode`/`preset` are stored as strings so
 /// the editor prefs file does not depend on `terra_render`'s enums. The runtime source
 /// of truth is [`ViewportRenderSettings`]; convert with [`ViewportRenderSettings::from_prefs`]
 /// / [`ViewportRenderSettings::to_prefs`].
@@ -544,7 +544,7 @@ pub struct ViewportRenderSettings {
     pub sky_color: [f32; 3],
     /// Raster shading controls (inert in the RT backend). Ambient and fog default
     /// to 1.0 (the current look); shadow_strength 0 keeps cast shadows off until
-    /// dialed up. These are not seeded from presets — they are raster tweaks.
+    /// dialed up. These are not seeded from presets - they are raster tweaks.
     pub ambient_strength: f32,
     pub shadow_strength: f32,
     pub fog_strength: f32,
@@ -789,7 +789,7 @@ impl UiState {
     /// Preserves selection (on document), camera, brush numerics, and hierarchy
     /// expansion (owned by layers GUI). Persists preferred workspace into layout prefs.
     pub fn switch_workspace(&mut self, id: WorkspaceId) {
-        // All Tools removed from the rail — remap legacy prefs / commands.
+        // All Tools removed from the rail - remap legacy prefs / commands.
         let id = if matches!(id, WorkspaceId::AllTools) {
             WorkspaceId::Objects
         } else {
@@ -802,7 +802,7 @@ impl UiState {
         self.preferred_workspace = id.as_str().to_string();
         self.layout_dirty = true;
         let def = workspace_definition(id);
-        self.status = format!("Workspace: {} — {}", def.name, def.description);
+        self.status = format!("Workspace: {} - {}", def.name, def.description);
     }
 
     /// Switch tool-domain mode without mutating project or evaluation state.
@@ -842,7 +842,7 @@ impl UiState {
         self.viewport_overlays.mask_overlay = true;
         self.show_2d_preview = true;
         self.mask_paint_tool = terra_core::mask::MaskPaintTool::Paint;
-        // Do not call enter_mask_view — inspector hosts mask chrome while PaintMask is armed.
+        // Do not call enter_mask_view - inspector hosts mask chrome while PaintMask is armed.
     }
 
     /// Switch workspace only when needed (avoids resetting tools when already there).
@@ -945,7 +945,7 @@ impl UiState {
         }
     }
 
-    /// Viewport Mask view (primary Views bar) — drives left dock + mask viz.
+    /// Viewport Mask view (primary Views bar) - drives left dock + mask viz.
     pub fn is_mask_view(&self) -> bool {
         matches!(
             self.preview_mode,
@@ -1122,7 +1122,7 @@ impl EditorTool {
             EditorTool::RiverPathTool => Some(ShapeTool::RiverPath),
             EditorTool::HeightStamp => Some(ShapeTool::HeightStamp),
             EditorTool::NoiseBrush => Some(ShapeTool::NoiseBrush),
-            EditorTool::Ridge => Some(ShapeTool::MountainStamp), // ridge brush â‰ˆ mountain stroke
+            EditorTool::Ridge => Some(ShapeTool::MountainStamp), // ridge brush ~ mountain stroke
             EditorTool::Valley => Some(ShapeTool::ValleyStamp),
             EditorTool::Roughness => Some(ShapeTool::NoiseBrush),
             EditorTool::UpliftBrush => Some(ShapeTool::Raise),
@@ -1142,7 +1142,7 @@ impl EditorTool {
         )
     }
 
-    /// Raise / Lower / Smooth / Paint Mask / Paint Biome — own left-drag paint and wheel size.
+    /// Raise / Lower / Smooth / Paint Mask / Paint Biome - own left-drag paint and wheel size.
     pub fn is_brush(self) -> bool {
         self.is_sculpt() || matches!(self, EditorTool::PaintMask | EditorTool::PaintBiome)
     }
@@ -1366,9 +1366,9 @@ pub enum Preview2dMode {
 pub enum UiCursor {
     #[default]
     Default,
-    /// Open hand — hover over a layer grip.
+    /// Open hand - hover over a layer grip.
     Grab,
-    /// Closed hand — actively dragging a layer.
+    /// Closed hand - actively dragging a layer.
     Grabbing,
     NResize,
     SResize,

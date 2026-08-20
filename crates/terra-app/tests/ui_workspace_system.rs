@@ -118,7 +118,7 @@ fn unrelated_item_remains_editable_from_any_workspace() {
     ui.switch_workspace(WorkspaceId::Biomes);
     assert_eq!(doc.selected, Some(mat_id));
 
-    // Simulation selected from Biomes focus — still selected.
+    // Simulation selected from Biomes focus - still selected.
     let sim =
         terra_core::layer::Layer::new("Hydro", LayerKind::HydraulicErosion(Default::default()));
     let sim_id = sim.id();

@@ -22,7 +22,7 @@ fn water_flows_downhill_on_plane() {
     let hf = plane(metrics(16));
     let filled = handle_depressions(&hf, DepressionMode::Fill).height;
     let g = build_flow_graph(&filled, FlowModel::D8);
-    // Plane drains +X (decreasing height with i) → direction (1,0) = index 0.
+    // Plane drains +X (decreasing height with i) -> direction (1,0) = index 0.
     let mut east = 0;
     for &d in &g.d8_dir {
         if d == 0 {
@@ -36,7 +36,7 @@ fn water_flows_downhill_on_plane() {
             let (ni, nj) = g.coords(r);
             assert!(
                 filled.get(ni, nj) <= filled.get(i, j) + 1e-4,
-                "uphill flow at ({i},{j})→({ni},{nj})"
+                "uphill flow at ({i},{j})->({ni},{nj})"
             );
         }
     }

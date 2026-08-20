@@ -30,7 +30,7 @@ impl TerraApp {
         self.viewport_camera_fly_active()
     }
 
-    /// WASD/QE fly — same tool rules as mouse camera, but does not require the cursor
+    /// WASD/QE fly - same tool rules as mouse camera, but does not require the cursor
     /// to sit inside the viewport (game-engine style continuous move).
     pub(crate) fn viewport_camera_fly_active(&self) -> bool {
         if self.screen != AppScreen::Editor {
@@ -92,7 +92,7 @@ impl TerraApp {
         if let Some(shape_tool) = self.ui_state.editor_tool.shape_tool() {
             let Some(layer_id) = self.ensure_shape_history_target(shape_tool) else {
                 self.ui_state.status =
-                    "Could not create a Shape Layer â€” select a Region first.".into();
+                    "Could not create a Shape Layer - select a Region first.".into();
                 return;
             };
             self.ui_state.ensure_sculpt_defaults();
@@ -180,12 +180,12 @@ impl TerraApp {
             });
             self.apply_actions(actions);
             self.last_paint_uv = Some((u, v));
-            // Draft preview while painting â€” do not force simulation rebuilds.
+            // Draft preview while painting - do not force simulation rebuilds.
             self.force_draft = true;
             return;
         }
 
-        // Field brushes (Protect / Hardness / Sediment) â†’ constraints authoring layer.
+        // Field brushes (Protect / Hardness / Sediment) -> constraints authoring layer.
         if matches!(
             self.ui_state.editor_tool,
             crate::ui::EditorTool::Protect
@@ -291,7 +291,7 @@ impl TerraApp {
                 }
                 self.biome_polygon_points.push((u, v));
                 self.ui_state.status = format!(
-                    "Polygon vertex {} â€” click near first point to close",
+                    "Polygon vertex {} - click near first point to close",
                     self.biome_polygon_points.len()
                 );
                 self.last_paint_uv = Some((u, v));
@@ -468,7 +468,7 @@ impl TerraApp {
     }
 
     /// Push Draft heights to the GPU while a brush stroke is active.
-    /// Call at most once per frame â€” stamps coalesce via `pending_eval`.
+    /// Call at most once per frame - stamps coalesce via `pending_eval`.
 
     pub(crate) fn commit_biome_polygon_fill(&mut self) {
         let Some(biome) = self.session.document.active_biome else {
@@ -493,14 +493,14 @@ impl TerraApp {
         self.ui_state.status = format!("Polygon fill ({} pts)", pts.len());
     }
 
-    /// Raycast cursor onto the height surface â†’ terrain UV (same mapping as the brush gizmo).
+    /// Raycast cursor onto the height surface -> terrain UV (same mapping as the brush gizmo).
     pub(crate) fn pick_paint_uv(&self) -> Option<(f32, f32)> {
         let (x, y) = self.cursor_logical()?;
         if !self.viewport_rect.contains(x, y) {
             return None;
         }
         // Once a stroke has started, keep stamping even if the cursor grazes overlays
-        // (brush bar / gizmo chrome) â€” otherwise live preview stalls mid-drag.
+        // (brush bar / gizmo chrome) - otherwise live preview stalls mid-drag.
         if self.gui_wants_pointer && !self.sculpt_stroke_active {
             return None;
         }
@@ -637,7 +637,7 @@ impl TerraApp {
             &before,
             &after,
         ) else {
-            // Stroke changed nothing — no undo entry, no rebuild.
+            // Stroke changed nothing - no undo entry, no rebuild.
             return;
         };
         self.session.push_mask_paint_patch(patch);

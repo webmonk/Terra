@@ -1,4 +1,4 @@
-//! Phase F materials / strata fixtures: Materials→K bake + soft-over-hard stripping.
+//! Phase F materials / strata fixtures: Materials->K bake + soft-over-hard stripping.
 
 use std::collections::HashMap;
 use terra_core::analyze::{thermal_erode, thermal_erode_with_strata};

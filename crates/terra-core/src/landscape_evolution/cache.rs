@@ -9,7 +9,7 @@ use crate::mask::MaskField;
 pub struct DrainageCache {
     /// Downstream neighbour index (`usize::MAX` = outlet / sink).
     pub receiver: Vec<usize>,
-    /// Topological order: downstream → upstream (outlets first).
+    /// Topological order: downstream -> upstream (outlets first).
     pub topo_down_to_up: Vec<usize>,
     /// Drainage area in cell counts (precipitation-scaled later).
     pub accumulation: Vec<f32>,
@@ -60,7 +60,7 @@ impl DrainageCache {
             }
         }
 
-        // The graph's topo order runs upstream → downstream; reverse it for the
+        // The graph's topo order runs upstream -> downstream; reverse it for the
         // outlets-first order the analytical / iterative solvers consume.
         let mut topo_down_to_up = graph.topo_order.clone();
         topo_down_to_up.reverse();

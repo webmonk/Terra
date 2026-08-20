@@ -490,7 +490,7 @@ pub fn mountains(metrics: HeightfieldMetrics, p: &MountainParams) -> Heightfield
         let foothills = macro_bias * range_mask.powf(1.8) * 0.13;
         let primary = amplitude * range_mask * (foothills + structure * 0.87);
         let elev_t = (primary / amplitude.max(1e-6)).clamp(0.0, 1.0);
-        // Fine ridged gouges along the range axis — seeds SPE couloirs / striations.
+        // Fine ridged gouges along the range axis - seeds SPE couloirs / striations.
         let fine = ridged_mf(FractalNoiseType::Perlin, ridge_x, ridge_z, &detail_params);
         // Signed detail raises ribs and cuts narrow couloirs instead of only
         // piling more positive noise onto every crest.
@@ -639,7 +639,7 @@ pub fn uplift(metrics: HeightfieldMetrics, p: &UpliftParams) -> Heightfield {
 /// Procedural dunes: directional phasor/wave seed + limited aeolian relaxation.
 ///
 /// Fast interactive approximation. Prefer [`sand_simulation`] for progressive
-/// physical evolution. Morphology emerges from wind / supply / linearity —
+/// physical evolution. Morphology emerges from wind / supply / linearity -
 /// transverse, barchan-like, linear, and fields are not hardcoded meshes.
 pub fn dunes(metrics: HeightfieldMetrics, p: &DuneParams) -> Heightfield {
     dunes_with_aux(metrics, p).0
@@ -857,7 +857,7 @@ pub fn import_heightmap(
     Ok(hf)
 }
 
-/// 3D stamp: OBJ mesh→height, image heightmap, or procedural rock when empty/unreadable.
+/// 3D stamp: OBJ mesh->height, image heightmap, or procedural rock when empty/unreadable.
 pub fn stamp_3d(metrics: HeightfieldMetrics, p: &Stamp3dParams) -> Result<Heightfield, EvalError> {
     if p.path.is_empty() {
         return Ok(procedural_rock_stamp(metrics, p));
@@ -1260,7 +1260,7 @@ pub fn effect_filter(input: &Heightfield, p: &EffectFilterParams) -> Heightfield
         EffectFilterKind::Smooth => {
             // Low-pass (box) blur: attenuates high-frequency detail and isolated
             // spikes alike. Edge-preserving smoothing lives in `Denoise`
-            // (bilateral) — which by design keeps sharp features, including a
+            // (bilateral) - which by design keeps sharp features, including a
             // lone spike, intact and so is the wrong tool for reducing spikes.
             let mut h = input.clone();
             for _ in 0..p.iterations.max(1).min(4) {
@@ -1358,7 +1358,7 @@ pub fn effect_filter(input: &Heightfield, p: &EffectFilterParams) -> Heightfield
         | EffectFilterKind::WideFlows
         | EffectFilterKind::SedimentFlows
         | EffectFilterKind::HydraulicSediment => {
-            // Shared HydraulicErosionCore — physical transport biases, not D∞ carve fakes.
+            // Shared HydraulicErosionCore - physical transport biases, not Dinf carve fakes.
             if let Some(core) = crate::analyze::HydraulicErosionCore::from_effect_filter(p) {
                 let filtered = core.apply_height(input, None);
                 let t = p.strength.clamp(0.0, 1.0);

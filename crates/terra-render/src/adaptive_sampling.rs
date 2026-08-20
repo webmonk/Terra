@@ -121,7 +121,7 @@ impl AdaptiveSamplingState {
         }
     }
 
-    /// Full-screen R8 mask — 255 = active, 128 = reduced, 0 = converged (Phase 11).
+    /// Full-screen R8 mask - 255 = active, 128 = reduced, 0 = converged (Phase 11).
     pub fn prepare_sampling_mask(&self) -> Vec<u8> {
         let mut mask = vec![255u8; (self.width * self.height) as usize];
         for ty in 0..self.tiles_y {
@@ -146,7 +146,7 @@ impl AdaptiveSamplingState {
         mask
     }
 
-    /// Phase 11 bootstrap — every pixel active until variance feedback arrives.
+    /// Phase 11 bootstrap - every pixel active until variance feedback arrives.
     pub fn prepare_all_active_mask(&self) -> Vec<u8> {
         vec![255u8; (self.width * self.height) as usize]
     }

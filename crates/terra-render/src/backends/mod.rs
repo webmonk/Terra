@@ -1,4 +1,4 @@
-//! Presentation backends — RasterLit and ProgressivePt.
+//! Presentation backends - RasterLit and ProgressivePt.
 //!
 //! Mode maps to exactly one backend via [`PresentationBackendId`].
 

@@ -112,7 +112,7 @@ impl TerraApp {
             }
         }
         if let Some(id) = dirty_from {
-            // Suffix-only dirty â€” do not mark_all_dirty (preserves layer cache).
+            // Suffix-only dirty - do not mark_all_dirty (preserves layer cache).
             // Sculpt stamps only change the base paint buffer; keep GPU dependents clean so
             // Draft can reuse cached noise/shape contributions and just re-blend.
             // Use preview stack so Global layer ids resolve (they are not in doc.stack).

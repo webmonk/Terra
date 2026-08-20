@@ -52,7 +52,7 @@ fn switch_workspace_does_not_invalidate_scheduler_token() {
     ui.switch_workspace_mode(WorkspaceMode::Materials);
     ui.switch_workspace_mode(WorkspaceMode::Terrain);
 
-    // Switching UI must not call request_rebuild — token stays put.
+    // Switching UI must not call request_rebuild - token stays put.
     assert_eq!(scheduler.current_token, token);
 }
 
@@ -121,8 +121,8 @@ fn custom_lighting_survives_workspace_switch() {
     ui.lighting_customized = true;
     let preset_before = ui.lighting_preset;
 
-    // Entering any workspace — rail button, command palette, or create-and-focus
-    // into Sculpt — must not silently revert the custom look to the preset. This
+    // Entering any workspace - rail button, command palette, or create-and-focus
+    // into Sculpt - must not silently revert the custom look to the preset. This
     // is the "choosing Sculpt resets lighting to Studio" regression: the switch
     // used to clear `lighting_customized`, and the next redraw re-seeded the
     // viewport from the preset.

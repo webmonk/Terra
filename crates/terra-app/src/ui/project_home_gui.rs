@@ -1,4 +1,4 @@
-//! Pre-editor project manager â€” New / Open / Recent before terrain loads.
+//! Pre-editor project manager - New / Open / Recent before terrain loads.
 
 use std::io::Read;
 use std::path::{Path, PathBuf};
@@ -27,7 +27,7 @@ pub struct ProjectHomeGuiState {
     pub recent_scroll_y: f32,
     pub search: String,
     pub view_mode: RecentViewMode,
-    /// Index into the filtered recent list for the open â‹® menu.
+    /// Index into the filtered recent list for the open ... menu.
     pub row_menu: Option<usize>,
     /// Transient status line (e.g. open/browse feedback).
     pub notice: Option<String>,
@@ -37,7 +37,7 @@ pub struct ProjectHomeGuiState {
 pub enum ProjectHomeAction {
     New,
     Open,
-    /// Folder picker â†’ open a project found inside.
+    /// Folder picker -> open a project found inside.
     Browse,
     OpenPath(PathBuf),
     RemoveRecent(PathBuf),
@@ -104,7 +104,7 @@ pub fn draw_project_home(
     let footer_h = 88.0;
     let top_pad = (ui.screen_h * 0.08).clamp(36.0, 72.0);
 
-    // —— Brand header (assets/logo.png already includes TERRA wordmark) ——
+    // -- Brand header (assets/logo.png already includes TERRA wordmark) --
     let mut y = top_pad;
     let (lw, lh, rgba) = crate::ui::brand::brand_logo();
     let logo_h = 56.0_f32;
@@ -125,7 +125,7 @@ pub fn draw_project_home(
     );
     y += 42.0;
 
-    // â€”â€” Action cards â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
+    // -- Action cards ------------------------------------------------
     let card_gap = 16.0;
     let card_w = (content_w - card_gap) * 0.5;
     let card_h = 108.0;
@@ -156,7 +156,7 @@ pub fn draw_project_home(
     }
     y += card_h + 36.0;
 
-    // â€”â€” Recent header + search / view toggles â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
+    // -- Recent header + search / view toggles ----------------
     let header_h = 32.0;
     ui.label_at(
         content_x,
@@ -483,7 +483,7 @@ pub fn draw_project_home(
 
     ui.end_panel_scrolled(&mut state.recent_scroll_y);
 
-    // â€”â€” Footer â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
+    // -- Footer ------------------------------------------------------
     let footer_y = ui.screen_h - footer_h;
     ui.panel(
         Rect::from_pos_size(0.0, footer_y - 1.0, ui.screen_w, 1.0),
@@ -491,7 +491,7 @@ pub fn draw_project_home(
     );
     let foot_w = content_w.min(780.0);
     let foot_x = (ui.screen_w - foot_w) * 0.5;
-    // Only honest, wired actions â€” Settings / Recover stubs removed from the footer.
+    // Only honest, wired actions - Settings / Recover stubs removed from the footer.
     let browse = Rect::from_pos_size(foot_x, footer_y + 14.0, foot_w, 60.0);
     if draw_footer_item(
         ui,
@@ -830,7 +830,7 @@ fn peek_world_size_label(path: &Path) -> Option<String> {
     let wz = find_json_f32(&head, "\"world_size_z\"").unwrap_or(wx);
     let km_x = (wx / 1000.0).round().max(1.0) as i32;
     let km_z = (wz / 1000.0).round().max(1.0) as i32;
-    // ASCII `x` â€” baked UI font has no Ã— glyph (would render as "?").
+    // ASCII `x` - baked UI font has no × glyph (would render as "?").
     Some(format!("{km_x}x{km_z} km"))
 }
 
@@ -861,7 +861,7 @@ fn truncate_middle(s: &str, max_chars: usize) -> String {
     let keep = max_chars.saturating_sub(1) / 2;
     let left: String = chars.iter().take(keep).collect();
     let right: String = chars.iter().skip(chars.len() - keep).collect();
-    format!("{left}â€¦{right}")
+    format!("{left}...{right}")
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -869,7 +869,7 @@ pub enum NewProjectTemplateChoice {
     Cancel,
     Create {
         template_id: String,
-        /// World Creator–style Resolution: world extent in metres (samples derived).
+        /// World Creator-style Resolution: world extent in metres (samples derived).
         world_size_m: f32,
         sea_level: f32,
     },
@@ -878,7 +878,7 @@ pub enum NewProjectTemplateChoice {
 /// World settings edited in the New Project modal.
 #[derive(Debug, Clone)]
 pub struct NewWorldSettings {
-    /// World Creator–style Resolution — physical extent in metres.
+    /// World Creator-style Resolution - physical extent in metres.
     pub world_size_m: f32,
     pub sea_level: f32,
     /// UI-only: display resolution / sea level in kilometers.
@@ -925,7 +925,7 @@ pub fn draw_new_project_templates(
     let content_w = panel.width() - inset * 2.0;
     let mut y = panel.min_y + style::SPACE_4;
 
-    // â€”â€” Header â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
+    // -- Header ------------------------------------------------
     let icon_box = Rect::from_pos_size(content_x, y + 2.0, 40.0, 40.0);
     ui.panel_rounded(icon_box, style::ACCENT_SOFT, style::RADIUS_MD);
     ui.icon_centered(icon_box, Icon::Package, style::ACCENT, 22.0);
@@ -958,7 +958,7 @@ pub fn draw_new_project_templates(
         apply_template_defaults(selected_id, settings);
     }
 
-    // â€”â€” WORLD DESIGN â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
+    // -- WORLD DESIGN ------------------------------------------
     ui.label_at(
         content_x,
         y,
@@ -989,7 +989,7 @@ pub fn draw_new_project_templates(
     settings.design_scroll_x = design_scroll;
     y += design_card_h + style::SPACE_5;
 
-    // â€”â€” WORLD SETTINGS â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”â€”
+    // -- WORLD SETTINGS ----------------------------------------
     ui.label_at(
         content_x,
         y + 4.0,

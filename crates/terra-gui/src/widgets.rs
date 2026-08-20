@@ -138,7 +138,7 @@ pub fn collapsible_section(
     *expanded
 }
 
-/// Selection identity card (icon + name) — reference-style inspector header chip.
+/// Selection identity card (icon + name) - reference-style inspector header chip.
 pub fn selection_card(ui: &mut GuiContext<'_>, icon: Icon, name: &str) {
     let rect = ui.allocate(style::INSP_SELECTION_H);
     ui.panel_rounded(rect, style::SURFACE, style::RADIUS_MD);
@@ -327,7 +327,7 @@ pub fn status_pill(ui: &mut GuiContext<'_>, rect: Rect, label: &str, color: Colo
     );
 }
 
-/// Segmented control button (viewport Lit/Height/… cluster).
+/// Segmented control button (viewport Lit/Height/... cluster).
 pub fn segmented_button(
     ui: &mut GuiContext<'_>,
     id: Id,
@@ -491,7 +491,7 @@ pub fn button_id(ui: &mut GuiContext<'_>, id: Id, text: &str) -> bool {
     button_id_align(ui, id, text, true)
 }
 
-/// Menu / dropdown row — left-aligned label.
+/// Menu / dropdown row - left-aligned label.
 pub fn menu_button(ui: &mut GuiContext<'_>, id: Id, text: &str) -> bool {
     button_id_align(ui, id, text, false)
 }
@@ -691,7 +691,7 @@ fn slider_inner(
     let edit_id = id.child("edit");
     let editing = ui.state.text_focus == Some(edit_id);
 
-    // Value box interaction — click to edit.
+    // Value box interaction - click to edit.
     let value_hovered = ui.pointer_in(value_box);
     if value_hovered {
         ui.state.set_hot(edit_id);
@@ -767,7 +767,7 @@ fn slider_inner(
     }
 
     let t = ((*value - min) / span).clamp(0.0, 1.0);
-    // Thin track with accent fill — vertically centered in the row.
+    // Thin track with accent fill - vertically centered in the row.
     let track_h = 4.0;
     let track_line = Rect::from_min_max(
         track.min_x,
@@ -895,7 +895,7 @@ pub fn combo(ui: &mut GuiContext<'_>, text: &str, selected: &mut usize, items: &
                 changed = true;
             }
         } else {
-            // Not ours — put back for another combo this frame (unlikely).
+            // Not ours - put back for another combo this frame (unlikely).
             ui.state.combo_pick = Some((pick_id, idx));
         }
     }
@@ -974,7 +974,7 @@ pub fn combo(ui: &mut GuiContext<'_>, text: &str, selected: &mut usize, items: &
     changed
 }
 
-/// Compact combo drawn into a fixed `field` rect (no side label) — for panel headers.
+/// Compact combo drawn into a fixed `field` rect (no side label) - for panel headers.
 pub fn combo_in_rect(
     ui: &mut GuiContext<'_>,
     id: Id,

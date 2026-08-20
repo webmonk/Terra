@@ -1,4 +1,4 @@
-//! Geological stratum field — independent of the final terrain surface.
+//! Geological stratum field - independent of the final terrain surface.
 //!
 //! Beds may be horizontal, tilted, or folded/warped. Each sample yields
 //! thickness-band hardness, erodibility, material type, and layer id so
@@ -140,7 +140,7 @@ pub fn strata_fields_with(hf: &Heightfield, p: &StrataFieldParams) -> (MaskField
     (hardness, layer_id)
 }
 
-/// Preferentially recess soft beds on steep faces — exposes strata on cliffs/canyons.
+/// Preferentially recess soft beds on steep faces - exposes strata on cliffs/canyons.
 pub fn expose_strata_height(
     hf: &Heightfield,
     hardness: &MaskField,

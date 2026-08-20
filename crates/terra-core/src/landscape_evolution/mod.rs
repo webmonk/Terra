@@ -1,4 +1,4 @@
-//! Phase 3 — Physically-based landscape evolution.
+//! Phase 3 - Physically-based landscape evolution.
 //!
 //! Stream-power landscape evolution after Cordonnier et al. (uplift + fluvial
 //! incision) and Tzathas et al. 2024 (analytical / fast evaluation).

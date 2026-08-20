@@ -22,7 +22,7 @@ where
     Ok(Option::<f32>::deserialize(deserializer)?.unwrap_or(OPEN_HEIGHT_MAX))
 }
 
-/// Lithology class for a geological stratum — drives thermal stability defaults.
+/// Lithology class for a geological stratum - drives thermal stability defaults.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum StratumMaterial {
@@ -36,7 +36,7 @@ pub enum StratumMaterial {
 }
 
 impl StratumMaterial {
-    /// Material stability ∈ \[0,1\] for thermal / mass-wasting (1 = holds steep faces).
+    /// Material stability in \[0,1\] for thermal / mass-wasting (1 = holds steep faces).
     pub fn stability(self) -> f32 {
         match self {
             StratumMaterial::Igneous => 0.92,
@@ -185,7 +185,7 @@ pub struct Stratum {
     /// Thickness in meters. Use a large value for the basal stratum.
     #[serde(default = "default_stratum_thickness")]
     pub thickness: f32,
-    /// Hydraulic erodibility ∈ \[0,1\]. Defaults to `1 - hardness`.
+    /// Hydraulic erodibility in \[0,1\]. Defaults to `1 - hardness`.
     #[serde(default = "default_stratum_erodibility_sentinel")]
     pub erodibility: f32,
     /// Lithology class (thermal stability + rock-filter reuse).
@@ -225,7 +225,7 @@ impl Stratum {
         }
     }
 
-    /// Effective hydraulic erodibility (legacy strata without the field → `1 - K`).
+    /// Effective hydraulic erodibility (legacy strata without the field -> `1 - K`).
     pub fn effective_erodibility(&self) -> f32 {
         if self.erodibility < 0.0 {
             (1.0 - self.hardness).clamp(0.0, 1.0)
@@ -234,7 +234,7 @@ impl Stratum {
         }
     }
 
-    /// Thermal / cliff stability ∈ \[0,1\] from lithology × hardness.
+    /// Thermal / cliff stability in \[0,1\] from lithology × hardness.
     pub fn material_stability(&self) -> f32 {
         let base = self.material_type.stability();
         (base * (0.35 + 0.65 * self.hardness.clamp(0.0, 1.0))).clamp(0.0, 1.0)
@@ -245,7 +245,7 @@ impl Stratum {
 pub struct MaterialsParams {
     /// Slope/height/mask classification rules (surface IDs + per-rule hardness).
     pub rules: Vec<MaterialRule>,
-    /// Optional vertical stack from surface → bedrock. When non-empty, drives
+    /// Optional vertical stack from surface -> bedrock. When non-empty, drives
     /// depth-aware hardness for soft-over-hard stripping under erosion.
     #[serde(default)]
     pub strata: Vec<Stratum>,
@@ -302,7 +302,7 @@ impl Default for MaterialsParams {
 }
 
 impl MaterialsParams {
-    /// Soft sediment cap over hard rock — differential erosion preset helper.
+    /// Soft sediment cap over hard rock - differential erosion preset helper.
     pub fn soft_over_hard(cap_thickness: f32) -> Self {
         Self {
             rules: Vec::new(),
@@ -407,7 +407,7 @@ pub struct MaterialRule {
     pub max_height: f32,
     /// Optional painted / procedural mask; cells above 0.5 force this rule's ID.
     pub mask: MaskSource,
-    /// Bedrock hardness K âˆˆ \[0,1\] used when baking materials â†’ hardness.
+    /// Bedrock hardness K in \[0,1\] used when baking materials -> hardness.
     #[serde(default = "default_material_hardness")]
     pub hardness: f32,
     /// Viewport / export albedo tint (linear RGB).
@@ -436,20 +436,20 @@ fn default_material_roughness() -> f32 {
 
 /// Artist climate controls for biome classification (Phase H).
 ///
-/// Values are normalized artist knobs unless noted (temperatures ≈ [0,1] warm↔cold
+/// Values are normalized artist knobs unless noted (temperatures ~ [0,1] warm↔cold
 /// scale, precip [0,1], heights in meters).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ClimateParams {
-    /// Base temperature at sea level (warm â‰ˆ 1).
+    /// Base temperature at sea level (warm ~ 1).
     #[serde(default = "default_sea_level_temp")]
     pub sea_level_temp: f32,
     /// Temperature drop per meter of elevation.
     #[serde(default = "default_lapse_rate")]
     pub lapse_rate: f32,
-    /// Absolute latitude bias (0 equator â†’ 1 polar cool).
+    /// Absolute latitude bias (0 equator -> 1 polar cool).
     #[serde(default = "default_latitude")]
     pub latitude: f32,
-    /// Northâ€“south temperature gradient strength along Z.
+    /// North-south temperature gradient strength along Z.
     #[serde(default = "default_temp_gradient")]
     pub temp_gradient: f32,
     /// Prevailing wind direction in degrees (0 = +Z / north, 90 = +X / east).
@@ -573,7 +573,7 @@ impl Default for BiomesParams {
 }
 
 impl BiomesParams {
-    /// Legacy height/wetness-only bands (preâ€“Phase H).
+    /// Legacy height/wetness-only bands (pre-Phase H).
     pub fn height_bands() -> Self {
         Self {
             use_climate: false,

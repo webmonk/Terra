@@ -76,7 +76,7 @@ impl GuiState {
     }
 
     /// True while the user is actively capturing the pointer (drag, scroll,
-    /// combo, text) — excludes mere hover so background work can continue.
+    /// combo, text) - excludes mere hover so background work can continue.
     pub fn is_interacting(&self) -> bool {
         self.active.is_some()
             || self.open_combo.is_some()

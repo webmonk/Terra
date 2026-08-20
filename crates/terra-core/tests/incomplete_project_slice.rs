@@ -172,7 +172,7 @@ fn empty_rule_results_are_valid() {
 #[test]
 fn stack_without_shapes_evaluates() {
     let mut doc = TerrainDocument::new_default();
-    // Clear the single terrain stack — empty stack is valid (identity height).
+    // Clear the single terrain stack - empty stack is valid (identity height).
     doc.stack = terra_core::layer::LayerStack::new();
     let diags = incomplete_project_diagnostics(&doc.stack, &doc.biome_library, &doc.biome_layers);
     assert!(

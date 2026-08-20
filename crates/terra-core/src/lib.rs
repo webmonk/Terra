@@ -2,7 +2,7 @@
 //!
 //! This crate must remain free of `wgpu` and UI crates.
 //!
-//! Prefer importing from submodules (`terra_core::layer::LayerKind`, …).
+//! Prefer importing from submodules (`terra_core::layer::LayerKind`, ...).
 //! Crate-root re-exports below are a curated convenience surface for the app
 //! binary and are not an invitation to grow a flat global namespace.
 

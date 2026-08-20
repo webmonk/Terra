@@ -31,7 +31,7 @@ impl ProcessorRegistry {
 
     /// Evaluate a single layer by matching on its [`LayerKind`].
     ///
-    /// This `match` is the real dispatch mechanism â€” the one place every
+    /// This `match` is the real dispatch mechanism - the one place every
     /// built-in kind becomes a height contribution. Adding a kind means adding
     /// an arm here.
     pub fn evaluate(

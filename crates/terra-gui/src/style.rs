@@ -4,31 +4,31 @@
 //! from shared widgets so panels stay aligned without each call site inventing gaps.
 //!
 //! Product-specific chrome metrics (mode rail, tool cards, category accents) live in
-//! the consuming app — not here.
+//! the consuming app - not here.
 
 use crate::types::Color;
 
-// —— 8px spacing scale ————————————————————————————————————————————————
+// -- 8px spacing scale ------------------------------------------------
 
-/// 4px — tight intra-row padding.
+/// 4px - tight intra-row padding.
 pub const SPACE_1: f32 = 4.0;
-/// 8px — default gap between related controls.
+/// 8px - default gap between related controls.
 pub const SPACE_2: f32 = 8.0;
-/// 12px — section / panel padding.
+/// 12px - section / panel padding.
 pub const SPACE_3: f32 = 12.0;
-/// 16px — generous block separation (inspector body, selection cards).
+/// 16px - generous block separation (inspector body, selection cards).
 pub const SPACE_4: f32 = 16.0;
-/// 24px — major section breaks.
+/// 24px - major section breaks.
 pub const SPACE_5: f32 = 24.0;
-/// 32px — rare page-level breathing room.
+/// 32px - rare page-level breathing room.
 pub const SPACE_6: f32 = 32.0;
 
-// —— Spacing / sizing ————————————————————————————————————————————————
+// -- Spacing / sizing ------------------------------------------------
 
 pub const ROW_H: f32 = 28.0;
 /// Outer chrome padding (panels, app bar insets).
 pub const PAD: f32 = SPACE_3;
-pub const PAD_SM: f32 = SPACE_1 + 2.0; // 6 — legacy half-step kept for tool chrome
+pub const PAD_SM: f32 = SPACE_1 + 2.0; // 6 - legacy half-step kept for tool chrome
 /// 1.0 = baked IBM Plex Sans at 14px.
 pub const FONT_SCALE: f32 = 1.0;
 pub const GAP: f32 = SPACE_2;
@@ -55,7 +55,7 @@ pub const RADIUS_PILL: f32 = 13.0;
 /// Circular slider thumb diameter.
 pub const SLIDER_THUMB: f32 = 14.0;
 
-// —— Inspector / form control grid (label | control | value) ——————————
+// -- Inspector / form control grid (label | control | value) ----------
 
 /// Fixed left column for property labels (aligned across all form rows).
 pub const CONTROL_LABEL_W: f32 = 96.0;
@@ -69,10 +69,10 @@ pub const CONTROL_ROW_H: f32 = 32.0;
 pub const INSP_PAD: f32 = SPACE_4;
 /// Selection identity card height (icon + name).
 pub const INSP_SELECTION_H: f32 = 44.0;
-/// Section header row height (SHAPE / DETAIL / …).
+/// Section header row height (SHAPE / DETAIL / ...).
 pub const INSP_SECTION_H: f32 = 28.0;
 
-// —— Typography scale (multipliers on FONT_SCALE) ————————————————
+// -- Typography scale (multipliers on FONT_SCALE) ----------------
 
 /// Section labels / meta (GLOBAL, REGIONS, captions).
 pub const TYPE_CAPTION: f32 = 0.72;
@@ -83,7 +83,7 @@ pub const TYPE_BODY: f32 = 0.92;
 /// Region card titles / panel titles.
 pub const TYPE_TITLE: f32 = 1.0;
 
-// —— Colours (charcoal + blue design system) ————————————————————
+// -- Colours (charcoal + blue design system) --------------------
 
 /// App / viewport surround (~#12141A).
 pub const APP_BG: Color = Color::rgb(0.071, 0.078, 0.102);
@@ -105,7 +105,7 @@ pub const ACCENT_SOFT: Color = Color::rgba(0.23, 0.51, 0.96, 0.18);
 pub const ACCENT_HOVER: Color = Color::rgb(0.30, 0.58, 1.0);
 pub const SELECTED_BG: Color = Color::rgb(0.12, 0.22, 0.40);
 pub const HOVER_BG: Color = Color::rgb(0.14, 0.16, 0.22);
-/// Unified row hover (layers / lists) — prefer over raw SURFACE.
+/// Unified row hover (layers / lists) - prefer over raw SURFACE.
 pub const ROW_HOVER: Color = HOVER_BG;
 /// Procedural region card surface (distinct from folder CAT_* fills).
 pub const REGION_CARD_BG: Color = Color::rgb(0.100, 0.112, 0.148);

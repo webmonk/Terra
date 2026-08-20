@@ -1,4 +1,4 @@
-//! Terrain Recipe view — linear execution-order visualization of the terrain stack.
+//! Terrain Recipe view - linear execution-order visualization of the terrain stack.
 //!
 //! Not a node graph. Rows come from [`terra_core::terrain_recipe::build_terrain_recipe_from_stack`]
 //! so the view stays synchronized with the document stack.
@@ -22,7 +22,7 @@ pub struct RecipeViewState {
     pub drag_from: Option<LayerDragSource>,
 }
 
-/// Draw the Terrain Recipe floating window (View → Terrain Recipe).
+/// Draw the Terrain Recipe floating window (View -> Terrain Recipe).
 pub fn draw_recipe_view(
     ui: &mut GuiContext<'_>,
     doc: &TerrainDocument,
@@ -45,12 +45,12 @@ pub fn draw_recipe_view(
         return;
     }
 
-    label(ui, "Execution order · not a node graph");
+    label(ui, "Execution order - not a node graph");
     ui.separator();
 
     let world_building = ui_state.build_progress.is_some();
     if let Some(p) = ui_state.build_progress {
-        label(ui, &format!("Rebuild status: Building… {:.0}%", p * 100.0));
+        label(ui, &format!("Rebuild status: Building... {:.0}%", p * 100.0));
     } else if ui_state.draft_displayed {
         label(ui, "Rebuild status: Draft displayed");
     } else {
@@ -112,7 +112,7 @@ pub fn draw_recipe_view(
         )
     });
     if only_chrome {
-        label(ui, "Empty recipe — add layers to the terrain stack.");
+        label(ui, "Empty recipe - add layers to the terrain stack.");
     }
 
     ui.end_window(&mut state.scroll_y);
@@ -149,7 +149,7 @@ fn draw_flow_arrow(ui: &mut GuiContext<'_>) {
     ui.label_at(
         cx,
         label_y(rect.min_y, rect.height(), FONT_SCALE),
-        "↓",
+        "v",
         style::TEXT_MUTED,
         FONT_SCALE * 1.1,
     );
@@ -202,10 +202,10 @@ fn draw_recipe_row(
     x += 18.0;
 
     let status_tag = match status {
-        RecipeRebuildStatus::Building => " · …",
-        RecipeRebuildStatus::Ready => " · ok",
-        RecipeRebuildStatus::Pending => " · ◯",
-        RecipeRebuildStatus::Disabled => " · off",
+        RecipeRebuildStatus::Building => " - ...",
+        RecipeRebuildStatus::Ready => " - ok",
+        RecipeRebuildStatus::Pending => " - ◯",
+        RecipeRebuildStatus::Disabled => " - off",
         RecipeRebuildStatus::Idle => "",
     };
     let mut label_text = item.name.clone();

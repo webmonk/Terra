@@ -49,7 +49,7 @@ fn uplift_peak_near_corridor_center() {
     let m = HeightfieldMetrics::new(64, 64, 2000.0, 2000.0);
     let p = UpliftParams {
         seed: 7,
-        range_angle: 0.0, // corridor along X → ridge near mid Z
+        range_angle: 0.0, // corridor along X -> ridge near mid Z
         corridor_width: 0.35,
         warp_strength: 0.0,
         detail_amplitude: 0.0,

@@ -1,4 +1,4 @@
-//! Terrain Recipe view — stack-only execution order.
+//! Terrain Recipe view - stack-only execution order.
 
 use terra_core::layer::{FlatParams, Layer, LayerKind, LayerStack, StackNode};
 use terra_core::terrain_recipe::{

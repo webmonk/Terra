@@ -2,12 +2,12 @@
 //!
 //! Shared by the fast procedural **Dunes** filter and the progressive
 //! **Sand Simulation** layer. Morphology (transverse / barchan-like / linear /
-//! fields) emerges from wind, supply, and transport parameters — not hardcoded meshes.
+//! fields) emerges from wind, supply, and transport parameters - not hardcoded meshes.
 //!
 //! Primary references:
-//! - Paris, Guérin, Galin, Peytavie (2019) — Desertscapes Simulation
-//! - Taylor & Keyser (2023) — Real-Time Sand Dune Simulation (GPU)
-//! - Nilles, Günther, Müller (2024) — Real-Time Desertscapes with CUDA
+//! - Paris, Guérin, Galin, Peytavie (2019) - Desertscapes Simulation
+//! - Taylor & Keyser (2023) - Real-Time Sand Dune Simulation (GPU)
+//! - Nilles, Günther, Müller (2024) - Real-Time Desertscapes with CUDA
 //!   (deterministic saltation, bilinear shadow/advection, improved avalanching)
 
 use crate::heightfield::{Heightfield, HeightfieldMetrics};
@@ -34,7 +34,7 @@ pub struct AeolianTransportParams {
     pub reptation: f32,
     /// How strongly terrain warps the wind field \[0, 1\].
     pub wind_warp: f32,
-    /// Lateral wind coherence: high → long ridges (linear/transverse); low → more crescent/star-like.
+    /// Lateral wind coherence: high -> long ridges (linear/transverse); low -> more crescent/star-like.
     pub linearity: f32,
 }
 
@@ -136,7 +136,7 @@ impl AeolianState {
         Heightfield::from_dense(self.metrics, &data)
     }
 
-    /// Run `steps` full transport iterations (wind → shadow → saltation → reptation → avalanche).
+    /// Run `steps` full transport iterations (wind -> shadow -> saltation -> reptation -> avalanche).
     pub fn evolve(&mut self, p: &AeolianTransportParams, steps: u32) {
         let steps = steps.max(1);
         for _ in 0..steps {
@@ -154,7 +154,7 @@ impl AeolianState {
         let w = self.metrics.width as i32;
         let h = self.metrics.height as i32;
         let dx = self.metrics.dx().max(1e-5);
-        // Wind along direction_deg from +X: 0° → (+1, 0), 90° → (0, +1).
+        // Wind along direction_deg from +X: 0 deg -> (+1, 0), 90 deg -> (0, +1).
         let ang = p.wind_direction_deg.to_radians();
         let (s, c) = ang.sin_cos();
         let bu = c;
@@ -192,7 +192,7 @@ impl AeolianState {
         let h = self.metrics.height as i32;
         let cell = self.metrics.dx().max(1e-5);
         // Look back far enough to catch dune-scale lee shadows (Paris ~10 m, but
-        // authoring grids often use larger cells — keep a minimum cell count).
+        // authoring grids often use larger cells - keep a minimum cell count).
         let max_steps = ((14.0 / cell).ceil() as i32)
             .max(8)
             .min(48)
@@ -277,14 +277,14 @@ impl AeolianState {
             let shadow = self.sheltering[idx];
             let slow = (1.0 - (self.wind_speed[idx] / p.wind_speed.max(1e-3)).clamp(0.0, 1.5))
                 .clamp(0.0, 1.0);
-            // Capacity decreases in shadow and on the lee — deposit fraction rises.
+            // Capacity decreases in shadow and on the lee - deposit fraction rises.
             let dep_p = (0.18 + 0.72 * shadow + 0.25 * slow).clamp(0.05, 0.95);
             let deposited = carried * dep_p;
             let bounced = carried - deposited;
             self.sand[idx] += deposited;
             self.deposition[idx] += deposited;
 
-            // Abrasion: bouncing grains convert a little bedrock → sand when cover is thin.
+            // Abrasion: bouncing grains convert a little bedrock -> sand when cover is thin.
             if bounced > 1e-6 && p.abrasion > 0.0 && self.sand[idx] < p.slab_size * 2.0 {
                 let abrade = (bounced * p.abrasion * 0.15).min(self.bedrock[idx].max(0.0));
                 self.bedrock[idx] -= abrade;
@@ -330,7 +330,7 @@ impl AeolianState {
                     let sm =
                         kr * d.abs() * 0.5 * (self.sand_flux[idx] + self.sand_flux[nidx] + 0.05);
                     let transfer = if d >= 0.0 {
-                        // Neighbor higher → receive from neighbor limited by neighbor sand.
+                        // Neighbor higher -> receive from neighbor limited by neighbor sand.
                         sm.min(self.sand[nidx])
                     } else {
                         -sm.min(self.sand[idx])

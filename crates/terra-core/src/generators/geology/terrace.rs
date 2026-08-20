@@ -1,4 +1,4 @@
-//! Geological terrace operators — quantise elevation into bands with smooth risers.
+//! Geological terrace operators - quantise elevation into bands with smooth risers.
 //!
 //! Not a posterise: tread/riser transitions use smooth nonlinear blends. Irregular
 //! mode perturbs elevation / spacing / riser phase in world space *before*
@@ -15,13 +15,13 @@ use super::super::filter_kernels::{gradient, phasor_noise, slope_deg};
 pub struct TerraceControls {
     /// Vertical terrace interval in meters. When `<= 0`, derive from `levels`.
     pub height_m: f32,
-    /// Level count used when `height_m <= 0` (clamped ≥ 2).
+    /// Level count used when `height_m <= 0` (clamped >= 2).
     pub levels: u32,
     /// Phase offset in \[0, 1) of the terrace interval.
     pub offset: f32,
     /// Round tread edges toward the source height \[0, 1\].
     pub top_smoothness: f32,
-    /// Riser sharpness \[0 soft … 1 sheer\].
+    /// Riser sharpness \[0 soft ... 1 sheer\].
     pub riser_sharpness: f32,
     /// World-space perturbation frequency (irregular / steep orientation).
     pub frequency: f32,
@@ -81,7 +81,7 @@ fn irregular_perturb(x: f32, z: f32, freq: f32, seed: u64) -> (f32, f32, f32) {
     let f = freq.max(1e-5);
     // Low-frequency coherent elevation shift (fraction of local interval later).
     let elev = noise::sample_noise(FractalNoiseType::Perlin, x * f, z * f, seed);
-    // Voronoi cells → local spacing variation (procedural noise cells).
+    // Voronoi cells -> local spacing variation (procedural noise cells).
     let cell = worley2(
         x * f * 0.85,
         z * f * 0.85,
@@ -89,7 +89,7 @@ fn irregular_perturb(x: f32, z: f32, freq: f32, seed: u64) -> (f32, f32, f32) {
         WorleyMetric::Euclidean,
     );
     let spacing = ((cell.f2 - cell.f1) * 2.0 - 1.0).clamp(-1.0, 1.0);
-    // Phasor → riser phase wander without high-frequency chatter.
+    // Phasor -> riser phase wander without high-frequency chatter.
     let phase = phasor_noise(x, z, f * 0.7, seed ^ 0xA11Au64);
     (elev, spacing * 0.35, phase * 0.5)
 }
@@ -114,14 +114,14 @@ fn quantize_band(
     };
     let interval = (base_interval * (1.0 + spacing_pert * 0.45)).max(1e-4);
     let phase = (c.offset + phase_pert).rem_euclid(1.0);
-    // Perturb which band the sample falls into — not the output height after stepping.
+    // Perturb which band the sample falls into - not the output height after stepping.
     let h_q = h + elev_pert * interval * 0.55;
     let t = (h_q - min_h) / interval + phase;
     let band = t.floor();
     let frac = t - band;
 
     let sharp = c.riser_sharpness.clamp(0.0, 1.0);
-    // Sheer risers → narrow transition; soft → wide nonlinear blend.
+    // Sheer risers -> narrow transition; soft -> wide nonlinear blend.
     let riser_w = (1.0 - sharp).clamp(0.04, 0.92);
     let tread_end = 1.0 - riser_w;
 
@@ -166,7 +166,7 @@ fn apply_terrace(input: &Heightfield, c: &TerraceControls, mode: TerraceMode) ->
                 TerraceMode::Simple => (0.0, 0.0, 0.0),
                 TerraceMode::Irregular => irregular_perturb(x, z, freq, c.seed),
                 TerraceMode::Steep => {
-                    // Mild coherent phase only — orientation comes from slope/normal.
+                    // Mild coherent phase only - orientation comes from slope/normal.
                     let p = noise::sample_noise(
                         FractalNoiseType::Perlin,
                         x * freq * 0.5,
@@ -177,7 +177,7 @@ fn apply_terrace(input: &Heightfield, c: &TerraceControls, mode: TerraceMode) ->
                 }
             };
 
-            // Steep: terrace orientation follows terrain — phase advances along gradient.
+            // Steep: terrace orientation follows terrain - phase advances along gradient.
             let mut weight = 1.0f32;
             if mode == TerraceMode::Steep {
                 let slope = slope_deg(input, i, j);

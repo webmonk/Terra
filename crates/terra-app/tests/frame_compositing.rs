@@ -4,7 +4,7 @@
 //! over the *same* view with `LoadOp::Load` before presenting (see
 //! terra-render's crate-level "Frame seam" docs). terra-app is the only crate
 //! that depends on both terra-render and terra-gui, so it is the only place the
-//! two real renderers can be driven into one target and checked together —
+//! two real renderers can be driven into one target and checked together -
 //! terra-gui's `frame_seam.rs` can only test the GUI pass against a plain fill.
 //!
 //! This drives the seam offscreen and asserts both halves: the GUI lands on the
@@ -30,8 +30,8 @@ const W: u32 = 64;
 const H: u32 = 64;
 
 /// A colour no terrain frame produces, used two ways: as a prefill a correct
-/// terrain render must fully overwrite, and — because the terrain is then proven
-/// magenta-free — as the GUI quad colour, so any magenta in the final frame is
+/// terrain render must fully overwrite, and - because the terrain is then proven
+/// magenta-free - as the GUI quad colour, so any magenta in the final frame is
 /// provably the GUI's and not leftover terrain.
 const MAGENTA: wgpu::Color = wgpu::Color {
     r: 1.0,
@@ -77,7 +77,7 @@ fn gui_composites_over_terrain_without_erasing_it() {
     let target = gpu.target(W, H, FORMAT);
 
     // Terrain half. Prefill magenta and require the render to overwrite all of
-    // it: this is the tripwire for a dropped terrain pass — without the render
+    // it: this is the tripwire for a dropped terrain pass - without the render
     // the prefill survives and the coverage assert fires. Snapshot the result
     // as the terrain baseline before the GUI touches the target.
     gpu.fill(&target, MAGENTA);
@@ -88,12 +88,12 @@ fn gui_composites_over_terrain_without_erasing_it() {
     let terrain = gpu.read_rgba8(&target);
     assert!(
         !terrain.any(MAGENTA_RGBA),
-        "terrain did not cover the target — magenta prefill survived, so the \
+        "terrain did not cover the target - magenta prefill survived, so the \
          preservation check below would be vacuous"
     );
 
     // GUI half. Draw one opaque magenta quad in the top-left, then run the real
-    // GUI pass over the SAME target view — exactly how the app composites the
+    // GUI pass over the SAME target view - exactly how the app composites the
     // GUI over terrain. The quad forces the pass to run (an empty frame skips it
     // and never reaches the load op).
     let mut gui_renderer = GuiRenderer::new(&gpu.device, &gpu.queue, FORMAT);
@@ -110,7 +110,7 @@ fn gui_composites_over_terrain_without_erasing_it() {
     let composited = gpu.read_rgba8(&target);
 
     // The GUI landed: an interior quad texel is magenta, which only the GUI can
-    // have produced — the terrain frame was proven magenta-free above.
+    // have produced - the terrain frame was proven magenta-free above.
     assert_eq!(
         composited.get(2, 2),
         MAGENTA_RGBA,
@@ -128,7 +128,7 @@ fn gui_composites_over_terrain_without_erasing_it() {
             assert_eq!(
                 composited.get(x, y),
                 terrain.get(x, y),
-                "terrain texel ({x}, {y}) changed under the GUI pass — it must \
+                "terrain texel ({x}, {y}) changed under the GUI pass - it must \
                  LoadOp::Load, not Clear"
             );
         }

@@ -1,7 +1,7 @@
 //! Non-destructive Shape history helpers for the Sculpt workspace.
 //!
 //! Viewport sculpt tools auto-create / update [`LayerKind::SculptStrokes`] layers
-//! on the terrain stack. Brush coverage lives on the stroke IR — artists never
+//! on the terrain stack. Brush coverage lives on the stroke IR - artists never
 //! manually add a Shape Layer, add a Mask, or paint a Mask separately.
 
 use crate::authoring::{SculptStroke, SculptStrokeKind, SculptStrokeParams};
@@ -189,7 +189,7 @@ pub fn resolve_shape_target(
     session_layer: Option<LayerId>,
     tool: ShapeTool,
 ) -> ShapeTargetDecision {
-    // Explicit selection always wins — artists expect the selected Shape Layer to receive strokes.
+    // Explicit selection always wins - artists expect the selected Shape Layer to receive strokes.
     if let Some(id) = selected {
         if stack
             .find(id)
@@ -267,14 +267,14 @@ pub fn merge_sculpt_stroke_layers(keep: &mut SculptStrokeParams, sources: &[&Scu
     }
 }
 
-/// Editing target label: `Stack → Shape Layer`.
+/// Editing target label: `Stack -> Shape Layer`.
 pub fn editing_target_label(scope_name: &str, layer_name: &str) -> String {
-    format!("Editing:\n{scope_name} → {layer_name}")
+    format!("Editing:\n{scope_name} -> {layer_name}")
 }
 
 /// Compact one-line target for chrome.
 pub fn editing_target_line(scope_name: &str, layer_name: &str) -> String {
-    format!("Editing: {scope_name} → {layer_name}")
+    format!("Editing: {scope_name} -> {layer_name}")
 }
 
 /// True when `layer` participates in Shape history (non-destructive sculpt).
@@ -403,7 +403,7 @@ mod tests {
     fn editing_label_format() {
         assert_eq!(
             editing_target_line("Main Continent", "Western Mountains"),
-            "Editing: Main Continent → Western Mountains"
+            "Editing: Main Continent -> Western Mountains"
         );
     }
 

@@ -1,4 +1,4 @@
-//! Flow routing interface: D8 and D∞ with receivers, donors, and topo order.
+//! Flow routing interface: D8 and Dinf with receivers, donors, and topo order.
 
 use std::collections::VecDeque;
 
@@ -28,7 +28,7 @@ pub enum FlowModel {
     DInfinity,
 }
 
-/// Single receiver contribution (D∞ may have two).
+/// Single receiver contribution (Dinf may have two).
 #[derive(Debug, Clone, Copy)]
 pub struct FlowReceiver {
     pub di: i32,
@@ -48,7 +48,7 @@ pub struct FlowGraph {
     pub d8_dir: Vec<u8>,
     /// Donor lists: cells that flow (partly) into this cell.
     pub donors: Vec<Vec<usize>>,
-    /// Topological order: upstream → downstream (sources first).
+    /// Topological order: upstream -> downstream (sources first).
     pub topo_order: Vec<usize>,
     /// Normalised D8 direction mask for AuxMaps / debug.
     pub direction_mask: MaskField,
@@ -141,8 +141,8 @@ pub fn build_flow_graph(hf: &Heightfield, model: FlowModel) -> FlowGraph {
 /// Lean D8 drainage: one receiver per cell as a flat `Vec<usize>`, no per-cell
 /// `Vec`s.
 ///
-/// Produces the same routed products the SPE oracle consumes — `d8_dir`, a flat
-/// receiver array, an upstream→downstream topo order, and the direction mask — as
+/// Produces the same routed products the SPE oracle consumes - `d8_dir`, a flat
+/// receiver array, an upstream->downstream topo order, and the direction mask - as
 /// [`build_flow_graph`] with [`FlowModel::D8`], but without the general graph's
 /// `Vec<Vec<FlowReceiver>>` receivers, `Vec<Vec<usize>>` donor lists, or
 /// `Vec`-per-pop topological pass. [`Self::rebuild`] reuses its buffers so a
@@ -151,7 +151,7 @@ pub fn build_flow_graph(hf: &Heightfield, model: FlowModel) -> FlowGraph {
 /// This is a *consumer* of [`flow_direction_d8`], not a second copy of it: D8 has
 /// exactly one receiver per cell, so the general path's per-pop `nexts.sort` is
 /// vacuous and this flat Kahn walk yields a **bit-identical** topo order and
-/// accumulation. D∞ genuinely needs the multi-receiver [`FlowGraph`]; this is
+/// accumulation. Dinf genuinely needs the multi-receiver [`FlowGraph`]; this is
 /// D8-only by construction.
 #[derive(Debug, Clone)]
 pub struct D8Drainage {
@@ -161,7 +161,7 @@ pub struct D8Drainage {
     pub d8_dir: Vec<u8>,
     /// Flat downstream neighbour index (`usize::MAX` = sink / no receiver).
     pub receiver: Vec<usize>,
-    /// Upstream → downstream order; bit-identical to [`FlowGraph::topo_order`].
+    /// Upstream -> downstream order; bit-identical to [`FlowGraph::topo_order`].
     pub topo_order: Vec<usize>,
     /// Normalised D8 direction mask (same as [`FlowGraph::direction_mask`]).
     pub direction_mask: MaskField,
@@ -235,9 +235,9 @@ impl D8Drainage {
         }
 
         // Kahn walk mirroring `topological_order`: seeds in ascending index
-        // order, and — because each cell frees at most one successor — that
+        // order, and - because each cell frees at most one successor - that
         // successor is appended directly (the general path's `nexts.sort` over a
-        // ≤1-element list is a no-op), so the emitted order is identical.
+        // <=1-element list is a no-op), so the emitted order is identical.
         self.queue.clear();
         for idx in 0..n {
             if self.indegree[idx] == 0 {
@@ -276,7 +276,7 @@ impl D8Drainage {
     }
 }
 
-/// D8 steepest descent. No downhill neighbour → `NO_FLOW`.
+/// D8 steepest descent. No downhill neighbour -> `NO_FLOW`.
 ///
 /// Ties break toward the lowest direction index for determinism.
 pub fn flow_direction_d8(hf: &Heightfield) -> (Vec<u8>, MaskField) {
@@ -315,7 +315,7 @@ pub fn flow_direction_d8(hf: &Heightfield) -> (Vec<u8>, MaskField) {
                 }
             }
             *dir_slot = best;
-            // Match prior MaskField::set clamping (NO_FLOW sentinel → 0).
+            // Match prior MaskField::set clamping (NO_FLOW sentinel -> 0).
             *mask_slot = if best == NO_FLOW {
                 0.0
             } else {
@@ -325,7 +325,7 @@ pub fn flow_direction_d8(hf: &Heightfield) -> (Vec<u8>, MaskField) {
     (dirs, MaskField::from_raw(hf.metrics, &mask_data))
 }
 
-/// D∞ (Tarboton): partition flow between the two cells of the winning facet.
+/// Dinf (Tarboton): partition flow between the two cells of the winning facet.
 pub fn flow_direction_dinfinity(hf: &Heightfield) -> Vec<Vec<FlowReceiver>> {
     let w = hf.metrics.width as usize;
     let h = hf.metrics.height as usize;
@@ -462,7 +462,7 @@ fn build_donors(receivers: &[Vec<FlowReceiver>], w: usize, h: usize) -> Vec<Vec<
     donors
 }
 
-/// Upstream → downstream topological order (sources first).
+/// Upstream -> downstream topological order (sources first).
 fn topological_order(
     donors: &[Vec<usize>],
     receivers: &[Vec<FlowReceiver>],
@@ -531,7 +531,7 @@ mod tests {
         let m = HeightfieldMetrics::new(3, 3, 3.0, 3.0);
         let mut hf = Heightfield::filled(m, 2.0);
         hf.set(1, 1, 3.0);
-        // Equal drop to all 8 → prefer dir 0 (1,0).
+        // Equal drop to all 8 -> prefer dir 0 (1,0).
         let (dirs, _) = flow_direction_d8(&hf);
         assert_eq!(dirs[4], 0);
         let a = build_flow_graph(&hf, FlowModel::D8);
@@ -564,7 +564,7 @@ mod tests {
         hf.set(1, 1, 1.0);
         let g = build_flow_graph(&hf, FlowModel::D8);
         let acc = accumulate_drainage_area(&g, &Precipitation::uniform(1.0));
-        // Center pit has no lower neighbour → sink; all 8 neighbours drain into it.
+        // Center pit has no lower neighbour -> sink; all 8 neighbours drain into it.
         assert_eq!(g.d8_dir[4], NO_FLOW);
         assert_eq!(acc[4], 9.0);
     }

@@ -2,7 +2,7 @@
 
 /// Recycles dense float buffers between resampling and simulation passes.
 ///
-/// Caps retained free buffers so amplify / multilevel schedules at 2K–4K do not
+/// Caps retained free buffers so amplify / multilevel schedules at 2K-4K do not
 /// unbounded-grow the arena (Phase I memory budgeting).
 #[derive(Debug)]
 pub struct FloatArena {
@@ -27,7 +27,7 @@ impl FloatArena {
             free: Vec::new(),
             max_retained: 8,
             retained_bytes: 0,
-            // ~64 MiB soft cap for recycled scratch (2K–4K aux-friendly).
+            // ~64 MiB soft cap for recycled scratch (2K-4K aux-friendly).
             max_retained_bytes: 64 * 1024 * 1024,
         }
     }

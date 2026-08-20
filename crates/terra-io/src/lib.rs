@@ -204,10 +204,10 @@ impl BackgroundProjectIo {
         let (tx, rx) = mpsc::channel();
         self.rx = rx;
         self.busy = true;
-        self.status = Some("Saving…");
+        self.status = Some("Saving...");
         self.result = None;
         thread::spawn(move || {
-            let _ = tx.send(ProjectIoMsg::Progress("Saving…"));
+            let _ = tx.send(ProjectIoMsg::Progress("Saving..."));
             match doc.into_json() {
                 Ok(json) => match std::fs::write(&path, json) {
                     Ok(()) => {
@@ -234,10 +234,10 @@ impl BackgroundProjectIo {
         let (tx, rx) = mpsc::channel();
         self.rx = rx;
         self.busy = true;
-        self.status = Some("Loading…");
+        self.status = Some("Loading...");
         self.result = None;
         thread::spawn(move || {
-            let _ = tx.send(ProjectIoMsg::Progress("Loading…"));
+            let _ = tx.send(ProjectIoMsg::Progress("Loading..."));
             match std::fs::read_to_string(&path) {
                 Ok(s) => match TerrainDocument::from_json(&s) {
                     Ok(doc) => {

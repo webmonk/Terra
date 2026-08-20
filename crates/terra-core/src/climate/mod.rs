@@ -1,6 +1,6 @@
 //! Simplified climate fields and biome classification (Phase H).
 //!
-//! Physically motivated artist controls — not a GCM. CPU is the export oracle;
+//! Physically motivated artist controls - not a GCM. CPU is the export oracle;
 //! GPU preview may skip height-affecting work, while climate AuxMaps are baked
 //! on CPU and uploaded as R32Float for overlays.
 
@@ -86,7 +86,7 @@ pub fn bake_climate(
                 - c.lapse_rate * h.max(0.0))
             .clamp(0.0, 1.0);
 
-            // Solar / aspect: south-facing (180°) warmer in northern hemisphere.
+            // Solar / aspect: south-facing (180 deg) warmer in northern hemisphere.
             let sun_az = 180.0;
             let aspect_diff = angle_diff(aspect, sun_az).abs();
             let aspect_warm = (1.0 - aspect_diff / 180.0).clamp(0.0, 1.0);
@@ -103,7 +103,7 @@ pub fn bake_climate(
             let oro = gx * wx + gz * wz;
             let windward = oro.max(0.0);
             let leeward = (-oro).max(0.0);
-            // Normalize roughly by typical slopes (~0.2–1.0).
+            // Normalize roughly by typical slopes (~0.2-1.0).
             let windward_n = (windward * 2.0).clamp(0.0, 1.0);
             let leeward_n = (leeward * 2.0).clamp(0.0, 1.0);
 
@@ -233,7 +233,7 @@ fn band_matches(
 }
 
 /// Optional Cordonnier-style one-way feedback: vegetation density slightly
-/// increases hardness (root cohesion). `boost` ∈ \[0,1\] is the max ΔK.
+/// increases hardness (root cohesion). `boost` in \[0,1\] is the max ΔK.
 pub fn apply_root_cohesion(hardness: &MaskField, vegetation: &MaskField, boost: f32) -> MaskField {
     let b = boost.clamp(0.0, 1.0);
     if b <= 1e-6 {

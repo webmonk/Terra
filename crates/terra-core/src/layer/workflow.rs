@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 /// High-level artist workflow stage for layer type metadata.
 ///
 /// Distinct from [`EvalStage`] (pipeline ordering) and [`StackCategory`]
-/// (WC folder roles). Phase 1 uses this for discovery / inspector hints only —
+/// (WC folder roles). Phase 1 uses this for discovery / inspector hints only -
 /// the visible layer tree is **not** regrouped by stage yet.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum WorkflowStage {

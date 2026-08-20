@@ -40,7 +40,7 @@ pub enum MaskEditAction {
 pub enum PanelAction {
     UpdateTerrainSettings(TerrainSettingsUpdate),
     AddLayer(Layer),
-    /// Add a layer into a specific World Creator—style category folder.
+    /// Add a layer into a specific World Creator-style category folder.
     AddLayerToCategory {
         category: terra_core::layer::StackCategory,
         layer: Layer,
@@ -274,7 +274,7 @@ pub enum PanelAction {
     AddIsolatedGroup {
         name: String,
     },
-    /// Add a World Creatorâ€“style biome container under Biomes.
+    /// Add a World Creator-style biome container under Biomes.
     AddBiome {
         name: String,
     },
@@ -458,7 +458,7 @@ pub enum PanelAction {
         uv: Option<(f32, f32)>,
         locked_owner: Option<terra_core::contextual_create::CreateOwner>,
     },
-    /// Focus an inspector section after create (string key: general/noise/â€¦).
+    /// Focus an inspector section after create (string key: general/noise/...).
     SetInspectorSection(String),
     /// Rebuild outdated / affected content (selective).
     RebuildAffected,

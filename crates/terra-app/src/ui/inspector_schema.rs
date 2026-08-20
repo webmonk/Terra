@@ -8,11 +8,11 @@ pub enum InspectorSection {
     #[default]
     General,
     Shape,
-    /// Legacy key `"details"` — unused as a primary tab.
+    /// Legacy key `"details"` - unused as a primary tab.
     Details,
     /// Filter / erosion / modifier layers (WC Filters).
     Erosion,
-    /// Legacy key `"output"` — prefer [`Self::Materials`] / [`Self::Objects`] / [`Self::Biome`].
+    /// Legacy key `"output"` - prefer [`Self::Materials`] / [`Self::Objects`] / [`Self::Biome`].
     Output,
     Distribution,
     Noise,

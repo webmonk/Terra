@@ -1,4 +1,4 @@
-//! Staging ring for CPU→GPU texture uploads.
+//! Staging ring for CPU->GPU texture uploads.
 //!
 //! Rotates through reusable `COPY_DST | COPY_SRC` buffers so large height/aux
 //! uploads use `copy_buffer_to_texture` with 256-byte row alignment instead of

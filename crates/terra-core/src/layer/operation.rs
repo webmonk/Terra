@@ -10,14 +10,14 @@ use super::ScaleBand;
 /// Internal height-op classification (create vs transform vs sim / surface).
 ///
 /// **Not** the World Creator artist taxonomy. Artist-facing folders are
-/// Shape Layers / Biome Filters / Simulation — see [`StackCategory`](super::group_mode::StackCategory)
+/// Shape Layers / Biome Filters / Simulation - see [`StackCategory`](super::group_mode::StackCategory)
 /// and [`biome_destination_section`](super::stack::biome_destination_section). Do not surface
 /// "Generator" / "Modifier" as Shape workflow labels in the UI.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum OperationCategory {
     /// Creates height contribution (internal; often a Shape Layer or Filter by kind).
     Generator,
-    /// Transforms existing height (internal; Path/Polygon stay Shape; Terrace/filters → Biome Filters).
+    /// Transforms existing height (internal; Path/Polygon stay Shape; Terrace/filters -> Biome Filters).
     Modifier,
     Simulation,
     Analysis,
@@ -28,7 +28,7 @@ pub enum OperationCategory {
 }
 
 impl OperationCategory {
-    /// Internal / debug label — prefer WC folder names in artist UI.
+    /// Internal / debug label - prefer WC folder names in artist UI.
     pub fn label(self) -> &'static str {
         match self {
             OperationCategory::Generator => "Height source",
@@ -42,7 +42,7 @@ impl OperationCategory {
         }
     }
 
-    /// Internal / debug badge — not used for WC Shape Layers UI.
+    /// Internal / debug badge - not used for WC Shape Layers UI.
     pub fn short_badge(self) -> &'static str {
         match self {
             OperationCategory::Generator => "HSRC",
@@ -376,7 +376,7 @@ impl LayerKind {
         crate::tiling::dirty_class_for(self)
     }
 
-    /// Phase 11 Rule 3 — scale ownership for this operator family.
+    /// Phase 11 Rule 3 - scale ownership for this operator family.
     ///
     /// Micro / MultiScale operators must not replace the macro silhouette.
     pub fn scale_band(&self) -> ScaleBand {

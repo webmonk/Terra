@@ -400,7 +400,7 @@ pub(crate) fn edit_kind(
                 changed |= slider_f32(ui, "In Min", &mut p.base.remap_min, -2.0, 0.0);
                 changed |= slider_f32(ui, "In Max", &mut p.base.remap_max, 0.0, 2.0);
             } else if split_noise {
-                // Shape tab â€” landform controls only; seed/noise live on Noise tab.
+                // Shape tab - landform controls only; seed/noise live on Noise tab.
                 changed |= slider_f32(ui, "Peak Height", &mut p.base.amplitude, 0.0, 1000.0);
                 changed |= slider_f32(ui, "Ridge Sharpness", &mut p.ridge_sharpness, 0.5, 4.0);
                 changed |= slider_f32(ui, "Crest Gouges", &mut p.crest_detail, 0.0, 120.0);
@@ -521,7 +521,7 @@ pub(crate) fn edit_kind(
                     &p.path
                 },
             );
-            if button_id(ui, Id::new("insp_browse_heightmap"), "Browseâ€¦") {
+            if button_id(ui, Id::new("insp_browse_heightmap"), "Browse...") {
                 actions.push(PanelAction::BrowseHeightmapPath { layer: layer_id });
             }
             changed |= slider_f32(ui, "Scale", &mut p.height_scale, 1.0, 2000.0);
@@ -870,7 +870,7 @@ pub(crate) fn edit_kind(
                     });
                     changed = true;
                 }
-                label(ui, "Strata (surface → bedrock)");
+                label(ui, "Strata (surface -> bedrock)");
                 if button_id(
                     ui,
                     Id::new("bed_geom"),
@@ -884,8 +884,8 @@ pub(crate) fn edit_kind(
                         dip_deg,
                         azimuth_deg,
                     } => {
-                        changed |= slider_f32(ui, "Dip °", dip_deg, 0.0, 60.0);
-                        changed |= slider_f32(ui, "Dip Azimuth °", azimuth_deg, 0.0, 360.0);
+                        changed |= slider_f32(ui, "Dip  deg", dip_deg, 0.0, 60.0);
+                        changed |= slider_f32(ui, "Dip Azimuth  deg", azimuth_deg, 0.0, 360.0);
                     }
                     BedGeometry::Folded {
                         amplitude_m,
@@ -972,7 +972,7 @@ pub(crate) fn edit_kind(
                 changed |= slider_f32(ui, "Lapse Rate", &mut p.climate.lapse_rate, 0.0, 0.005);
                 changed |= slider_f32(ui, "Latitude", &mut p.climate.latitude, 0.0, 1.0);
                 changed |= slider_f32(ui, "Temp Gradient", &mut p.climate.temp_gradient, 0.0, 0.5);
-                changed |= slider_f32(ui, "Wind Dir Â°", &mut p.climate.wind_dir_deg, 0.0, 360.0);
+                changed |= slider_f32(ui, "Wind Dir  deg", &mut p.climate.wind_dir_deg, 0.0, 360.0);
                 changed |= slider_f32(ui, "Base Precip", &mut p.climate.base_precip, 0.0, 1.0);
                 changed |= slider_f32(
                     ui,
@@ -1008,7 +1008,7 @@ pub(crate) fn edit_kind(
                     );
                     changed |= slider_f32(
                         ui,
-                        "Wetnessâ†’Moist",
+                        "Wetness->Moist",
                         &mut p.climate.moisture_from_wetness,
                         0.0,
                         1.0,
@@ -1028,7 +1028,7 @@ pub(crate) fn edit_kind(
             changed |= slider_f32(ui, "Radius UV", &mut p.radius_uv, 0.01, 0.4);
             changed |= slider_f32(ui, "Depth m", &mut p.depth, 1.0, 80.0);
             changed |= slider_f32(ui, "Lip m", &mut p.lip_height, 0.0, 20.0);
-            changed |= slider_f32(ui, "Entrance Â°", &mut p.entrance_angle_deg, 0.0, 360.0);
+            changed |= slider_f32(ui, "Entrance  deg", &mut p.entrance_angle_deg, 0.0, 360.0);
             if advanced {
                 changed |= slider_f32(ui, "Falloff", &mut p.falloff, 0.05, 1.0);
                 changed |= slider_f32(ui, "Noise", &mut p.noise_amplitude, 0.0, 1.0);
@@ -1048,7 +1048,7 @@ pub(crate) fn edit_kind(
             changed |= slider_f32(ui, "Size Z", &mut p.size_z, 4.0, 120.0);
             changed |= slider_f32(ui, "Depth m", &mut p.depth, 2.0, 80.0);
             changed |= slider_f32(ui, "Entrance R", &mut p.entrance_radius, 1.0, 30.0);
-            changed |= slider_f32(ui, "Entrance Â°", &mut p.entrance_angle_deg, 0.0, 360.0);
+            changed |= slider_f32(ui, "Entrance  deg", &mut p.entrance_angle_deg, 0.0, 360.0);
             if advanced {
                 changed |= slider_f32(ui, "Lip m", &mut p.lip_height, 0.0, 10.0);
                 changed |= slider_f32(ui, "Noise", &mut p.noise_amplitude, 0.0, 1.0);
@@ -1058,7 +1058,7 @@ pub(crate) fn edit_kind(
                     changed = true;
                 }
             }
-            label(ui, "Local SDF cave pocket â†’ dual-height (CPU).");
+            label(ui, "Local SDF cave pocket -> dual-height (CPU).");
         }
         LayerKind::EffectFilter(p) => {
             let filter_labels: Vec<&'static str> = EffectFilterKind::ALL
@@ -1445,7 +1445,7 @@ pub(crate) fn edit_kind(
         LayerKind::ProceduralShape(p) => {
             section_header(ui, "LANDFORM");
             label(ui, p.generator.label());
-            // Cycle through WC landscape generators (Mountain â†’ â€¦ â†’ Noise).
+            // Cycle through WC landscape generators (Mountain -> ... -> Noise).
             if button_id(ui, Id::new("proc_shape_cycle"), "Change Landform") {
                 p.generator = p.generator.cycle();
                 changed = true;
@@ -1526,7 +1526,7 @@ pub(crate) fn edit_kind(
                     &p.heightmap.path
                 },
             );
-            if button_id(ui, Id::new("insp_browse_stamp2d"), "Browseâ€¦") {
+            if button_id(ui, Id::new("insp_browse_stamp2d"), "Browse...") {
                 actions.push(PanelAction::BrowseHeightmapPath { layer: layer_id });
             }
             changed |= slider_f32(ui, "Scale", &mut p.heightmap.height_scale, 1.0, 2000.0);
@@ -1539,12 +1539,12 @@ pub(crate) fn edit_kind(
             label(
                 ui,
                 if p.path.is_empty() {
-                    "(empty â€” procedural rock)"
+                    "(empty - procedural rock)"
                 } else {
                     &p.path
                 },
             );
-            if button_id(ui, Id::new("insp_browse_stamp3d"), "Browseâ€¦") {
+            if button_id(ui, Id::new("insp_browse_stamp3d"), "Browse...") {
                 actions.push(PanelAction::BrowseMeshPath { layer: layer_id });
             }
             changed |= slider_f32(ui, "Scale", &mut p.height_scale, 0.01, 100.0);
@@ -1642,7 +1642,7 @@ pub(crate) fn seed_row(ui: &mut GuiContext<'_>, id_key: &str, seed: &mut u64) ->
     if changed {
         *seed = value as u64;
     }
-    // Full-width secondary action â€” clearer hit target than a lone icon.
+    // Full-width secondary action - clearer hit target than a lone icon.
     ui.gap(2.0);
     let row = ui.allocate(ROW_H);
     let id = Id::new(id_key).child("seed_refresh");
@@ -1863,7 +1863,7 @@ pub(crate) fn kind_display_name(kind: &LayerKind) -> &'static str {
         RiverNetwork(_) => "River Network",
         SandSimulation(_) => "Sand Sim",
         FluidSimulation(_) => "Fluid Sim",
-        // WC Procedural shape tool — show the active landform, not "Procedural".
+        // WC Procedural shape tool - show the active landform, not "Procedural".
         ProceduralShape(p) => p.generator.label(),
         Stamp2d(_) => "2D Stamp",
         Stamp3d(_) => "3D Stamp",

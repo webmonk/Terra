@@ -1,4 +1,4 @@
-//! Phase J — optional local volumetric geology (dual-height overhang + local SDF).
+//! Phase J - optional local volumetric geology (dual-height overhang + local SDF).
 //!
 //! Heightfields remain the primary authoring and erosion domain. These helpers produce a
 //! **dual-height** representation: a carved floor DEM plus a ceiling aux map, limited to a
@@ -44,7 +44,7 @@ pub fn apply_overhang_stamp(hf: &Heightfield, p: &OverhangStampParams) -> DualHe
     let mut out = hf.clone();
     let mut ceiling_data = vec![0.0f32; (m.width * m.height) as usize];
     let mut mask = MaskField::zeros(m);
-    // Seed ceiling with current surface (meters — bypass MaskField \[0,1\] clamp).
+    // Seed ceiling with current surface (meters - bypass MaskField \[0,1\] clamp).
     for j in 0..m.height {
         for i in 0..m.width {
             ceiling_data[(j * m.width + i) as usize] = hf.get(i, j);
@@ -128,7 +128,7 @@ pub fn apply_overhang_stamp(hf: &Heightfield, p: &OverhangStampParams) -> DualHe
 
 /// Local analytic SDF cave pocket (ellipsoid chamber + entrance tunnel).
 ///
-/// Guidance: GPU Gems 3 density / MC ideas — here we only evaluate a **local low-res analytic
+/// Guidance: GPU Gems 3 density / MC ideas - here we only evaluate a **local low-res analytic
 /// SDF** and project void intervals onto dual-height (no full-world marching cubes).
 pub fn apply_local_sdf(hf: &Heightfield, p: &LocalSdfParams) -> DualHeightResult {
     let m = hf.metrics;
@@ -414,7 +414,7 @@ mod tests {
         let mut hf = Heightfield::filled(m, 10.0);
         for j in 0..res {
             for i in 0..res {
-                // High plateau on +X half — cliff near mid.
+                // High plateau on +X half - cliff near mid.
                 if i > res / 2 {
                     hf.set(i, j, 40.0);
                 }

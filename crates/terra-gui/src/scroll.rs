@@ -31,7 +31,7 @@ pub fn scrollbar_y(
         SCROLLBAR_W,
         (view_h - SCROLLBAR_PAD * 2.0).max(8.0),
     );
-    // Never clamp with min > max — short panels (e.g. menus) can have track < 22px.
+    // Never clamp with min > max - short panels (e.g. menus) can have track < 22px.
     let min_thumb = 22.0_f32.min(track.height());
     let thumb_h = (track.height() * (view_h / content_h)).clamp(min_thumb, track.height());
     let travel = (track.height() - thumb_h).max(0.0);

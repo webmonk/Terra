@@ -1,4 +1,4 @@
-//! Floating Bookmarks window — saved camera views (Ctrl/Alt+1–9).
+//! Floating Bookmarks window - saved camera views (Ctrl/Alt+1-9).
 
 use crate::ui::panels::viewport_float_rect;
 use crate::ui::style::{self, FONT_SCALE, TYPE_CAPTION, TYPE_LABEL};
@@ -24,7 +24,7 @@ pub fn draw_bookmarks_gui(
         scroll_y,
     ) {
         label(ui, "Saved camera views");
-        label_dim(ui, "Ctrl+1-9 save · Alt+1-9 recall");
+        label_dim(ui, "Ctrl+1-9 save - Alt+1-9 recall");
         ui.separator();
 
         if button(ui, "Save to next empty slot") {
@@ -54,7 +54,7 @@ pub fn draw_bookmarks_gui(
             let title = if filled {
                 format!("Slot {}", slot + 1)
             } else {
-                format!("Slot {} — empty", slot + 1)
+                format!("Slot {} - empty", slot + 1)
             };
             ui.label_at(
                 row.min_x + 8.0,

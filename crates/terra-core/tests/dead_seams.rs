@@ -9,34 +9,34 @@
 //!
 //! - **Rule 1** (`public_traits_have_implementors`): every `pub trait X` must
 //!   have at least one occurrence of `X` outside its own definition and outside
-//!   `use` statements — an `impl … X for …`, a `dyn X`, or a generic bound all
+//!   `use` statements - an `impl ... X for ...`, a `dyn X`, or a generic bound all
 //!   qualify. A `pub use` re-export does not.
-//! - **Rule 2** (`public_type_aliases_have_consumers`): every `pub type X = …;`
+//! - **Rule 2** (`public_type_aliases_have_consumers`): every `pub type X = ...;`
 //!   must likewise be named somewhere that is neither its definition nor a
 //!   re-export line.
 //! - **Rule 3** (`converged_kernels_stay_single`): the routing/erosion kernels
-//!   that B2-D3/D4 collapsed to one lineage must stay single — each name in
+//!   that B2-D3/D4 collapsed to one lineage must stay single - each name in
 //!   `SINGLE_KERNELS` must be defined *exactly once*. Two definitions is a
 //!   re-fork; zero means it was renamed or removed and the list here is stale.
 //!
-//! An intentional forward declaration is not forbidden — it goes in
+//! An intentional forward declaration is not forbidden - it goes in
 //! `ALLOWED_INERT` with a justification, making the exception visible in review.
 //! `allowlist_is_honest` keeps that list from rotting: a blank justification
 //! fails, and so does a stale entry (one whose item gained a consumer or
 //! vanished), forcing the allowlist to shrink back on its own.
 //!
-//! Kept deliberately dumb — line scanning, no `syn` — so it grows no
+//! Kept deliberately dumb - line scanning, no `syn` - so it grows no
 //! dependencies and cannot rot, exactly like terra-gui's `purity.rs` guard.
 //! The consequences, all matching that guard's philosophy of erring toward a
 //! reviewed guard edit rather than a silent pass:
 //!
 //! - Line comments (`//`, `///`, `//!`) are stripped, so a doc-comment mention
 //!   of a trait is correctly *not* counted as keeping it alive.
-//! - Block comments (`/* … */`) and string literals are treated as code. Per
+//! - Block comments (`/* ... */`) and string literals are treated as code. Per
 //!   #26 this is acceptable for a tripwire: a false *positive* goes to
 //!   `ALLOWED_INERT` with a reason; a name kept "alive" only by a block-comment
 //!   mention is a tolerated tripwire gap, not a silent architectural hole.
-//! - `use`-statement lines (including multi-line `pub use foo::{ … };` blocks)
+//! - `use`-statement lines (including multi-line `pub use foo::{ ... };` blocks)
 //!   are blanked, so re-exports never count as life. The scan assumes the
 //!   one-`use`-statement-per-line form the workspace uses today.
 
@@ -46,7 +46,7 @@ use std::path::{Path, PathBuf};
 use std::sync::OnceLock;
 
 /// Intentional forward declarations excused from Rules 1 and 2, as
-/// `(identifier, justification)`. Empty today — the workspace has no inert
+/// `(identifier, justification)`. Empty today - the workspace has no inert
 /// `pub trait`/`pub type`. Any entry needs a real reason (an empty one fails),
 /// and `allowlist_is_honest` deletes stale entries by failing until they go.
 const ALLOWED_INERT: &[(&str, &str)] = &[];
@@ -57,7 +57,7 @@ const ALLOWED_INERT: &[(&str, &str)] = &[];
 ///
 /// `accumulate_drainage_area_d8` is the #27 lean flat-D8 accumulator: a second
 /// *consumer* of `flow_direction_d8`, not a re-fork of it. Pinning it single
-/// enforces #27's revert-check — there is exactly one flat D8 accumulation body,
+/// enforces #27's revert-check - there is exactly one flat D8 accumulation body,
 /// never a copy that could drift from the general path it must stay bit-identical
 /// to.
 const SINGLE_KERNELS: &[&str] = &[
@@ -355,7 +355,7 @@ fn filter_file(abs: &Path, rel: PathBuf) -> SrcFile {
 }
 
 /// Name of a `pub trait X` (or `pub unsafe trait X`) declared on this line, if
-/// any. `pub(crate)`/`pub(super)` are intentionally excluded — rustc's
+/// any. `pub(crate)`/`pub(super)` are intentionally excluded - rustc's
 /// dead-code lint already covers non-`pub` items; this guard closes the gap for
 /// genuinely public ones.
 fn public_trait_name(code: &str) -> Option<String> {
@@ -369,7 +369,7 @@ fn public_trait_name(code: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.to_string())
 }
 
-/// Name of a `pub type X = …;` declared on this line, if any (`pub(crate)`
+/// Name of a `pub type X = ...;` declared on this line, if any (`pub(crate)`
 /// excluded, as above).
 fn public_type_name(code: &str) -> Option<String> {
     let toks: Vec<&str> = code.split_whitespace().collect();
@@ -381,7 +381,7 @@ fn public_type_name(code: &str) -> Option<String> {
     (!name.is_empty()).then(|| name.to_string())
 }
 
-/// Whether `code` defines `fn NAME(` (or a generic `fn NAME<…>`) as a whole
+/// Whether `code` defines `fn NAME(` (or a generic `fn NAME<...>`) as a whole
 /// word. Call sites lack the `fn` keyword, so they never match.
 fn is_fn_def_of(code: &str, name: &str) -> bool {
     let bytes = code.as_bytes();

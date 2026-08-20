@@ -1,7 +1,7 @@
 //! Unified hydraulic erosion core (Beneš / Šťava / Mei-lite family).
 //!
 //! One shared solver powers Hydraulic, Soft/Ridged/Thin/Wide Flows, Sediment Flows,
-//! and Hydraulic Sediment. Presets bias transport / erodibility / particle kernels —
+//! and Hydraulic Sediment. Presets bias transport / erodibility / particle kernels -
 //! they do not fork independent erosion implementations or post-apply ridge noise.
 
 use crate::geomorph::ridge_valley_likelihood;
@@ -88,9 +88,9 @@ pub struct LayeredMaterials {
     pub bedrock: Vec<f32>,
     /// Loose sediment thickness (meters).
     pub loose_sediment: Vec<f32>,
-    /// Bedrock hardness K ∈ [0,1].
+    /// Bedrock hardness K in [0,1].
     pub bedrock_hardness: f32,
-    /// Loose-sediment hardness K ∈ [0,1] (typically soft).
+    /// Loose-sediment hardness K in [0,1] (typically soft).
     pub sediment_hardness: f32,
 }
 
@@ -140,7 +140,7 @@ pub struct TerrainHydroState {
     pub sediment_concentration: Vec<f32>,
     /// Suspended sediment load (meters of height-equivalent).
     pub suspended_sediment: Vec<f32>,
-    /// Effective erosion resistance K ∈ [0,1].
+    /// Effective erosion resistance K in [0,1].
     pub erosion_resistance: Vec<f32>,
 }
 
@@ -306,7 +306,7 @@ pub fn clamp_timestep_cfl(timestep: f32, dx: f32, max_speed: f32) -> f32 {
     timestep.clamp(1e-4, cfl.min(1.0))
 }
 
-/// Sanitize a dense field in place (NaN/Inf → 0, negatives → 0).
+/// Sanitize a dense field in place (NaN/Inf -> 0, negatives -> 0).
 ///
 /// For non-negative quantities (water depth, sediment load). For terrain height,
 /// use [`sanitize_finite`], which preserves genuine sub-zero (underwater) terrain.
@@ -324,7 +324,7 @@ pub fn sanitize_field(data: &mut [f32]) -> u32 {
     hits
 }
 
-/// Sanitize a dense height field in place (NaN/Inf → 0 only).
+/// Sanitize a dense height field in place (NaN/Inf -> 0 only).
 ///
 /// Unlike [`sanitize_field`], negative samples are preserved: below-sea-level
 /// bathymetry is valid terrain, not garbage to clip.
@@ -413,7 +413,7 @@ pub fn apply_transport_model(
             p.particle_radius = p.particle_radius.max(3);
             p.particle_inertia = (p.particle_inertia * 0.6).min(0.35);
             p.lateral_smoothing = p.lateral_smoothing.max(0.55);
-            // Baked into erosion above — keep GPU scale near 1.
+            // Baked into erosion above - keep GPU scale near 1.
             p.incision_bias = 0.75;
         }
         TransportModel::RidgedFlows => {

@@ -17,16 +17,16 @@ use crate::ui::ViewportRenderPrefs;
 /// Persisted editor preferences (dock geometry + workspace + viewport render).
 ///
 /// `layout` is `#[serde(flatten)]`ed so the file remains a single flat object with
-/// the same keys the pre-split `terra_gui::LayoutPrefs` produced — no migration.
+/// the same keys the pre-split `terra_gui::LayoutPrefs` produced - no migration.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct EditorPrefs {
     #[serde(flatten)]
     pub layout: LayoutPrefs,
-    /// Preferred task workspace id (`sculpt`, `biomes`, …). Editor preference only.
+    /// Preferred task workspace id (`sculpt`, `biomes`, ...). Editor preference only.
     #[serde(default = "default_preferred_workspace")]
     pub preferred_workspace: String,
     /// When true, creating an entity may switch to its home workspace.
-    /// Default false — artists stay in the current workspace unless they opt in.
+    /// Default false - artists stay in the current workspace unless they opt in.
     #[serde(default)]
     pub auto_switch_workspace_on_create: bool,
     /// Persisted viewport render quality settings (user preference).

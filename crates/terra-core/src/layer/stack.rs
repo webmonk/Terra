@@ -5,7 +5,7 @@ use super::{
 use crate::mask::Distribution;
 use serde::{Deserialize, Serialize};
 
-/// Nested group or single layer in the stack (bottom → top order in Vec).
+/// Nested group or single layer in the stack (bottom -> top order in Vec).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum StackNode {
     Layer(Layer),
@@ -45,7 +45,7 @@ pub struct LayerGroup {
     pub collapsed: bool,
     #[serde(default)]
     pub frozen: bool,
-    /// World Creator–style category folder role (Shape / Simulation / Mask / Biomes).
+    /// World Creator-style category folder role (Shape / Simulation / Mask / Biomes).
     #[serde(default)]
     pub category: Option<StackCategory>,
     /// Structural role (biome container, section, category folder).
@@ -271,7 +271,7 @@ impl LayerStack {
         self.nodes.push(StackNode::Group(group));
     }
 
-    /// Find the root category folder for a World Creator–style section.
+    /// Find the root category folder for a World Creator-style section.
     pub fn find_category(&self, category: StackCategory) -> Option<&LayerGroup> {
         self.nodes.iter().find_map(|n| match n {
             StackNode::Group(g) if g.category == Some(category) => Some(g),
@@ -413,9 +413,9 @@ impl LayerStack {
 
     /// Route a new layer into the best WC destination given selection context.
     ///
-    /// - **Shape layers** → Region Shape folder (always)
-    /// - **Terrain filters** → Biome Filters section (active/enclosing/default biome)
-    /// - Sims / materials / objects / scatter → matching biome section
+    /// - **Shape layers** -> Region Shape folder (always)
+    /// - **Terrain filters** -> Biome Filters section (active/enclosing/default biome)
+    /// - Sims / materials / objects / scatter -> matching biome section
     /// - `prefer_global_shape` forces Shape folder even for dual-role kinds
     pub fn push_routed(
         &mut self,
@@ -440,7 +440,7 @@ impl LayerStack {
             return self.push_into_category(layer);
         }
 
-        // Filters / sims / materials / objects → biome section.
+        // Filters / sims / materials / objects -> biome section.
         let biome_id = biome_id.unwrap_or_else(|| self.ensure_default_biome());
         let id = layer.id();
         if let Some(biome) = self.find_group_mut(biome_id) {
@@ -467,7 +467,7 @@ impl LayerStack {
         self.nodes.is_empty()
     }
 
-    /// Flatten to layers in bottom→top evaluation order, skipping disabled groups.
+    /// Flatten to layers in bottom->top evaluation order, skipping disabled groups.
     ///
     /// Prefer tree evaluation ([`crate::eval::StackEvaluator`]) when groups are scoped;
     /// flatten remains useful for leaf iteration, dirty ids, and GPU approximate paths.
@@ -648,7 +648,7 @@ impl LayerStack {
 
     /// Reorder `moving` relative to `target`.
     ///
-    /// Same-parent → sibling reorder. Different parent → relocate into the
+    /// Same-parent -> sibling reorder. Different parent -> relocate into the
     /// target's parent at the relative index (hierarchy change).
     pub fn reorder_relative(
         &mut self,
@@ -738,7 +738,7 @@ impl LayerStack {
         biome_id: LayerId,
         section: BiomeSection,
     ) -> bool {
-        // Region shape layers stay on the Shape stack — never under a biome section.
+        // Region shape layers stay on the Shape stack - never under a biome section.
         if self.find(layer_id).is_some_and(|l| is_shape_kind(&l.kind)) {
             return false;
         }
@@ -842,7 +842,7 @@ impl LayerStack {
         self.flatten_layers().iter().map(|l| l.id()).collect()
     }
 
-    /// First layer in evaluation order whose effective mask reads `mask` —
+    /// First layer in evaluation order whose effective mask reads `mask` -
     /// directly or through an ancestor group's mask. Used for targeted
     /// invalidation: everything below that layer is unaffected by the mask.
     pub fn first_layer_referencing_mask(
@@ -965,7 +965,7 @@ fn find_parent_id(nodes: &[StackNode], child: LayerId) -> Option<LayerId> {
 /// Kinds that belong under the Shape category folder (WC shape layers).
 ///
 /// Dual-role kinds (e.g. [`ImportHeightmap`](crate::layer::LayerKind::ImportHeightmap))
-/// are *not* included — callers that mean the Shape tool entry must force Shape via
+/// are *not* included - callers that mean the Shape tool entry must force Shape via
 /// `prefer_global_shape` / `shape.*` catalog ids.
 pub fn is_shape_kind(kind: &crate::layer::LayerKind) -> bool {
     use crate::layer::LayerKind::*;
@@ -1012,7 +1012,7 @@ fn is_biome_filter_kind(kind: &crate::layer::LayerKind) -> bool {
             | GeomorphicDetail(_)
             | OverhangStamp(_)
             | LocalSdf(_)
-            // WC Design "Height Map" filter — Terrain `shape.heightmap` forces Shape via
+            // WC Design "Height Map" filter - Terrain `shape.heightmap` forces Shape via
             // `prefer_global_shape` / AddLayerToCategory instead.
             | ImportHeightmap(_)
     )
@@ -1268,7 +1268,7 @@ mod tests {
         stack.push_group(g);
         stack.push(b);
         assert!(stack.move_into_group(bid, gid));
-        // Place root layer A before nested B → A joins the folder.
+        // Place root layer A before nested B -> A joins the folder.
         assert!(stack.reorder_relative(aid, bid, true));
         let folder = stack.find_group(gid).unwrap();
         let ids: Vec<_> = folder

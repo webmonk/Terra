@@ -1,4 +1,4 @@
-//! Reusable [`LandscapeEvolutionOperator`] — Phase 3 physically-based evolution.
+//! Reusable [`LandscapeEvolutionOperator`] - Phase 3 physically-based evolution.
 
 use crate::analyze;
 use crate::fields::keys;
@@ -63,7 +63,7 @@ impl LandscapeEvolutionOutput {
 
 /// Physically-based large-scale landscape evolution (Cordonnier / Tzathas SPE).
 ///
-/// Not droplet hydraulic erosion — fluvial incision follows the stream-power law
+/// Not droplet hydraulic erosion - fluvial incision follows the stream-power law
 /// coupled with tectonic uplift.
 #[derive(Debug, Clone)]
 pub struct LandscapeEvolutionOperator {
@@ -108,7 +108,7 @@ impl LandscapeEvolutionOperator {
         // ── Boundary / outlet mask ───────────────────────────────────────
         // ── Tectonic base structure (preserved large forms) ──────────────
         // Seed tectonic base from input + a short uplift impulse so large forms
-        // exist before fluvial organisation — erosion cannot freely destroy this.
+        // exist before fluvial organisation - erosion cannot freely destroy this.
         let mut tectonic = input.elevation.clone();
         let seed_time = (p.evolution_time() * 0.15).max(p.dt);
         for j in 0..m.height {
@@ -122,7 +122,7 @@ impl LandscapeEvolutionOperator {
         }
 
         // Initial surface for evolution: blend input toward tectonic seed by age.
-        // Low age → mostly input + mild uplift; high age → more tectonic structure.
+        // Low age -> mostly input + mild uplift; high age -> more tectonic structure.
         let age = p.geological_age.clamp(0.0, 1.0);
         let mut working = input.elevation.clone();
         let seed_blend = (0.2 + 0.55 * age) * p.uplift.clamp(0.0, 2.0).min(1.0);
@@ -143,7 +143,7 @@ impl LandscapeEvolutionOperator {
             for j in 0..m.height {
                 for i in 0..m.width {
                     let w = (rain_weight.get(i, j) / mean).clamp(0.25, 2.5);
-                    // Wetter → slightly softer effective rock for incision.
+                    // Wetter -> slightly softer effective rock for incision.
                     let h = hardness.get(i, j) / w.sqrt();
                     hardness.set(i, j, h.clamp(0.0, 1.0));
                 }

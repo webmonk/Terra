@@ -143,7 +143,7 @@ impl Distribution {
         self.entries.retain(|e| f(e));
     }
 
-    /// True when this distribution reads `mask` anywhere — legacy entries or
+    /// True when this distribution reads `mask` anywhere - legacy entries or
     /// dist nodes (including nested children).
     pub fn references_mask(&self, mask: crate::mask::MaskId) -> bool {
         fn node_refs(node: &DistNode, mask: crate::mask::MaskId) -> bool {

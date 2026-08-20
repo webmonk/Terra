@@ -1,4 +1,4 @@
-//! Sculpt workspace Shape history — brush-created non-destructive layers.
+//! Sculpt workspace Shape history - brush-created non-destructive layers.
 
 use std::collections::HashMap;
 use terra_core::authoring::{apply_sculpt_strokes, SculptStrokeKind};
@@ -255,7 +255,7 @@ fn undo_redo_via_stroke_params_snapshot() {
 fn editing_target_label() {
     assert_eq!(
         editing_target_line("Main Continent", "Western Mountains"),
-        "Editing: Main Continent → Western Mountains"
+        "Editing: Main Continent -> Western Mountains"
     );
 }
 

@@ -1,4 +1,4 @@
-//! Biome paint layers (WC Biome Layers) — splat weights + paint-while-sculpt.
+//! Biome paint layers (WC Biome Layers) - splat weights + paint-while-sculpt.
 
 use crate::ids::LayerId;
 use crate::mask::PaintBuffer;
@@ -493,7 +493,7 @@ pub struct ShapeTransform {
     #[serde(default = "default_scale")]
     pub scale: f32,
     pub rotation_deg: f32,
-    /// Border blend fade (0–1 of extent).
+    /// Border blend fade (0-1 of extent).
     #[serde(default)]
     pub blend_size: f32,
     #[serde(default)]
@@ -587,7 +587,7 @@ impl ShapeTransform {
     }
 }
 
-/// Hole layer — painted pierce mask for caves / cutouts (incomplete; data model only).
+/// Hole layer - painted pierce mask for caves / cutouts (incomplete; data model only).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HoleLayer {
     pub id: BiomeLayerId,

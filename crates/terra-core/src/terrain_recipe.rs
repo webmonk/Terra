@@ -1,4 +1,4 @@
-//! Terrain Recipe — linear execution-order view of the single terrain stack.
+//! Terrain Recipe - linear execution-order view of the single terrain stack.
 
 use crate::layer::{LayerId, LayerStack, StackNode};
 use serde::{Deserialize, Serialize};

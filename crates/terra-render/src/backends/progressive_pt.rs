@@ -1,4 +1,4 @@
-//! Progressive path-tracer backend — typed HDR/GBuffer contract for post.
+//! Progressive path-tracer backend - typed HDR/GBuffer contract for post.
 
 use crate::path_tracer::PathTracer;
 

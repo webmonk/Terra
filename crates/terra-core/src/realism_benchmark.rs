@@ -1,4 +1,4 @@
-//! Internal realism benchmark worlds (Phase 11 Rules 5–6).
+//! Internal realism benchmark worlds (Phase 11 Rules 5-6).
 //!
 //! Benchmarks assemble editable documents from real algorithms (not black-box
 //! generators) and expose expected morphometric ranges for clay-render review.
@@ -94,7 +94,7 @@ impl RealismBenchmark {
                 min_relief_m: 80.0,
                 max_mean_slope_deg: 45.0,
                 min_drainage_density: 0.02,
-                notes: "uplift → drainage → incision → debris → talus",
+                notes: "uplift -> drainage -> incision -> debris -> talus",
             },
             Self::DesertMesa => BenchmarkExpectations {
                 min_relief_m: 40.0,

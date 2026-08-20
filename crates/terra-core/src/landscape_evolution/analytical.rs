@@ -1,4 +1,4 @@
-//! Tzathas et al. 2024 — analytical / fast stream-power landscape evolution.
+//! Tzathas et al. 2024 - analytical / fast stream-power landscape evolution.
 //!
 //! Evaluates the stream-power law along drainage trees using the method of
 //! characteristics (`n = 1`):
@@ -200,7 +200,7 @@ fn analytical_on_tree(
         let soft = 1.0 - hardness.get(i as u32, j as u32).clamp(0.0, 1.0);
         let area = (cache.accumulation[idx] * cell_area * area_scale).max(cell_area);
         let mut ai = k * area.powf(m_exp) * soft;
-        // Slope correction: a ← a * δx / |z - zr| * ||∇z||  (stabilises axis bias)
+        // Slope correction: a <- a * δx / |z - zr| * ||∇z||  (stabilises axis bias)
         if let Some(r) = cache
             .receiver
             .get(idx)
@@ -233,8 +233,8 @@ fn analytical_on_tree(
         }
     }
 
-    // Path integrals along each root→leaf chain using recursive Tzathas updates.
-    // Process in downstream→upstream order so receivers are known.
+    // Path integrals along each root->leaf chain using recursive Tzathas updates.
+    // Process in downstream->upstream order so receivers are known.
     let mut travel = vec![0.0f32; n]; // T(0, x) cumulative time from outlet
     let mut s_uplift = vec![0.0f32; n]; // S integral U/a from outlet
 
@@ -310,7 +310,7 @@ fn characteristic_elevation(
     w: usize,
     cell_len: f32,
 ) -> (f32, f32) {
-    // If travel time from outlet already ≤ t, steady-state: D = 0.
+    // If travel time from outlet already <= t, steady-state: D = 0.
     if travel[idx] <= t {
         // Walk to outlet for z0(0).
         let mut c = idx;
@@ -321,7 +321,7 @@ fn characteristic_elevation(
         return (z0.get(oi as u32, oj as u32), s_uplift[idx]);
     }
 
-    // Need D such that T(D, idx) = t  ⇒  travel[idx] - travel[D] = t
+    // Need D such that T(D, idx) = t  =>  travel[idx] - travel[D] = t
     // Walk downstream collecting path, find segment where cumulative from idx hits t.
     let target_travel = travel[idx] - t;
     let mut path = Vec::new();
@@ -334,12 +334,12 @@ fn characteristic_elevation(
             break;
         }
     }
-    // path[0] = idx, path[last] ≈ at or past D
+    // path[0] = idx, path[last] ~ at or past D
     let last = *path.last().unwrap_or(&idx);
     let (li, lj) = (last % w, last / w);
     let z_d = z0.get(li as u32, lj as u32);
 
-    // S(D, idx) ≈ s_uplift[idx] - s_uplift[D]
+    // S(D, idx) ~ s_uplift[idx] - s_uplift[D]
     let s = (s_uplift[idx] - s_uplift[last]).max(0.0);
 
     // Sub-cell refinement: if we overshot, blend along the last edge.

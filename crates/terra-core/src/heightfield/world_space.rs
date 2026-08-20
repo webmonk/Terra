@@ -33,7 +33,7 @@ mod tests {
         let r_m = 150.0;
         let t_coarse = world_radius_texels(r_m, coarse);
         let t_fine = world_radius_texels(r_m, fine);
-        // Fine grid has 4× samples → 4× texel radius for same metres.
+        // Fine grid has 4× samples -> 4× texel radius for same metres.
         assert!((t_fine / t_coarse - 4.0).abs() < 1e-3);
         assert!((texels_to_metres(t_coarse, coarse) - r_m).abs() < 1e-2);
     }

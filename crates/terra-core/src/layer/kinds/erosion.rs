@@ -43,7 +43,7 @@ pub struct ThermalErosionParams {
     pub talus_angle_deg: f32,
     pub iterations: u32,
     pub strength: f32,
-    /// Constant bedrock hardness K ∈ \[0,1\]. Soft (0) erodes fully; hard (1) resists.
+    /// Constant bedrock hardness K in \[0,1\]. Soft (0) erodes fully; hard (1) resists.
     #[serde(default = "default_soft_hardness")]
     pub hardness: f32,
     /// Optional painted / procedural hardness override (`None` / default = use constant).
@@ -52,7 +52,7 @@ pub struct ThermalErosionParams {
     /// Max loose material (meters) that can weather / move per cell step.
     #[serde(default = "default_material_amount")]
     pub material_amount: f32,
-    /// Yang-style bedrock→loose weathering rate (K_th). 0 disables detach.
+    /// Yang-style bedrock->loose weathering rate (K_th). 0 disables detach.
     #[serde(default = "default_weathering_rate")]
     pub weathering_rate: f32,
     /// Downhill transport hop count (cells) for loose debris before settling.
@@ -315,12 +315,12 @@ pub struct HydraulicErosionParams {
     pub erosion: f32,
     pub deposition: f32,
     pub timestep: f32,
-    /// Constant hardness K âˆˆ \[0,1\] modulating erodibility as `(1-K)`.
+    /// Constant hardness K in \[0,1\] modulating erodibility as `(1-K)`.
     #[serde(default = "default_soft_hardness")]
     pub hardness: f32,
     #[serde(default)]
     pub hardness_source: MaskSource,
-    /// Amplify deposition at steepâ†’flat slope breaks (alluvial fans). 0 = off.
+    /// Amplify deposition at steep->flat slope breaks (alluvial fans). 0 = off.
     #[serde(default)]
     pub fan_boost: f32,
     /// Prefer depositing along high-flow / low-slope corridors (floodplain fill). 0 = off.
@@ -344,22 +344,22 @@ pub struct HydraulicErosionParams {
     /// Radius in cells of the erosion brush carried by each droplet.
     #[serde(default = "default_particle_radius")]
     pub particle_radius: u32,
-    /// Shared-core transport preset (Soft/Ridged/Thin/Wide/Sediment/…).
+    /// Shared-core transport preset (Soft/Ridged/Thin/Wide/Sediment/...).
     #[serde(default)]
     pub transport_model: TransportModel,
     /// When true, erode soft loose sediment before harder bedrock.
     #[serde(default)]
     pub layered_materials: bool,
-    /// Bedrock hardness K ∈ [0,1] for layered mode.
+    /// Bedrock hardness K in [0,1] for layered mode.
     #[serde(default = "default_bedrock_hardness")]
     pub bedrock_hardness: f32,
-    /// Loose-sediment hardness K ∈ [0,1] for layered mode.
+    /// Loose-sediment hardness K in [0,1] for layered mode.
     #[serde(default = "default_sediment_layer_hardness")]
     pub sediment_hardness: f32,
     /// Initial loose-sediment thickness (meters) when layered mode starts.
     #[serde(default)]
     pub initial_sediment_thickness: f32,
-    /// Ridge/divide protection strength from ridge–valley analysis (Ridged Flows).
+    /// Ridge/divide protection strength from ridge-valley analysis (Ridged Flows).
     #[serde(default)]
     pub ridge_protection: f32,
     /// Lateral bank smoothing bias folded into bank-slip (Soft/Wide Flows).
@@ -371,7 +371,7 @@ pub struct HydraulicErosionParams {
     /// Hydraulic / particle footprint scale (Thin < 1, Wide > 1).
     #[serde(default = "default_flow_footprint")]
     pub flow_footprint: f32,
-    /// Optional flow-accumulation threshold hint for filter→core bridging.
+    /// Optional flow-accumulation threshold hint for filter->core bridging.
     #[serde(default = "default_hydro_flow_threshold")]
     pub flow_threshold: f32,
     /// Emit erosion mask aux (default on).
@@ -510,15 +510,15 @@ impl HydraulicErosionParams {
 /// Stream-power erosion (SPE) parameters.
 ///
 /// Incision follows \(E = K\,A^{m}\,S^{n}\) modulated by softness \(1-K_{\mathrm{hard}}\).
-/// Drainage uses Priority-Flood + D8/D∞ on the CPU export oracle; Draft/Medium GPU
+/// Drainage uses Priority-Flood + D8/Dinf on the CPU export oracle; Draft/Medium GPU
 /// runs an approximate multi-pass D8 SPE.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct StreamPowerParams {
     pub iterations: u32,
     /// Erodibility coefficient \(K\) in the stream-power law.
     ///
-    /// Acts on **grid-relative** D8 slope (drop per 1 / √2 cells) and world-m²
-    /// drainage area — the convention baked into [`crate::hydro::spe_increment`]
+    /// Acts on **grid-relative** D8 slope (drop per 1 / √2 cells) and world-m^2
+    /// drainage area - the convention baked into [`crate::hydro::spe_increment`]
     /// on the `hydro` path. This is **not** numerically comparable with
     /// [`crate::landscape_evolution::LandscapeEvolutionParams`]'s `k`, which acts
     /// on world-metric slope and rain-scaled discharge. Do not silently unify the
@@ -535,11 +535,11 @@ pub struct StreamPowerParams {
     pub base_level: f32,
     /// Incision time-step / scale factor.
     pub dt: f32,
-    /// Prefer Dâˆž accumulation when true; else D8.
+    /// Prefer Dinf accumulation when true; else D8.
     pub use_dinfinity: bool,
     /// Re-run Priority-Flood every iteration (costlier, fewer trapped pits).
     pub refill_each_iter: bool,
-    /// Recompute D8/Dâˆž drainage every N SPE iterations (1 = every iter).
+    /// Recompute D8/Dinf drainage every N SPE iterations (1 = every iter).
     /// Draft preview may raise this to skip barriers; Full/Export keeps 1.
     #[serde(default = "default_drainage_reuse_stride")]
     pub drainage_reuse_stride: u32,
@@ -603,7 +603,7 @@ impl Default for StreamPowerParams {
 
 /// Multi-scale geomorphology amplify (Phase I).
 ///
-/// Coarseâ†’fine `SimLevel` schedule applies wavelength-scaled thermal polish,
+/// Coarse->fine `SimLevel` schedule applies wavelength-scaled thermal polish,
 /// light SPE incision, and optional deposition. Hard ridges and optional lock
 /// masks resist carve so large drainage structure is preserved while soft
 /// areas receive coherent fine detail.

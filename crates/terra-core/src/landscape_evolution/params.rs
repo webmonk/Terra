@@ -6,7 +6,7 @@ use serde::{Deserialize, Serialize};
 ///
 /// - [`Fast`](Self::Fast): Tzathas-style analytical stream-power evaluation
 ///   (time is a continuous parameter; interactive iteration).
-/// - [`Accurate`](Self::Accurate): Cordonnier / Braun–Willett style iterative
+/// - [`Accurate`](Self::Accurate): Cordonnier / Braun-Willett style iterative
 ///   stream-power integration with coupled uplift each step.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Default)]
 pub enum EvolutionSolverMode {
@@ -58,7 +58,7 @@ pub enum BoundaryMode {
 ///
 /// Artist knobs map onto stream-power / uplift coefficients; Advanced exposes
 /// the scientific parameters directly. Legacy fields (`iterations`,
-/// `uplift_rate`, `incision_k`, …) remain for document compatibility.
+/// `uplift_rate`, `incision_k`, ...) remain for document compatibility.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct LandscapeEvolutionParams {
     // ── Artist controls ──────────────────────────────────────────────────
@@ -74,7 +74,7 @@ pub struct LandscapeEvolutionParams {
     /// Extra channel incision emphasis `[0, 1+]`.
     #[serde(default = "default_artist_incision")]
     pub river_incision: f32,
-    /// Geological age `[0, 1]` → effective evolution time (not noise blend).
+    /// Geological age `[0, 1]` -> effective evolution time (not noise blend).
     #[serde(default = "default_geological_age")]
     pub geological_age: f32,
     /// Terrain resistance / hardness scale `[0, 1]`.
@@ -114,9 +114,9 @@ pub struct LandscapeEvolutionParams {
     /// Stream-power erodibility \(K\).
     ///
     /// Acts on **world-metric** slope (drop per dx/dz metres) and rain-scaled
-    /// discharge Q — see [`effective_k`](Self::effective_k) and the shared
+    /// discharge Q - see [`effective_k`](Self::effective_k) and the shared
     /// [`crate::hydro::spe_increment`]. **Not** numerically comparable with
-    /// [`crate::layer::StreamPowerParams`]'s `k` (grid-relative slope, world-m²
+    /// [`crate::layer::StreamPowerParams`]'s `k` (grid-relative slope, world-m^2
     /// area); unifying them would retune saved projects and needs a versioned
     /// document migration (station D1).
     #[serde(default = "default_k")]
@@ -127,7 +127,7 @@ pub struct LandscapeEvolutionParams {
     /// Slope exponent \(n\) (analytical Fast uses \(n = 1\)).
     #[serde(default = "default_n")]
     pub n: f32,
-    /// Maps geological age → years / effective time units.
+    /// Maps geological age -> years / effective time units.
     #[serde(default = "default_time_scale")]
     pub time_scale: f32,
     /// Accurate-mode integration step (years).
@@ -366,7 +366,7 @@ impl LandscapeEvolutionParams {
     pub fn accurate_steps(&self) -> u32 {
         let age = self.geological_age.clamp(0.0, 1.0);
         let base = self.iterations.max(1);
-        // Age scales effective steps; low age → few, high age → full budget.
+        // Age scales effective steps; low age -> few, high age -> full budget.
         let scaled = (base as f32 * (0.15 + 0.85 * age)).round() as u32;
         scaled.max(1)
     }

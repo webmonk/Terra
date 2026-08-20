@@ -5,11 +5,11 @@
 //!
 //! For an `n×n` noisy-mountain fixture it reports two things:
 //!
-//!   - **micro**: one drainage refresh — `build_flow_graph(D8)` (the general
+//!   - **micro**: one drainage refresh - `build_flow_graph(D8)` (the general
 //!     `Vec<Vec<FlowReceiver>>` graph #24 routed SPE through) plus
 //!     `accumulate_drainage_area`, split into build vs. accumulate. Once the lean
 //!     flat-D8 path exists this section also times it side-by-side, so the binary
-//!     is the honest "what did #24's per-cell `Vec` graph cost?" proxy — #24
+//!     is the honest "what did #24's per-cell `Vec` graph cost?" proxy - #24
 //!     deleted the old flat path, so the lean path here stands in for it.
 //!   - **macro**: `stream_power_erode` end-to-end with export-shaped params
 //!     (`drainage_reuse_stride = 1`), run with `refill_each_iter` both ways so the
@@ -39,7 +39,7 @@ fn main() {
     let reps: usize = args.next().and_then(|s| s.parse().ok()).unwrap_or(7);
 
     let threads = rayon_threads();
-    println!("# SPE drainage bench — issue #27");
+    println!("# SPE drainage bench - issue #27");
     println!(
         "size={size}x{size}  reps={reps}  export_iters={EXPORT_ITERS}  rayon_threads={threads}"
     );

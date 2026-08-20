@@ -197,7 +197,7 @@ pub(super) fn wide_flows(input: &Heightfield, p: &EffectFilterParams) -> Heightf
 }
 
 pub(super) fn talus_fill(input: &Heightfield, p: &EffectFilterParams) -> Heightfield {
-    // Layered thermal apron via shared kernel (cliff → scree, hard rock preserved).
+    // Layered thermal apron via shared kernel (cliff -> scree, hard rock preserved).
     let repose = p.slope_min.clamp(20.0, 55.0);
     let iters = p.iterations.max(1).min(8);
     let filled = thermal_talus(input, repose, p.amount.max(0.5), iters);
@@ -286,7 +286,7 @@ pub(super) fn hydraulic_sediment(input: &Heightfield, p: &EffectFilterParams) ->
             if slope > p.slope_max {
                 continue;
             }
-            // Slope-break: steeper neighbor uphill → fan deposit.
+            // Slope-break: steeper neighbor uphill -> fan deposit.
             let mut up_slope = slope;
             for &(di, dj) in &[(-1i32, 0), (1, 0), (0, -1), (0, 1)] {
                 let ni = i as i32 + di;
@@ -307,7 +307,7 @@ pub(super) fn hydraulic_sediment(input: &Heightfield, p: &EffectFilterParams) ->
     out
 }
 
-// ── Wave D/E — arid, effect, general, drift ─────────────────────────────────
+// ── Wave D/E - arid, effect, general, drift ─────────────────────────────────
 
 pub(super) fn rocky_plateaus(input: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     super::arid_landforms::apply_rocky_plateaus(input, p)
@@ -391,7 +391,7 @@ pub(super) fn deflate(input: &Heightfield, p: &EffectFilterParams) -> Heightfiel
 }
 
 pub(super) fn balloon(input: &Heightfield, p: &EffectFilterParams) -> Heightfield {
-    // Inflate on mid-slopes, mild deflate on flats — rounded “balloon” relief.
+    // Inflate on mid-slopes, mild deflate on flats - rounded "balloon" relief.
     let inflated = inflate(input, p);
     let mut out = input.clone();
     for j in 0..input.metrics.height {
@@ -537,7 +537,7 @@ pub(super) fn squeeze(input: &Heightfield, p: &EffectFilterParams) -> Heightfiel
         }
     }
     let range = (max_h - min_h).max(1e-5);
-    // amount ∈ [0,1]: 0 = identity, 1 = strong midtone compression.
+    // amount in [0,1]: 0 = identity, 1 = strong midtone compression.
     let t = if p.amount > 1.0 {
         (p.amount / (p.amount + 8.0)).clamp(0.0, 1.0)
     } else {
@@ -679,7 +679,7 @@ pub(super) fn flatten_filter(input: &Heightfield, p: &EffectFilterParams) -> Hei
     };
     let use_absolute = p.sea_level.abs() > 1e-4 || p.sea_level != 0.0;
     // Prefer absolute target when sea_level was authored away from default 0 on Flatten.
-    // For Flatten presets sea_level is 0 — use local reference. Artist can set sea_level as target.
+    // For Flatten presets sea_level is 0 - use local reference. Artist can set sea_level as target.
     let absolute_target = p.sea_level;
     for j in 0..h {
         for i in 0..w {
@@ -753,7 +753,7 @@ pub(super) fn zero_edge(input: &Heightfield, p: &EffectFilterParams) -> Heightfi
 }
 
 pub(super) fn border_blend(input: &Heightfield, p: &EffectFilterParams) -> Heightfield {
-    // World-space signed distance to boundary → smoothstep toward target elevation.
+    // World-space signed distance to boundary -> smoothstep toward target elevation.
     let mut out = input.clone();
     let w = input.metrics.width;
     let h = input.metrics.height;
@@ -813,7 +813,7 @@ pub(super) fn curve_remap(input: &Heightfield, p: &EffectFilterParams) -> Height
         }
     }
     let range = (max_h - min_h).max(1e-5);
-    // amount 0 → gamma ~2 (compress), 0.5 → linear, 1 → strong S-curve
+    // amount 0 -> gamma ~2 (compress), 0.5 -> linear, 1 -> strong S-curve
     let a = p.amount.clamp(0.0, 1.0);
     let gamma = if a < 0.5 {
         1.0 + (0.5 - a) * 2.0 // 1..2
@@ -860,7 +860,7 @@ pub(super) fn cutoff(input: &Heightfield, p: &EffectFilterParams) -> Heightfield
         for i in 0..w {
             let h0 = input.get(i, j);
             let t = ((h0 - (cut - soft)) / (2.0 * soft)).clamp(0.0, 1.0);
-            // Below cutoff → pull toward cut; above → keep (or soft blend near edge)
+            // Below cutoff -> pull toward cut; above -> keep (or soft blend near edge)
             let below = cut;
             out.set(i, j, below * (1.0 - t) + h0 * t);
         }
@@ -958,7 +958,7 @@ fn wind_carve_fast(input: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     let h = input.metrics.height as i32;
     let amt = p.amount;
     let ang = p.rotation_deg.to_radians();
-    let (wind_z, wind_x) = ang.sin_cos(); // 0° → +X
+    let (wind_z, wind_x) = ang.sin_cos(); // 0 deg -> +X
     let freq = p.effective_frequency();
     for j in 0..h {
         for i in 0..w {
@@ -1166,7 +1166,7 @@ pub(super) fn crater_filter(input: &Heightfield, p: &EffectFilterParams) -> Heig
     out
 }
 
-/// Add constant height, or set absolute height when `sea_level` ≥ 0.5.
+/// Add constant height, or set absolute height when `sea_level` >= 0.5.
 pub(super) fn add_set(input: &Heightfield, p: &EffectFilterParams) -> Heightfield {
     let mut out = input.clone();
     let set_mode = p.sea_level >= 0.5;
@@ -1221,7 +1221,7 @@ pub(super) fn noise_billow(input: &Heightfield, p: &EffectFilterParams) -> Heigh
 }
 
 pub(super) fn noise_gabor(input: &Heightfield, p: &EffectFilterParams) -> Heightfield {
-    // Sparse convolution Gabor noise (Lagae et al.) — dedicated kernel, not Perlin rename.
+    // Sparse convolution Gabor noise (Lagae et al.) - dedicated kernel, not Perlin rename.
     let mut out = input.clone();
     let amt = p.amount;
     let freq = p.effective_frequency();

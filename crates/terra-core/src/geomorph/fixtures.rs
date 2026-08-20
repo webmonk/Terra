@@ -80,7 +80,7 @@ pub fn single_basin(metrics: HeightfieldMetrics) -> Heightfield {
     hf
 }
 
-/// Two basins separated by a central N–S ridge.
+/// Two basins separated by a central N-S ridge.
 pub fn two_basins(metrics: HeightfieldMetrics) -> Heightfield {
     let mut hf = Heightfield::zeros(metrics);
     let mid = metrics.width / 2;

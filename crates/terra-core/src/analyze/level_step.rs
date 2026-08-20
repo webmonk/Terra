@@ -1,4 +1,4 @@
-//! World Creator–style multilevel simulation helpers.
+//! World Creator-style multilevel simulation helpers.
 //!
 //! Expensive sims (thermal / hydraulic) run primarily at coarse resolutions, then
 //! results are upsampled into the target field with optional light polish iterations.
@@ -31,7 +31,7 @@ pub struct SimLevel {
 
 impl SimLevel {
     pub fn new(resolution: u32, iter_scale: f32, effect_scale: f32) -> Self {
-        // Wavelength roughly: world_extent / resolution — caller may override.
+        // Wavelength roughly: world_extent / resolution - caller may override.
         let physical_wavelength_m = (8192.0 / resolution.max(1) as f32).max(1.0);
         Self {
             resolution,
@@ -47,7 +47,7 @@ impl SimLevel {
     }
 }
 
-/// Default interactive level schedule (coarse → fine).
+/// Default interactive level schedule (coarse -> fine).
 pub fn default_sim_levels(target_res: u32) -> Vec<SimLevel> {
     let mut levels = Vec::new();
     // Always include a cheap coarse pass.
@@ -126,7 +126,7 @@ pub fn author_sim_levels(
 pub fn amplify_sim_levels(target_res: u32, level_count: u32) -> Vec<SimLevel> {
     let mut levels = Vec::new();
     let res = target_res.max(32);
-    // Candidate wavelengths: quarter → half → full (and 1/8 when large).
+    // Candidate wavelengths: quarter -> half -> full (and 1/8 when large).
     let candidates: Vec<u32> = if res >= 1024 {
         vec![res / 8, res / 4, res / 2, res]
     } else if res >= 256 {
@@ -187,7 +187,7 @@ pub struct AmplifyResult {
     pub deposition: MaskField,
 }
 
-/// Schott-adapted multi-scale amplify on Terra's coarse→fine `SimLevel` path.
+/// Schott-adapted multi-scale amplify on Terra's coarse->fine `SimLevel` path.
 ///
 /// Hardness and optional ridge-lock retarget toward the pre-level surface so
 /// hard ridges resist amplify carve while soft areas receive more detail.
@@ -300,7 +300,7 @@ pub fn multi_scale_amplify(
                 let amp = processed.get(ii, jj);
                 let k = k_full.get(ii, jj).clamp(0.0, 1.0);
                 let lock = lock_full.get(ii, jj).clamp(0.0, 1.0);
-                // Soft + unlocked → accept amplify delta (optionally boosted).
+                // Soft + unlocked -> accept amplify delta (optionally boosted).
                 let soft = (1.0 - k).max(0.0);
                 let unlock = (1.0 - lock * lock_strength).max(0.0);
                 let accept = (soft * unlock * detail_boost).clamp(0.0, 1.5);

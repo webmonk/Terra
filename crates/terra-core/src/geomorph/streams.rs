@@ -1,4 +1,4 @@
-//! Channel network extraction and Horton–Strahler ordering.
+//! Channel network extraction and Horton-Strahler ordering.
 
 use crate::analyze::jump_flood_distance;
 use crate::heightfield::HeightfieldMetrics;
@@ -10,7 +10,7 @@ use super::routing::FlowGraph;
 pub struct StreamExtractParams {
     /// Minimum drainage area (cell-weighted) to form a channel.
     pub accumulation_threshold: f32,
-    /// Channel width scale in cells: width ≈ scale * sqrt(A / threshold).
+    /// Channel width scale in cells: width ~ scale * sqrt(A / threshold).
     pub width_scale: f32,
 }
 
@@ -91,7 +91,7 @@ pub fn extract_streams(
     }
 }
 
-/// Classic Horton–Strahler order along the D8 donor/receiver graph.
+/// Classic Horton-Strahler order along the D8 donor/receiver graph.
 ///
 /// Only cells with `drainage_area >= threshold` participate. Sources start at
 /// order 1; when two+ inflows of equal max order meet, order increments.
@@ -100,7 +100,7 @@ pub fn strahler_order(graph: &FlowGraph, drainage_area: &[f32], threshold: f32) 
     let thr = threshold.max(1e-6);
     let mut order = vec![0u32; n];
 
-    // Upstream → downstream.
+    // Upstream -> downstream.
     for &idx in &graph.topo_order {
         if drainage_area[idx] < thr {
             continue;

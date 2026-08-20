@@ -22,7 +22,7 @@ pub struct VegetationParams {
     /// Per-instance scale upper bound (multiplies base plant size).
     #[serde(default = "default_scale_max")]
     pub scale_max: f32,
-    /// Max yaw variation in degrees (Â±); 180 â‰ˆ full random yaw.
+    /// Max yaw variation in degrees (+/-); 180 ~ full random yaw.
     #[serde(default = "default_yaw_variation_deg")]
     pub yaw_variation_deg: f32,
 }

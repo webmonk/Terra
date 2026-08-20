@@ -1,4 +1,4 @@
-//! Matter simulations — Water / Snow / Sand / Debris artist configuration.
+//! Matter simulations - Water / Snow / Sand / Debris artist configuration.
 
 use terra_core::biome_definition::BiomeDefinitionId;
 use terra_core::document::EditorSession;

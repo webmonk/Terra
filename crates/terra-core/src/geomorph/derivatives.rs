@@ -2,7 +2,7 @@
 //!
 //! Finite differences use sampling radius expressed in metres (converted to
 //! texels via [`crate::heightfield::world_radius_texels`]). Profile / plan /
-//! mean / Gaussian curvatures follow Zevenbergen–Thorne / Evans forms.
+//! mean / Gaussian curvatures follow Zevenbergen-Thorne / Evans forms.
 
 use crate::heightfield::{world_radius_texels, Heightfield};
 use crate::mask::MaskField;
@@ -10,7 +10,7 @@ use crate::mask::MaskField;
 /// Sampling controls for derivative kernels.
 #[derive(Debug, Clone)]
 pub struct DerivativeOptions {
-    /// Primary analysis radius in world metres (0 → 1 texel).
+    /// Primary analysis radius in world metres (0 -> 1 texel).
     pub radius_m: f32,
     /// Additional radii (metres) for multi-scale roughness / openness.
     pub roughness_radii_m: Vec<f32>,
@@ -137,7 +137,7 @@ pub fn gradient_components(hf: &Heightfield, radius_m: f32) -> (MaskField, MaskF
     )
 }
 
-/// Slope as |∇h| mapped to \[0,1\] via atan → degrees / 90 (artist-friendly).
+/// Slope as |∇h| mapped to \[0,1\] via atan -> degrees / 90 (artist-friendly).
 pub fn slope_magnitude(hf: &Heightfield, radius_m: f32) -> MaskField {
     let (_, _, mag) = gradient_components(hf, radius_m);
     let m = hf.metrics;
@@ -230,7 +230,7 @@ fn map_signed_curvature(raw: &[f32], m: crate::heightfield::HeightfieldMetrics) 
     out
 }
 
-/// Discrete Laplacian ∇²h, mapped to \[0,1\] around 0.5.
+/// Discrete Laplacian ∇^2h, mapped to \[0,1\] around 0.5.
 pub fn laplacian(hf: &Heightfield, radius_m: f32) -> MaskField {
     let (_, _, r, t, _) = second_derivatives(hf, radius_m);
     let mut raw = vec![0.0f32; r.len()];
@@ -292,7 +292,7 @@ pub fn mean_curvature(hf: &Heightfield, radius_m: f32) -> MaskField {
     map_signed_curvature(&raw, hf.metrics)
 }
 
-/// Gaussian curvature K = (rt − s²) / (1+p²+q²)².
+/// Gaussian curvature K = (rt − s^2) / (1+p^2+q^2)^2.
 pub fn gaussian_curvature(hf: &Heightfield, radius_m: f32) -> MaskField {
     let (p, q, r, t, s) = second_derivatives(hf, radius_m);
     let mut raw = vec![0.0f32; p.len()];
@@ -366,7 +366,7 @@ pub fn multi_radius_roughness(hf: &Heightfield, radii_m: &[f32]) -> MaskField {
 
 /// Yokoyama-style openness / cavity approximation.
 ///
-/// Positive openness (sky visibility) is inverted so cavities → 1.
+/// Positive openness (sky visibility) is inverted so cavities -> 1.
 pub fn cavity_openness(hf: &Heightfield, radius_m: f32, sectors: u32) -> MaskField {
     let m = hf.metrics;
     let mut out = MaskField::zeros(m);
@@ -397,7 +397,7 @@ pub fn cavity_openness(hf: &Heightfield, radius_m: f32, sectors: u32) -> MaskFie
                         max_elev = elev;
                     }
                 }
-                // Positive openness ≈ π/2 − max elevation angle.
+                // Positive openness ~ π/2 − max elevation angle.
                 openness += std::f32::consts::FRAC_PI_2 - max_elev;
             }
             let mean_open = openness / sectors as f32;
@@ -421,7 +421,7 @@ pub fn ridge_valley_likelihood(hf: &Heightfield, radius_m: f32) -> (MaskField, M
         for i in 0..m.width {
             let c = plan.get(i, j);
             let s = slope.get(i, j);
-            // Plan > 0.5 → divergent (ridge-ish); < 0.5 → convergent (valley-ish).
+            // Plan > 0.5 -> divergent (ridge-ish); < 0.5 -> convergent (valley-ish).
             let rid = ((c - 0.5).max(0.0) * 2.0) * (0.35 + 0.65 * s);
             let val = ((0.5 - c).max(0.0) * 2.0) * (1.0 - 0.4 * s);
             ridge.set(i, j, rid.clamp(0.0, 1.0));
@@ -442,7 +442,7 @@ mod tests {
         let mut hf = Heightfield::zeros(m);
         for j in 0..32 {
             for i in 0..32 {
-                // 45° in X: rise/run = 1 (dx=10m → rise 10m per cell).
+                // 45 deg in X: rise/run = 1 (dx=10m -> rise 10m per cell).
                 hf.set(i, j, i as f32 * 10.0);
             }
         }

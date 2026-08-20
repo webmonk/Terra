@@ -2,7 +2,7 @@
 //!
 //! Tests that need a device but not a window use [`headless`]. It returns
 //! `None` when no adapter is available, so suites stay green on machines
-//! without a GPU — the same graceful-skip convention already used by the
+//! without a GPU - the same graceful-skip convention already used by the
 //! `terra-gpu` derivative tests:
 //!
 //! ```ignore
@@ -11,7 +11,7 @@
 //!
 //! # Boundary
 //!
-//! This crate depends on `wgpu` and `pollster` only — no Terra domain,
+//! This crate depends on `wgpu` and `pollster` only - no Terra domain,
 //! render, or UI crates. That lets `terra-gui`, `terra-render`, and
 //! `terra-gpu` each dev-depend on it without acquiring a dependency on one
 //! another, which would defeat the crate-graph separation the workspace
@@ -221,7 +221,7 @@ impl TestGpu {
 
     /// Seed `target` with explicit per-texel content, row-major from top-left.
     ///
-    /// Useful when a uniform [`TestGpu::fill`] cannot distinguish outcomes —
+    /// Useful when a uniform [`TestGpu::fill`] cannot distinguish outcomes -
     /// for example proving that readback preserves texel coordinates.
     ///
     /// `Queue::write_texture` stages the data and applies it at the next
@@ -384,7 +384,7 @@ mod tests {
     /// Fill then read back must round-trip the exact colour.
     ///
     /// Width 37 is deliberately not a multiple of 64 texels, so the readback row
-    /// stride needs padding — this fails if the alignment handling regresses.
+    /// stride needs padding - this fails if the alignment handling regresses.
     #[test]
     fn fill_round_trips_through_padded_readback() {
         let Some(gpu) = headless() else {
@@ -494,7 +494,7 @@ mod tests {
 
     /// Negative control: the harness must be able to *see* a clear happen.
     ///
-    /// Without this, a passing "backdrop preserved" test would be vacuous — it
+    /// Without this, a passing "backdrop preserved" test would be vacuous - it
     /// could not distinguish a correct Load from a harness that always reports
     /// the original fill.
     #[test]

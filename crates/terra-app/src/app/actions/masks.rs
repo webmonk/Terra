@@ -87,7 +87,7 @@ pub(crate) fn try_apply(
                 let mutated_id = existing.id;
                 *existing = asset;
                 if color_only {
-                    // Display colour is visual-only â€” refresh overlay, skip rebuild.
+                    // Display colour is visual-only - refresh overlay, skip rebuild.
                     app.mask_overlay_dirty = true;
                 } else {
                     ctx.note_mask_mutation(mutated_id);
@@ -233,7 +233,7 @@ pub(crate) fn try_apply(
                     .paint
                     .get_or_insert_with(|| terra_core::mask::PaintBuffer::new(512, 512));
                 paint.edit_circle(u, v, radius, strength, hardness, tool);
-                // Critical: update paint buffer + overlay only — no full terrain
+                // Critical: update paint buffer + overlay only - no full terrain
                 // rebuild per brush dab (was the main mask-paint lag cause).
                 app.mask_overlay_dirty = true;
                 // Defer document-dirty marking to stroke commit.
@@ -364,7 +364,7 @@ pub(crate) fn try_apply(
                     ctx.dirty_from = Some(layer);
                     app.session.document.selected = Some(layer);
                 } else if let terra_core::layer::LayerKind::SculptBase(params) = &mut target.kind {
-                    // Legacy foundation path â€” prefer Shape history for new strokes.
+                    // Legacy foundation path - prefer Shape history for new strokes.
                     let mode = match stroke_kind {
                         terra_core::authoring::SculptStrokeKind::Lower
                         | terra_core::authoring::SculptStrokeKind::Erode => 1u8,

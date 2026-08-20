@@ -1,7 +1,7 @@
 //! TOOLS rail + icon tool shelf for the active workspace.
 //!
 //! Management chrome (World Rules lists, scenario Run buttons, Develop Add* rows,
-//! biome palette, shape-history mode toggles) does **not** live here â€” those belong
+//! biome palette, shape-history mode toggles) does **not** live here - those belong
 //! in the Layers hierarchy / Inspector. Tools = pick / drag layer kinds and brushes.
 
 use crate::ui::actions::PanelAction;
@@ -105,7 +105,7 @@ fn draw_mode_rail(ui: &mut GuiContext<'_>, ui_state: &mut UiState) {
         style::SEPARATOR,
     );
 
-    // Section label Ã¢â‚¬â€ task focus, not a numbered progression.
+    // Section label - task focus, not a numbered progression.
     let header_tw = DrawList::text_width("TOOLS", FONT_SCALE * TYPE_CAPTION);
     ui.label_at(
         rail.min_x + (rail.width() - header_tw) * 0.5,
@@ -273,7 +273,7 @@ fn draw_tool_panel(
         14.0,
     );
 
-    // Icon shelf only Ã¢â‚¬â€ Shape / Filters / Masks / Sims live in the Layers hierarchy.
+    // Icon shelf only - Shape / Filters / Masks / Sims live in the Layers hierarchy.
     let list = Rect::from_min_max(panel.min_x, header.max_y, panel.max_x, panel.max_y - 6.0);
     ui.begin_panel_scrolled(
         Id::new("tools_scroll"),
@@ -513,7 +513,7 @@ fn tool_card(
             }
             ToolAction::BiomeBrush(brush) => {
                 ui_state.set_editor_tool(EditorTool::PaintBiome);
-                // Do not force a workspace hop — matches create auto-switch default (off).
+                // Do not force a workspace hop - matches create auto-switch default (off).
                 ui_state.tool_drag = None;
                 actions.push(PanelAction::SetBiomePaintTool(*brush));
                 actions.push(PanelAction::EnsureBiomePaintLayer);
@@ -673,7 +673,7 @@ fn apply_sculpt_tool(
     }
     if tool.is_sculpt() {
         ui_state.paint_mask = None;
-        // Shape history auto-creates SculptStrokes â€” never force SculptBase / Mask setup.
+        // Shape history auto-creates SculptStrokes - never force SculptBase / Mask setup.
         if ui_state.shape_edit_mode == terra_core::shape_history::ShapeEditMode::NewLayerPerSession
         {
             ui_state.shape_session_layer = None;

@@ -1,6 +1,6 @@
 //! Optional GPU timestamp queries for pass-level profiling.
 //!
-//! Readback is asynchronous with frame latency — never `Maintain::Wait` on the
+//! Readback is asynchronous with frame latency - never `Maintain::Wait` on the
 //! interactive path. Maps complete via `Maintain::Poll` when the callback fires.
 //!
 //! Query indices are allocated densely per frame so skipped passes (e.g. shadow
@@ -257,7 +257,7 @@ impl GpuTimestampTimer {
             }
         }
 
-        // Dense 0..count — every index was written by a pass this frame.
+        // Dense 0..count - every index was written by a pass this frame.
         encoder.resolve_query_set(&self.query_set, 0..count, &self.resolve_buffer, 0);
         encoder.copy_buffer_to_buffer(
             &self.resolve_buffer,

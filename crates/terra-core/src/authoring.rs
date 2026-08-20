@@ -298,7 +298,7 @@ pub struct GeomorphicDetailParams {
     pub seed: u64,
     #[serde(default = "drainage_preservation")]
     pub preserve_drainage: f32,
-    /// Micro-band amplitude in metres (gullies / breakup). 0 → derive from amplitude.
+    /// Micro-band amplitude in metres (gullies / breakup). 0 -> derive from amplitude.
     #[serde(default)]
     pub micro_amplitude_m: Option<f32>,
     /// Macro silhouette lock (high-pass amplify delta).

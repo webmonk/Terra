@@ -1,4 +1,4 @@
-//! Landscape style presets — Phase 11 Rule 8.
+//! Landscape style presets - Phase 11 Rule 8.
 //!
 //! Presets are **parameter sets** over real algorithms (uplift, SPE / landscape
 //! evolution, thermal / debris, materials strata). They never bake unique

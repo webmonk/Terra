@@ -160,7 +160,7 @@ pub fn draw_legacy_mask_editor_contents(
                 updated.display_color = [cr, cg, cb];
                 changed = true;
             }
-            label_dim(ui, "Viewport overlay only — does not affect evaluation.");
+            label_dim(ui, "Viewport overlay only - does not affect evaluation.");
 
             let kind: usize = match updated.source {
                 MaskSource::Constant(_) => 0,
@@ -208,8 +208,8 @@ pub fn draw_legacy_mask_editor_contents(
                 MaskSource::Painted { .. } => {
                     section_header(ui, "EDIT");
                     let painting = ui_state.paint_mask == Some(mask_id);
-                    // Mask view already hosts painting — toggle paint arming, not a
-                    // separate "Edit in Viewport" entry that competed with Viewsâ†’Mask.
+                    // Mask view already hosts painting - toggle paint arming, not a
+                    // separate "Edit in Viewport" entry that competed with Views->Mask.
                     let paint_label = if ui_state.is_mask_view() {
                         if painting {
                             "Stop Painting"
@@ -380,7 +380,7 @@ pub fn draw_legacy_mask_editor_contents(
 
 fn content_browser(ui: &mut GuiContext<'_>, actions: &mut Vec<PanelAction>) {
     label(ui, "Recipes");
-    label(ui, "Reusable biome templates — add into the current world.");
+    label(ui, "Reusable biome templates - add into the current world.");
     ui.separator();
     for (i, recipe) in crate::ui::recipe::builtin_recipes().into_iter().enumerate() {
         if button_id(ui, Id::new("recipe").with(i as u64), &recipe.name) {
@@ -395,7 +395,7 @@ fn content_browser(ui: &mut GuiContext<'_>, actions: &mut Vec<PanelAction>) {
     label(ui, "Legacy stack presets");
     label(
         ui,
-        "Replace the whole stack (showcase demos — use Advanced).",
+        "Replace the whole stack (showcase demos - use Advanced).",
     );
     ui.separator();
     for (i, preset) in builtin_presets().into_iter().enumerate() {
@@ -557,7 +557,7 @@ fn profiler_panel(ui: &mut GuiContext<'_>, ui_state: &UiState) {
     label(
         ui,
         &format!(
-            "Terrain grid: {}²  |  Tiles {}x{}",
+            "Terrain grid: {}^2  |  Tiles {}x{}",
             p.terrain_grid_size, p.tiles_x, p.tiles_z
         ),
     );

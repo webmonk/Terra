@@ -132,7 +132,7 @@ fn fill_procedural(field: &mut MaskField, p: &LandscapeEvolutionParams, peak: f3
         for i in 0..m.width {
             let u = i as f32 / m.width.max(1) as f32;
             let v = j as f32 / m.height.max(1) as f32;
-            // Very low frequency — geological wavelength only.
+            // Very low frequency - geological wavelength only.
             let n0 = value_noise2(u * 1.8, v * 1.8, seed);
             let n1 = open_simplex2(u * 3.2 + 3.0, v * 3.2 - 1.5, seed.wrapping_add(17));
             let n = (n0 * 0.65 + n1 * 0.35).clamp(-1.0, 1.0);

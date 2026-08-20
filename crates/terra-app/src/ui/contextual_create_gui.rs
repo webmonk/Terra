@@ -302,7 +302,7 @@ pub fn hierarchy_add_actions(
         .map(|k| {
             let prop = terra_core::contextual_create::override_owner(doc, k, owner)
                 .unwrap_or_else(|_| propose_owner(doc, k, &ctx));
-            (k, format!("{} â†’ {}", k.label(), prop.label))
+            (k, format!("{} -> {}", k.label(), prop.label))
         })
         .collect()
 }

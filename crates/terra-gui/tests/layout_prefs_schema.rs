@@ -1,8 +1,8 @@
 //! Schema ratchet: `LayoutPrefs` serializes to dock geometry only.
 //!
 //! terra-gui is an app-agnostic UI toolkit. Re-adding an app- or render-domain
-//! field (workspace prefs, viewport render settings) to `LayoutPrefs` — reverting
-//! the A2-B1 relocation — changes this key set and fails the test.
+//! field (workspace prefs, viewport render settings) to `LayoutPrefs` - reverting
+//! the A2-B1 relocation - changes this key set and fails the test.
 
 use std::collections::BTreeSet;
 

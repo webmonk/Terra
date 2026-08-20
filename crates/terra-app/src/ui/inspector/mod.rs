@@ -139,7 +139,7 @@ fn draw_distribution_add_buttons(
     draw_distribution_stack_buttons(ui, actions, target);
 }
 
-/// Short Layer → Masks chrome: counts, project-mask binds, open advanced stack.
+/// Short Layer -> Masks chrome: counts, project-mask binds, open advanced stack.
 fn draw_layer_masks_chrome(
     ui: &mut GuiContext<'_>,
     doc: &TerrainDocument,
@@ -169,7 +169,7 @@ fn draw_layer_masks_chrome(
     }
 }
 
-/// Expand/collapse flags for Unreal Details–style inspector sections.
+/// Expand/collapse flags for Unreal Details-style inspector sections.
 #[derive(Debug, Clone)]
 pub struct DetailsExpandState {
     pub layer_apply_where: bool,
@@ -420,7 +420,7 @@ pub fn draw_inspector_gui(
                 actions.push(PanelAction::SetActiveBiome(id));
             }
             if doc.active_biome == Some(id) {
-                label(ui, "â— Active biome context");
+                label(ui, "â- Active biome context");
             }
             if button_id(ui, Id::new("insp_biome_paint"), "Paint This Biome") {
                 actions.push(PanelAction::SetActiveBiome(id));
@@ -517,7 +517,7 @@ pub fn draw_inspector_gui(
             for out in &group.outputs {
                 label(
                     ui,
-                    &format!("â€¢ {} [{}]", out.name, out.field.display_name()),
+                    &format!("- {} [{}]", out.name, out.field.display_name()),
                 );
             }
         }
@@ -579,7 +579,7 @@ pub fn draw_inspector_gui(
     let card = ui.allocate(card_h);
     ui.panel_rounded(card, style::SURFACE, style::RADIUS_MD);
 
-    // Row 1 — identity: icon + layer name (primary) / kind (secondary).
+    // Row 1 - identity: icon + layer name (primary) / kind (secondary).
     let icon_box = Rect::from_pos_size(
         card.min_x + card_pad,
         card.min_y + card_pad + (identity_h - icon_s) * 0.5,
@@ -608,7 +608,7 @@ pub fn draw_inspector_gui(
         FONT_SCALE * TYPE_CAPTION,
     );
 
-    // Row 2 — action toolbar under the identity block (left-aligned, no overlap).
+    // Row 2 - action toolbar under the identity block (left-aligned, no overlap).
     let btn_y = card.min_y + card_pad + identity_h + mid_gap;
     let mut cx = card.min_x + card_pad;
     let en_r = Rect::from_pos_size(cx, btn_y, btn_s, btn_s);
@@ -1224,7 +1224,7 @@ fn draw_tool_inspector(ui: &mut GuiContext<'_>, doc: &TerrainDocument, ui_state:
         EditorTool::RiverConstraint => "River Guide",
         _ => "Sculpt",
     };
-    label(ui, &format!("Sculpt Â· {tool_name}"));
+    label(ui, &format!("Sculpt - {tool_name}"));
     label(
         ui,
         "Drag to author Base heights or semantic world-space strokes.",
@@ -1293,14 +1293,14 @@ fn draw_mask_tool_inspector(
     if doc.masks.is_empty() {
         label_dim(
             ui,
-            "No project masks yet — use + on Mask Layers (or the mask button) to pick a type.",
+            "No project masks yet - use + on Mask Layers (or the mask button) to pick a type.",
         );
     } else {
         for (i, mask) in doc.masks.iter().enumerate() {
             let sel =
                 ui_state.paint_mask == Some(mask.id) || ui_state.selected_mask == Some(mask.id);
             let text = if sel {
-                format!("â€¢ {}", mask.name)
+                format!("- {}", mask.name)
             } else {
                 format!("  {}", mask.name)
             };
@@ -1316,7 +1316,7 @@ fn draw_mask_tool_inspector(
     }
 
     ui.separator();
-    label_dim(ui, "Views → Mask opens the full mask editor.");
+    label_dim(ui, "Views -> Mask opens the full mask editor.");
     if button_id(ui, Id::new("insp_open_mask_view"), "Open full Mask editor") {
         ui_state.enter_mask_view();
     }
@@ -1337,7 +1337,7 @@ fn draw_operation_apply_where(
         .map(|g| g.name.as_str())
         .unwrap_or("World");
     label(ui, &format!("Biome scope: {biome_name}"));
-    label_dim(ui, "Inherited automatically â€” no Biome Mask to assign.");
+    label_dim(ui, "Inherited automatically - no Biome Mask to assign.");
 
     let op = &layer.common.operation_placement;
     for line in op.summary_lines(biome_name) {
@@ -1376,8 +1376,8 @@ fn draw_operation_apply_where(
         ApplyWhere::SlopeRange => {
             let mut lo = op.slope_min;
             let mut hi = op.slope_max;
-            if slider_f32(ui, "Slope min (Â°)", &mut lo, 0.0, 90.0)
-                | slider_f32(ui, "Slope max (Â°)", &mut hi, 0.0, 90.0)
+            if slider_f32(ui, "Slope min ( deg)", &mut lo, 0.0, 90.0)
+                | slider_f32(ui, "Slope max ( deg)", &mut hi, 0.0, 90.0)
             {
                 actions.push(PanelAction::SetOperationPlacementParams {
                     id,
@@ -1442,7 +1442,7 @@ fn draw_biome_focus_inspector(
     };
     label(ui, "BIOME FOCUS");
     label(ui, &def.name);
-    label(ui, "Ownership â€” where this biome applies.");
+    label(ui, "Ownership - where this biome applies.");
     ui.separator();
     label(
         ui,
@@ -1480,14 +1480,14 @@ fn draw_biome_focus_inspector(
         .unwrap_or(terra_core::mask::PlacementCoordinateSpace::RuleBased);
     match source {
         terra_core::mask::PlacementSource::Rules => {
-            label(ui, "Source: Rules â†’ Mask Stack");
+            label(ui, "Source: Rules -> Mask Stack");
             let conds = def
                 .placement
                 .definition
                 .as_ref()
                 .map(|d| d.root.children.len())
                 .unwrap_or_else(|| def.placement.rules.is_some() as usize);
-            label(ui, &format!("Conditions: {conds} Â· Space: {space:?}"));
+            label(ui, &format!("Conditions: {conds} - Space: {space:?}"));
         }
         terra_core::mask::PlacementSource::Custom => {
             label(ui, "Source: Custom Mask Stack");
@@ -1520,7 +1520,7 @@ fn draw_biome_focus_inspector(
     let mats = def.material_layers.len();
     label(
         ui,
-        &format!("Local WHAT â€” {filters} filters Â· {mats} materials"),
+        &format!("Local WHAT - {filters} filters - {mats} materials"),
     );
     if let Some(gid) = def.group_id {
         label(ui, "Linked to implementation group.");
@@ -1533,7 +1533,7 @@ fn draw_biome_focus_inspector(
             ui_state.inspector_advanced = true;
         }
     } else {
-        label(ui, "Not linked â€” recreate from a World Design template.");
+        label(ui, "Not linked - recreate from a World Design template.");
     }
     if button_id(ui, Id::new("biome_focus_exit"), "Clear Focus") {
         ui_state.biome_focus = None;
@@ -1569,7 +1569,7 @@ fn draw_blueprint_inspector(
             drainage_density: drainage,
         });
     }
-    label(ui, "Age → evolution time; Ridge → spine width");
+    label(ui, "Age -> evolution time; Ridge -> spine width");
 }
 
 fn draw_shape_inspector(
@@ -1594,28 +1594,28 @@ fn draw_shape_inspector(
     ui.separator();
     label(ui, "TRANSLATE");
     let step = 0.015;
-    if button_id(ui, Id::new("insp_shape_w"), "â† West") {
+    if button_id(ui, Id::new("insp_shape_w"), "<- West") {
         actions.push(PanelAction::TranslateShape {
             id,
             du: -step,
             dv: 0.0,
         });
     }
-    if button_id(ui, Id::new("insp_shape_e"), "â†’ East") {
+    if button_id(ui, Id::new("insp_shape_e"), "-> East") {
         actions.push(PanelAction::TranslateShape {
             id,
             du: step,
             dv: 0.0,
         });
     }
-    if button_id(ui, Id::new("insp_shape_n"), "â†‘ North") {
+    if button_id(ui, Id::new("insp_shape_n"), "^ North") {
         actions.push(PanelAction::TranslateShape {
             id,
             du: 0.0,
             dv: -step,
         });
     }
-    if button_id(ui, Id::new("insp_shape_s"), "â†“ South") {
+    if button_id(ui, Id::new("insp_shape_s"), "v South") {
         actions.push(PanelAction::TranslateShape {
             id,
             du: 0.0,

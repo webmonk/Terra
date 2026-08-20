@@ -119,7 +119,7 @@ pub struct CameraChangeThresholds {
 impl Default for CameraChangeThresholds {
     fn default() -> Self {
         Self {
-            // ~5 cm — below typical sculpt brush / grid scale noise.
+            // ~5 cm - below typical sculpt brush / grid scale noise.
             translation_m: 0.05,
             rotation_rad: 0.0008,
             fov_rad: 0.0005,

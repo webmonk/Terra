@@ -34,7 +34,7 @@ use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub enum LayerKind {
-    // Artist foundation — painted height buffer (always bottom in default docs)
+    // Artist foundation - painted height buffer (always bottom in default docs)
     SculptBase(SculptParams),
     /// Resolution-independent, editable sculpt gestures.
     SculptStrokes(SculptStrokeParams),
@@ -77,12 +77,12 @@ pub enum LayerKind {
     Canyons(CanyonParams),
     VoronoiRegions(VoronoiParams),
     ImportHeightmap(ImportHeightmapParams),
-    // Phase 5–7 simulations / filters
+    // Phase 5-7 simulations / filters
     ThermalErosion(ThermalErosionParams),
     HydraulicErosion(HydraulicErosionParams),
     /// Debris-flow erosion (Jain, Beneš & Cordonnier 2024) for steep / low-drainage relief.
     DebrisFlow(DebrisFlowParams),
-    /// Stream-power incision (fluvial SPE) driven by Priority-Flood + D8/D∞ drainage.
+    /// Stream-power incision (fluvial SPE) driven by Priority-Flood + D8/Dinf drainage.
     StreamPowerErosion(StreamPowerParams),
     /// Wavelength-aware multi-scale amplify (Schott 2024 adapted onto `SimLevel`).
     MultiScaleAmplify(MultiScaleAmplifyParams),
@@ -95,26 +95,26 @@ pub enum LayerKind {
     Materials(MaterialsParams),
     Biomes(BiomesParams),
     Vegetation(VegetationParams),
-    // Phase J — optional local volumetric (dual-height / local SDF); heightfield remains default
+    // Phase J - optional local volumetric (dual-height / local SDF); heightfield remains default
     /// Cliff undercut / shelf via dual-height floor+ceiling (opt-in).
     OverhangStamp(OverhangStampParams),
     /// Local analytic SDF cave pocket projected to dual-height (opt-in).
     LocalSdf(LocalSdfParams),
-    /// Drawn spline path (road / ridge / valley) — Wave 1 Phase C.
+    /// Drawn spline path (road / ridge / valley) - Wave 1 Phase C.
     Path(PathParams),
-    /// Interactive river network (springs / auto-flow) — Wave 1 Phase C.
+    /// Interactive river network (springs / auto-flow) - Wave 1 Phase C.
     RiverNetwork(RiverNetworkParams),
-    /// Granular sand Local Sim — Wave 1 Phase D.
+    /// Granular sand Local Sim - Wave 1 Phase D.
     SandSimulation(SandSimParams),
-    /// Fluid / lake Local Sim — Wave 1 Phase D.
+    /// Fluid / lake Local Sim - Wave 1 Phase D.
     FluidSimulation(FluidSimParams),
 
-    // —— WC-style Shape Layer types (Terrain tools) ————————————————
+    // -- WC-style Shape Layer types (Terrain tools) ----------------
     /// Procedural landscape shape with a swappable generator type.
     ProceduralShape(ProceduralShapeParams),
     /// 2D heightmap stamp.
     Stamp2d(Stamp2dParams),
-    /// 3D mesh stamp (OBJ / height image → height contribution).
+    /// 3D mesh stamp (OBJ / height image -> height contribution).
     Stamp3d(Stamp3dParams),
     /// Closed polygon raise / carve.
     PolygonHeight(PolygonHeightParams),
@@ -217,7 +217,7 @@ impl LayerKind {
             }
         };
         let Some(base) = get_base(self) else {
-            // Not a curated alias name — treat the target as a dot-path into
+            // Not a curated alias name - treat the target as a dot-path into
             // the params struct and modulate it via serde reflection.
             if let Some(base) = crate::layer::param_reflect::get_param_f32(self, path) {
                 let out = binding.apply_scalar(base, sample);
@@ -254,7 +254,7 @@ impl LayerKind {
         }
     }
 
-    /// World Creator–style default blend for new layers of this kind.
+    /// World Creator-style default blend for new layers of this kind.
     ///
     /// Generators contribute absolute heights and should **Add**.
     /// Bases/imports and filters/sims that rewrite the stack use **Normal**.

@@ -1,4 +1,4 @@
-//! Non-linear task workspaces Ã¢â‚¬â€ presentation focus, never workflow steps.
+//! Non-linear task workspaces - presentation focus, never workflow steps.
 //!
 //! Workspaces configure tools, overlays, and hierarchy *emphasis*. They must not
 //! lock content, reorder evaluation, create entities, or act like a wizard.
@@ -21,7 +21,7 @@ use crate::ui::{EditorTool, LightingPreset, Preview2dMode, ViewportOverlayFlags}
 // Workspace identity (persisted as editor preference, not project data)
 
 /// Task-focused interface configuration. Order in [`WorkspaceId::ALL`] is for
-/// UI listing only Ã¢â‚¬â€ it does **not** imply progression.
+/// UI listing only - it does **not** imply progression.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Default, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum WorkspaceId {
@@ -73,7 +73,7 @@ impl WorkspaceId {
             "simulation" | "hydrology" | "erosion" => Some(Self::Simulation),
             "surface" | "materials" => Some(Self::Surface),
             "objects" | "scatter" | "advanced" => Some(Self::Objects),
-            // Legacy Ã¢â‚¬â€ no longer in the rail; still parse so old prefs load.
+            // Legacy - no longer in the rail; still parse so old prefs load.
             "all_tools" | "all" | "utilities" => Some(Self::AllTools),
             _ => None,
         }
@@ -83,7 +83,7 @@ impl WorkspaceId {
         workspace_definition(self)
     }
 
-    /// Optional digit shortcut (listing aid only Ã¢â‚¬â€ not a step number).
+    /// Optional digit shortcut (listing aid only - not a step number).
     pub fn from_digit(digit: u8) -> Option<Self> {
         match digit {
             1 => Some(Self::World),
@@ -132,7 +132,7 @@ impl WorkspaceId {
 
 // Metadata-driven definition
 
-/// Soft hierarchy emphasis Ã¢â‚¬â€ never hides or locks nodes.
+/// Soft hierarchy emphasis - never hides or locks nodes.
 #[derive(Debug, Clone, Copy)]
 pub struct HierarchyEmphasis {
     pub prefer_roles: &'static [DomainRole],
@@ -152,7 +152,7 @@ impl HierarchyEmphasis {
         self.prefer_roles.is_empty() || self.prefer_roles.contains(&role)
     }
 
-    /// Visual dim only Ã¢â‚¬â€ unrelated rows stay selectable and editable.
+    /// Visual dim only - unrelated rows stay selectable and editable.
     pub fn should_dim_role(self, role: DomainRole) -> bool {
         self.dim_unrelated && !self.emphasizes_role(role)
     }
@@ -168,11 +168,11 @@ pub fn hierarchy_dim_for_kind(workspace: WorkspaceId, kind: &terra_core::layer::
 /// Which left-palette tool catalog modes to show.
 #[derive(Debug, Clone, Copy)]
 pub enum WorkspaceToolFilter {
-    /// All Tools â€” minimal filtering.
+    /// All Tools - minimal filtering.
     All,
     /// Include tools tagged with any of these legacy catalog modes.
     CatalogModes(&'static [WorkspaceMode]),
-    /// World Creatorâ€“style biome Filters catalog (grouped by WC category).
+    /// World Creator-style biome Filters catalog (grouped by WC category).
     WcFilters,
 }
 
@@ -202,7 +202,7 @@ impl ContextualActionId {
     }
 }
 
-/// Static workspace metadata Ã¢â‚¬â€ drives presentation without hard-coded UI branches.
+/// Static workspace metadata - drives presentation without hard-coded UI branches.
 #[derive(Debug, Clone, Copy)]
 pub struct WorkspaceDefinition {
     pub id: WorkspaceId,
@@ -339,7 +339,7 @@ static WORKSPACE_DEFINITIONS: [WorkspaceDefinition; 9] = [
         id: WorkspaceId::Develop,
         name: "Filters",
         description:
-            "World Creatorâ€“style terrain filters â€” general, effect, arid, erosion, sediment.",
+            "World Creator-style terrain filters - general, effect, arid, erosion, sediment.",
         icon: Icon::SlidersHorizontal,
         command_name: Some("Switch Workspace: Filters"),
         tools: WorkspaceToolFilter::WcFilters,
@@ -368,7 +368,7 @@ static WORKSPACE_DEFINITIONS: [WorkspaceDefinition; 9] = [
     WorkspaceDefinition {
         id: WorkspaceId::Rules,
         name: "Mask",
-        description: "Paint and edit masks Ã¢â‚¬â€ coverage, placement, and advanced mask stacks.",
+        description: "Paint and edit masks - coverage, placement, and advanced mask stacks.",
         icon: Icon::CircleDot,
         command_name: Some("Switch Workspace: Mask"),
         tools: WorkspaceToolFilter::CatalogModes(&[WorkspaceMode::Masks]),
@@ -390,7 +390,7 @@ static WORKSPACE_DEFINITIONS: [WorkspaceDefinition; 9] = [
     WorkspaceDefinition {
         id: WorkspaceId::Simulation,
         name: "Simulation",
-        description: "Simulation Scenarios Ã¢â‚¬â€ coherent physical setups (optional).",
+        description: "Simulation Scenarios - coherent physical setups (optional).",
         icon: Icon::Droplets,
         command_name: Some("Switch Workspace: Simulation"),
         tools: WorkspaceToolFilter::CatalogModes(&[WorkspaceMode::Simulation]),
@@ -447,7 +447,7 @@ static WORKSPACE_DEFINITIONS: [WorkspaceDefinition; 9] = [
     WorkspaceDefinition {
         id: WorkspaceId::AllTools,
         name: "All Tools",
-        description: "Legacy Ã¢â‚¬â€ removed from the TOOLS rail; remaps to Objects.",
+        description: "Legacy - removed from the TOOLS rail; remaps to Objects.",
         icon: Icon::Grid3x3,
         command_name: None,
         tools: WorkspaceToolFilter::All,
@@ -463,7 +463,7 @@ static WORKSPACE_DEFINITIONS: [WorkspaceDefinition; 9] = [
 
 // Legacy catalog mode tags (tool_catalog still keys off these)
 
-/// Tool-catalog category tag Ã¢â‚¬â€ not the artist-facing workspace selector.
+/// Tool-catalog category tag - not the artist-facing workspace selector.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Hash)]
 pub enum WorkspaceMode {
     #[default]
@@ -811,7 +811,7 @@ pub struct WorkspaceState {
     pub draft_displayed: bool,
     pub refining: bool,
     pub refining_layer_name: Option<String>,
-    /// Camera Ã¢â‚¬â€ preserved across workspace switches (copied for snapshots).
+    /// Camera - preserved across workspace switches (copied for snapshots).
     pub camera_xz: (f32, f32),
     pub camera_yaw: f32,
     pub camera_pitch: f32,
@@ -852,7 +852,7 @@ impl Default for WorkspaceState {
 }
 
 impl WorkspaceState {
-    /// Switch task workspace. Presentation only Ã¢â‚¬â€ preserves camera / temp solo.
+    /// Switch task workspace. Presentation only - preserves camera / temp solo.
     pub fn switch_workspace(&mut self, id: WorkspaceId) {
         // All Tools is no longer in the rail; remap legacy prefs / keybinds.
         let id = if matches!(id, WorkspaceId::AllTools) {

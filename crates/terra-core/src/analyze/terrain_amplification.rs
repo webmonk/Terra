@@ -4,15 +4,15 @@
 //! high-resolution relief by adding **drainage-conditioned** meso/micro structure.
 //!
 //! Research anchors:
-//! - Schott et al. 2023/2024 — interactive erosion / multi-scale amplify (silhouette
+//! - Schott et al. 2023/2024 - interactive erosion / multi-scale amplify (silhouette
 //!   preservation, wavelength-aware detail)
-//! - Grenier et al. 2024 — cascaded structured procedural patterns aligned to slope
+//! - Grenier et al. 2024 - cascaded structured procedural patterns aligned to slope
 //!   and flow (no isotropic fBm soup)
 //!
 //! Frequency bands (metres, scale-aware defaults from world extent):
-//! - **Macro** — artist silhouette (preserved; never randomly noised)
-//! - **Meso** — ridges, tributaries, secondary valleys
-//! - **Micro** — gullies, ridge breakup, fine erosion texture
+//! - **Macro** - artist silhouette (preserved; never randomly noised)
+//! - **Meso** - ridges, tributaries, secondary valleys
+//! - **Micro** - gullies, ridge breakup, fine erosion texture
 //!
 //! Every height delta answers a geomorphological question (ridge / gully / rock /
 //! deposition). Fine channels nest inside broader drainage organisation.
@@ -41,7 +41,7 @@ pub struct AmplificationBands {
 impl AmplificationBands {
     /// Scale-aware defaults from world diagonal (not hardcoded absolute ranges).
     ///
-    /// Example on a ~4 km world: macro ≈ 500–5 km, meso ≈ 50–500 m, micro ≈ 2–50 m.
+    /// Example on a ~4 km world: macro ~ 500-5 km, meso ~ 50-500 m, micro ~ 2-50 m.
     pub fn from_world(metrics: HeightfieldMetrics) -> Self {
         let diag = metrics.world_size_x.hypot(metrics.world_size_z).max(64.0);
         let cell = metrics.dx().max(metrics.dz()).max(0.25);
@@ -83,7 +83,7 @@ pub struct TerrainAmplificationParams {
     /// Peak micro amplitude in metres (gullies / breakup).
     #[serde(default = "default_micro_amp")]
     pub micro_amplitude_m: f32,
-    /// Cascade depth for structured patterns (2–6). Narrower patterns nest in broader ones.
+    /// Cascade depth for structured patterns (2-6). Narrower patterns nest in broader ones.
     #[serde(default = "default_cascades")]
     pub cascade_levels: u32,
     /// How strongly patterns align to flow / aspect (0 = isotropic frame, 1 = full).
@@ -98,7 +98,7 @@ pub struct TerrainAmplificationParams {
     /// Strength of macro-silhouette lock (high-pass the amplify delta).
     #[serde(default = "default_silhouette")]
     pub silhouette_lock: f32,
-    /// Ridge-conditioned breakup amount (0–1 multiplier on meso/micro ridge terms).
+    /// Ridge-conditioned breakup amount (0-1 multiplier on meso/micro ridge terms).
     #[serde(default = "default_ridge_breakup")]
     pub ridge_breakup: f32,
     /// Flow-conditioned gully / micro-channel amount.
@@ -107,7 +107,7 @@ pub struct TerrainAmplificationParams {
     /// Slope/lithology-conditioned rock roughness.
     #[serde(default = "default_rock")]
     pub rock_roughness: f32,
-    /// Optional override bands; `None` → [`AmplificationBands::from_world`].
+    /// Optional override bands; `None` -> [`AmplificationBands::from_world`].
     #[serde(default)]
     pub bands: Option<AmplificationBands>,
     #[serde(default = "default_amp_seed")]
@@ -471,7 +471,7 @@ fn apply_cascade_band(
                     }
                     ^ ((o as u64) << 17);
 
-                // Structured patterns — each answers a feature question.
+                // Structured patterns - each answers a feature question.
                 // Ridge breakup: anisotropic ridged noise across-slope on divides.
                 let ridge_n = ridged_aniso(u, v * (0.35 + 0.65 * (1.0 - align)), seed);
                 // Gullies: channel-like valleys elongated down-flow.
@@ -521,13 +521,13 @@ fn apply_cascade_band(
 }
 
 fn ridged_aniso(u: f32, v: f32, seed: u64) -> f32 {
-    // value_noise2 ∈ [-1,1] → ridged peaks near zero-crossings.
+    // value_noise2 in [-1,1] -> ridged peaks near zero-crossings.
     let n = value_noise2(u, v, seed);
     1.0 - n.abs() * 2.0
 }
 
 fn channel_aniso(u: f32, v: f32, seed: u64) -> f32 {
-    // Absolute value elongated down-flow → rill/gully profiles ∈ [-1,1].
+    // Absolute value elongated down-flow -> rill/gully profiles in [-1,1].
     let n = value_noise2(u, v, seed);
     n.abs() * 2.0 - 1.0
 }

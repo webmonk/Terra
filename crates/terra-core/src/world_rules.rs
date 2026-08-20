@@ -1,11 +1,11 @@
-//! World Rules — first-class condition-driven operations across Regions and Biomes.
+//! World Rules - first-class condition-driven operations across Regions and Biomes.
 //!
-//! Artist intentions such as “snow above 1 200 m” or “beaches near water on shallow
-//! slopes” are authored as project entities (not hidden generated masks). Placement
-//! compiles into the existing [`PlacementDefinition`] → [`Distribution`] bake path.
+//! Artist intentions such as "snow above 1 200 m" or "beaches near water on shallow
+//! slopes" are authored as project entities (not hidden generated masks). Placement
+//! compiles into the existing [`PlacementDefinition`] -> [`Distribution`] bake path.
 //!
 //! Multiple effects share one rule placement; each effect can be toggled independently.
-//! Rules may exist before they match any terrain — zero coverage is not an error.
+//! Rules may exist before they match any terrain - zero coverage is not an error.
 
 use crate::biome_definition::BiomeDefinitionId;
 use crate::domain::SoftDiagnostic;
@@ -181,7 +181,7 @@ impl WorldRuleEffectKind {
     }
 }
 
-/// One effect under a World Rule (shares the rule’s placement).
+/// One effect under a World Rule (shares the rule's placement).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct WorldRuleEffect {
     pub id: Uuid,
@@ -191,7 +191,7 @@ pub struct WorldRuleEffect {
     /// Optional strength / opacity \[0,1\].
     #[serde(default = "default_strength")]
     pub strength: f32,
-    /// Free-form params (material id, filter type, …) — specialised per kind.
+    /// Free-form params (material id, filter type, ...) - specialised per kind.
     #[serde(default)]
     pub params: serde_json::Value,
 }
@@ -266,7 +266,7 @@ impl WorldRule {
         }
     }
 
-    /// Resolved execution phase — override or inferred from effects.
+    /// Resolved execution phase - override or inferred from effects.
     pub fn resolved_phase(&self) -> WorldRulePhase {
         if let Some(p) = self.phase_override {
             return p;
@@ -280,7 +280,7 @@ impl WorldRule {
         if enabled.iter().all(|e| e.kind.inferred_phase() == first) {
             first
         } else {
-            // Ambiguity → prefer earliest (most conservative rebuild) among enabled.
+            // Ambiguity -> prefer earliest (most conservative rebuild) among enabled.
             enabled
                 .iter()
                 .map(|e| e.kind.inferred_phase())
@@ -352,7 +352,7 @@ impl WorldRule {
         if where_phrases.is_empty() {
             lines.push("Where: Entire scope".into());
         } else {
-            lines.push(format!("Where: {}", where_phrases.join(" · ")));
+            lines.push(format!("Where: {}", where_phrases.join(" - ")));
         }
         lines.push(format!("Coverage: ~{:.0}%", self.coverage_estimate * 100.0));
         for e in self.enabled_effects() {
@@ -374,7 +374,7 @@ fn collect_where_phrases(group: &crate::mask::RuleGroup) -> Vec<String> {
     }
     if out.len() > 4 {
         out.truncate(4);
-        out.push("…".into());
+        out.push("...".into());
     }
     out
 }
@@ -591,7 +591,7 @@ pub fn diagnose_world_rule(rule: &WorldRule) -> Vec<SoftDiagnostic> {
         out.push(SoftDiagnostic::new(
             "world_rule_no_effects",
             format!(
-                "‘{}’ has no effects yet — add Material, Terrain, or Scatter.",
+                "'{}' has no effects yet - add Material, Terrain, or Scatter.",
                 rule.name
             ),
         ));
@@ -599,7 +599,7 @@ pub fn diagnose_world_rule(rule: &WorldRule) -> Vec<SoftDiagnostic> {
     if !rule.effects.is_empty() && rule.effects.iter().all(|e| !e.enabled) {
         out.push(SoftDiagnostic::new(
             "world_rule_effects_disabled",
-            format!("All effects on ‘{}’ are disabled.", rule.name),
+            format!("All effects on '{}' are disabled.", rule.name),
         ));
     }
     // Contradictory height Between where min > max.
@@ -611,7 +611,7 @@ pub fn diagnose_world_rule(rule: &WorldRule) -> Vec<SoftDiagnostic> {
         out.push(SoftDiagnostic::new(
             "world_rule_empty_placement",
             format!(
-                "‘{}’ has no placement conditions — it will cover the entire scope.",
+                "'{}' has no placement conditions - it will cover the entire scope.",
                 rule.name
             ),
         ));
@@ -622,7 +622,7 @@ pub fn diagnose_world_rule(rule: &WorldRule) -> Vec<SoftDiagnostic> {
         out.push(SoftDiagnostic::new(
             "world_rule_zero_coverage",
             format!(
-                "‘{}’ currently matches ~0% of terrain — allowed, not an error.",
+                "'{}' currently matches ~0% of terrain - allowed, not an error.",
                 rule.name
             ),
         ));
@@ -631,7 +631,7 @@ pub fn diagnose_world_rule(rule: &WorldRule) -> Vec<SoftDiagnostic> {
         out.push(SoftDiagnostic::new(
             "world_rule_phase_ambiguous",
             format!(
-                "‘{}’ effects imply different phases — set phase under Advanced.",
+                "'{}' effects imply different phases - set phase under Advanced.",
                 rule.name
             ),
         ));
@@ -647,7 +647,7 @@ fn collect_condition_diags(group: &RuleGroup, name: &str, out: &mut Vec<SoftDiag
                     out.push(SoftDiagnostic::new(
                         "world_rule_contradictory_range",
                         format!(
-                            "‘{name}’ has a contradictory range ({:.0} … {:.0}).",
+                            "'{name}' has a contradictory range ({:.0} ... {:.0}).",
                             c.a, c.b
                         ),
                     ));
@@ -864,7 +864,7 @@ mod tests {
     #[test]
     fn beach_phase_ambiguous_without_override() {
         let b = beach_preset();
-        // Terrain + Material + Scatter → ambiguous
+        // Terrain + Material + Scatter -> ambiguous
         assert!(b.phase_needs_user_input());
     }
 }

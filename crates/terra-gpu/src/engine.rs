@@ -2,7 +2,7 @@
 //!
 //! This module is intentionally a single compilation unit for the wgpu façade
 //! (`GpuTerrainEngine`). Prefer extracting pipeline families (noise/blend, erosion,
-//! hydro) into sibling files when touching large regions — keep shader
+//! hydro) into sibling files when touching large regions - keep shader
 //! `include_str!` paths stable relative to this file.
 
 //! Interactive hard rules (WC): no UI-thread height readback, no mesh rebuild,
@@ -1059,7 +1059,7 @@ impl GpuTerrainEngine {
         }
     }
 
-    /// Current evaluated height field view (R32Float) — sample directly from the renderer when formats match.
+    /// Current evaluated height field view (R32Float) - sample directly from the renderer when formats match.
     pub fn output_texture_view(&self) -> &wgpu::TextureView {
         if self.current == 0 {
             &self.ping.view
@@ -1762,7 +1762,7 @@ impl GpuTerrainEngine {
         let layers = stack.flatten_layers();
         if quality_changed {
             // Drop contrib + wrong-size height caches. When a bridge prefix is supplied the
-            // caller already marked the dirty suffix — do not force a full rebuild (that
+            // caller already marked the dirty suffix - do not force a full rebuild (that
             // produces the "weird Draft/zero frame" on filter add).
             self.layer_contrib.clear();
             self.layer_cache
@@ -1953,7 +1953,7 @@ impl GpuTerrainEngine {
                     bridge_prefix,
                 );
             }
-            // Cannot seed — keep last-good on screen; async CPU must rebuild.
+            // Cannot seed - keep last-good on screen; async CPU must rebuild.
             drop(encoder);
             return Ok(GpuEvalResult {
                 width: metrics.width,
@@ -2002,7 +2002,7 @@ impl GpuTerrainEngine {
                     // Uncached ProceduralShape / Stamp / Path / etc.
                     // Passthrough the working buffer so downstream GPU filters can still
                     // run, but do **not** cache this as the layer bake and do **not**
-                    // clear dirty — that poisoned shapes as identity and skipped CPU.
+                    // clear dirty - that poisoned shapes as identity and skipped CPU.
                     hybrid = true;
                     if cpu_from.is_none() {
                         cpu_from = Some(layer_index);
@@ -2014,7 +2014,7 @@ impl GpuTerrainEngine {
             if layer.common.masks.is_empty() {
                 self.fill_slot(device, queue, &mut encoder, TexSlot::MaskOnes, 1.0);
             } else {
-                // GPU-resident mask bake from current height prefix — no Maintain::Wait.
+                // GPU-resident mask bake from current height prefix - no Maintain::Wait.
                 self.bake_layer_mask_gpu(device, queue, &mut encoder, layer, mask_assets)?;
             }
             // Sculpt uploads must land on the queue before later layer_tex fills in this
@@ -2090,7 +2090,7 @@ impl GpuTerrainEngine {
             cpu_from.or(Some(first_dirty))
         };
 
-        // Interactive path (want_cpu=false): present GPU textures at any quality — no
+        // Interactive path (want_cpu=false): present GPU textures at any quality - no
         // Maintain::Wait readback. Export/oracle callers pass want_cpu=true.
         if !want_cpu {
             return Ok(GpuEvalResult {
@@ -4021,7 +4021,7 @@ mod smoke_tests {
         assert!(before.fully_gpu);
         let h0 = before.cpu.expect("cpu").get(32, 32);
 
-        // Disable filter and compare — inflate should have raised the surface.
+        // Disable filter and compare - inflate should have raised the surface.
         if let Some(layer) = stack.find_mut(filter_id) {
             layer.common.enabled = false;
         }

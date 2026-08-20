@@ -1,4 +1,4 @@
-//! Artist-facing PlacementDefinition — compiles into existing DistNode / Distribution stacks.
+//! Artist-facing PlacementDefinition - compiles into existing DistNode / Distribution stacks.
 //!
 //! Authoring IR only. Coverage bake remains [`super::bake_dist_nodes`] /
 //! [`super::bake_distribution_with_context`].
@@ -21,9 +21,9 @@ pub const MAX_RULE_NEST_DEPTH: u8 = 4;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum PlacementCoordinateSpace {
-    /// Painted / imported coverage in world meters — stable when height changes.
+    /// Painted / imported coverage in world meters - stable when height changes.
     WorldSpace,
-    /// Surface-locked UV paint — follows terrain where supported.
+    /// Surface-locked UV paint - follows terrain where supported.
     SurfaceSpace,
     /// Procedural rules that reevaluate as terrain / climate change.
     #[default]
@@ -35,7 +35,7 @@ pub enum PlacementCoordinateSpace {
 pub enum PlacementSource {
     #[default]
     Rules,
-    /// Artist edited the compiled DistNode stack — do not auto-recompile.
+    /// Artist edited the compiled DistNode stack - do not auto-recompile.
     Custom,
 }
 
@@ -122,7 +122,7 @@ impl Condition {
     pub fn where_phrase(&self) -> String {
         match self.op {
             CompareOp::Between => format!(
-                "{} between {:.0}–{:.0}",
+                "{} between {:.0}-{:.0}",
                 self.channel.label(),
                 self.a.min(self.b),
                 self.a.max(self.b)

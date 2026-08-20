@@ -77,10 +77,10 @@ impl Default for PlateauParams {
 /// Flat-topped mesa / butte: hard cap, steep walls, soft talus skirt.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MesaParams {
-    /// Normalized UV center (0â€“1).
+    /// Normalized UV center (0-1).
     pub center_u: f32,
     pub center_v: f32,
-    /// Outer radius as a fraction of the shorter world axis (0â€“1).
+    /// Outer radius as a fraction of the shorter world axis (0-1).
     pub radius: f32,
     /// Cap height above surroundings (meters).
     pub height: f32,
@@ -109,7 +109,7 @@ impl Default for MesaParams {
 }
 
 impl MesaParams {
-    /// Smaller footprint, taller walls â€” isolated butte.
+    /// Smaller footprint, taller walls - isolated butte.
     pub fn butte() -> Self {
         Self {
             radius: 0.10,
@@ -266,13 +266,13 @@ impl Default for MountainParams {
 /// Radial volcanic cone: smooth falloff from a center with an optional crater bowl.
 ///
 /// Matches World Creator Landscape Volcano intent (peak, crater radius/depth) as a
-/// height authoring primitive â€” not a magmatic simulation.
+/// height authoring primitive - not a magmatic simulation.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct VolcanoParams {
-    /// Normalized UV center (0â€“1).
+    /// Normalized UV center (0-1).
     pub center_u: f32,
     pub center_v: f32,
-    /// Outer radius as a fraction of the shorter world axis (0â€“1).
+    /// Outer radius as a fraction of the shorter world axis (0-1).
     pub radius: f32,
     /// Peak height above surroundings (meters).
     pub height: f32,
@@ -310,13 +310,13 @@ impl Default for VolcanoParams {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct UpliftParams {
     pub seed: u64,
-    /// Primary corridor / ridge frequency (world unitsâ»Â¹).
+    /// Primary corridor / ridge frequency (world unitsâ»Â^1).
     pub frequency: f32,
     /// Peak uplift height in meters.
     pub amplitude: f32,
     /// Corridor orientation (radians).
     pub range_angle: f32,
-    /// Normalized corridor half-width âˆˆ (0,1].
+    /// Normalized corridor half-width in (0,1].
     pub corridor_width: f32,
     /// Sharpens the primary ridge crest (>1 = sharper).
     pub ridge_power: f32,
@@ -359,7 +359,7 @@ pub struct DuneParams {
     /// Extra depth carved in interdune troughs (meters).
     #[serde(default)]
     pub trough_depth: f32,
-    /// Soft basin floor as a fraction of dune amplitude (0–1).
+    /// Soft basin floor as a fraction of dune amplitude (0-1).
     #[serde(default)]
     pub basin_floor: f32,
     /// Wind / dune orientation in degrees (0 = +X).
@@ -371,16 +371,16 @@ pub struct DuneParams {
     /// Sand availability for the seed slab \[0, 2\].
     #[serde(default = "default_dune_sand_supply")]
     pub sand_supply: f32,
-    /// Spatial frequency of dune crests (world 1/m). 0 → use `wave_frequency`.
+    /// Spatial frequency of dune crests (world 1/m). 0 -> use `wave_frequency`.
     #[serde(default)]
     pub dune_scale: f32,
-    /// Peak dune height in meters. 0 → use `base.amplitude`.
+    /// Peak dune height in meters. 0 -> use `base.amplitude`.
     #[serde(default)]
     pub dune_height: f32,
-    /// Slip-face / crest contrast \[0, 1\]. 0 → use `asymmetry`.
+    /// Slip-face / crest contrast \[0, 1\]. 0 -> use `asymmetry`.
     #[serde(default)]
     pub crest_sharpness: f32,
-    /// Ridge coherence: high → linear/transverse; low → crescent/star-like \[0, 1\].
+    /// Ridge coherence: high -> linear/transverse; low -> crescent/star-like \[0, 1\].
     #[serde(default = "default_dune_linearity")]
     pub linearity: f32,
     /// Saltation hop length in cells for the relaxation pass.

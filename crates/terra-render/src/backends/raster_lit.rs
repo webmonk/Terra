@@ -1,4 +1,4 @@
-//! Raster lit presentation — high-res full-world and crack-free clipmap.
+//! Raster lit presentation - high-res full-world and crack-free clipmap.
 //!
 //! Pipelines live on `TerrainRenderer` until fully extracted; this module owns
 //! draw planning and pass parameters.

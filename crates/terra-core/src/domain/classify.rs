@@ -27,7 +27,7 @@ pub fn classify_layer_kind(kind: &LayerKind) -> DomainRole {
         | LayerKind::ImportHeightmap(_)
         | LayerKind::GradientReconstruct(_) => DomainRole::ShapeLayer,
 
-        // Terrain filters (biome character) — also Shape-compat when under Shape folder
+        // Terrain filters (biome character) - also Shape-compat when under Shape folder
         LayerKind::Mountains(_)
         | LayerKind::Mesa(_)
         | LayerKind::Volcano(_)

@@ -28,7 +28,7 @@ impl AccentCategory {
         match self {
             AccentCategory::Neutral => "Neutral",
             AccentCategory::Foundation => "Foundation",
-            // Maps from WorkflowStage::Generation — artist language is Shape, not Generator.
+            // Maps from WorkflowStage::Generation - artist language is Shape, not Generator.
             AccentCategory::Generator => "Shape",
             AccentCategory::Simulation => "Simulation",
             AccentCategory::Mask => "Mask",
@@ -110,7 +110,7 @@ impl ChannelRequirements {
 
 /// Stable description of a creatable / known layer *type* (not an instance).
 ///
-/// Not project-serialized — lives in the in-process [`super::LayerTypeRegistry`].
+/// Not project-serialized - lives in the in-process [`super::LayerTypeRegistry`].
 #[derive(Debug, Clone)]
 pub struct LayerTypeMeta {
     /// Stable machine id, e.g. `"mountain"`, `"hydraulic_erosion"`.

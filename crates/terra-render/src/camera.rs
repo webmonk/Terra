@@ -82,8 +82,8 @@ impl OrbitCamera {
         let right = self.right();
         let up = right.cross(self.forward()).normalize_or_zero();
         let scale = self.distance * 0.00125;
-        // Drag right → world moves right under the camera (invert screen X).
-        // Drag up → pan along camera up.
+        // Drag right -> world moves right under the camera (invert screen X).
+        // Drag up -> pan along camera up.
         self.target += right * (-dx * scale) + up * (dy * scale);
     }
 
@@ -166,7 +166,7 @@ mod tests {
             pitch: 0.0,
             ..OrbitCamera::default()
         };
-        // yaw=0, pitch=0 → offset=(1,0,0), forward=(-1,0,0)
+        // yaw=0, pitch=0 -> offset=(1,0,0), forward=(-1,0,0)
         let before = cam.target;
         cam.fly(1.0, 0.0, 0.0, 1.0, false);
         assert!(
@@ -189,12 +189,12 @@ mod tests {
         cam.fly(1.0, 0.0, 0.0, 1.0, false);
         assert!(
             cam.target.y < y_before,
-            "W along look-down must lower the look-at: y {y_before} → {}",
+            "W along look-down must lower the look-at: y {y_before} -> {}",
             cam.target.y
         );
         assert!(
             cam.eye().y < eye_y_before,
-            "eye should dive with the rig: {} → {}",
+            "eye should dive with the rig: {} -> {}",
             eye_y_before,
             cam.eye().y
         );

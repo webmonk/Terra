@@ -1,4 +1,4 @@
-//! Contextual create — owner inference, override, workspaces, undo (WC single-stack).
+//! Contextual create - owner inference, override, workspaces, undo (WC single-stack).
 
 use terra_core::contextual_create::{
     available_kinds, execute_create, override_owner, propose_owner, CreateContext, CreateError,

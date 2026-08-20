@@ -29,7 +29,7 @@ impl QualityPreset {
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub enum ViewportRendererMode {
     Fast,
-    /// Stable lit raster — default so the heightfield is always visible.
+    /// Stable lit raster - default so the heightfield is always visible.
     #[default]
     Raster,
     ProgressiveRayTraced,
@@ -113,7 +113,7 @@ impl RenderQualityConfig {
             max_bounces_refining: 3,
             max_bounces_final: 4,
             direct_light_samples: 1,
-            sun_angular_radius_rad: 0.00465, // ~0.27°
+            sun_angular_radius_rad: 0.00465, // ~0.27 deg
             denoise_enabled: true,
             dynamic_resolution_enabled: true,
             min_internal_scale: 0.7,
@@ -277,7 +277,7 @@ impl ViewportQualityManager {
         if gpu_ms <= 0.0 {
             return;
         }
-        // EMA — ignore isolated spikes by blending slowly.
+        // EMA - ignore isolated spikes by blending slowly.
         let alpha = 0.15;
         self.smoothed_gpu_ms = self.smoothed_gpu_ms * (1.0 - alpha) + gpu_ms * alpha;
     }
@@ -315,7 +315,7 @@ impl ViewportQualityManager {
                 self.frames_over_budget = 0;
                 self.frames_under_budget = 0;
             }
-            // Hysteresis: several frames before stepping ±0.05.
+            // Hysteresis: several frames before stepping +/-0.05.
             if self.frames_over_budget >= 4 {
                 self.internal_scale =
                     (self.internal_scale - 0.05).max(self.config.min_internal_scale);
@@ -348,7 +348,7 @@ impl ViewportQualityManager {
     }
 
     fn degrade_for_budget(&mut self) {
-        // Priority: spp beyond 1 → bounces → denoise iters → resolution (already stepped).
+        // Priority: spp beyond 1 -> bounces -> denoise iters -> resolution (already stepped).
         if self.spp_this_frame > 1 {
             self.spp_this_frame = 1;
         } else if self.bounce_count > 1 {

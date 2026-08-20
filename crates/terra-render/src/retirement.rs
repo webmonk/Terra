@@ -1,4 +1,4 @@
-//! Deferred GPU texture retirement — drop resources after N frames.
+//! Deferred GPU texture retirement - drop resources after N frames.
 //!
 //! Large height/normal reallocations should not destroy textures on the same
 //! frame they were last sampled; queue them here and drain in `tick`.

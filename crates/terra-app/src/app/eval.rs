@@ -8,8 +8,8 @@ use terra_core::mask::bake_mask_assets;
 
 use super::{quality_stage_progress, TerraApp};
 
-/// Interactive Full preview ceiling — same 1 m footing as WC (world metres ≈ samples),
-/// capped at export-class 8192² so extreme worlds stay bounded.
+/// Interactive Full preview ceiling - same 1 m footing as WC (world metres ~ samples),
+/// capped at export-class 8192^2 so extreme worlds stay bounded.
 const INTERACTIVE_PREVIEW_CAP: u32 = 8192;
 
 impl TerraApp {
@@ -74,10 +74,10 @@ impl TerraApp {
         if self.gpu_engine.is_some() && self.renderer.is_some() {
             self.run_eval_step();
             self.last_refine = Instant::now();
-            // Incomplete/failed GPU present → ensure Draft CPU is running.
+            // Incomplete/failed GPU present -> ensure Draft CPU is running.
             let needs_cpu = matches!(
                 self.ui_state.profile.path,
-                "GPU→async CPU" | "async CPU" | "GPU*" | ""
+                "GPU->async CPU" | "async CPU" | "GPU*" | ""
             );
             if needs_cpu && !self.worker_refine_pending {
                 let q = PreviewQuality::Draft;
@@ -101,7 +101,7 @@ impl TerraApp {
         self.enqueue_async_eval(self.scheduler.quality);
     }
 
-    /// Offload CPU stack eval to the worker — never block the UI thread.
+    /// Offload CPU stack eval to the worker - never block the UI thread.
     pub(crate) fn enqueue_async_eval(&mut self, quality: PreviewQuality) {
         let preview_stack = self.session.document.preview_eval_stack();
         self.ui_state.refining_layer_name = self
@@ -279,6 +279,36 @@ impl TerraApp {
         }
     }
 
+    /// Refresh layer-panel thumbnails from the evaluator's per-layer cached
+    /// heights: shaded-relief previews, regenerated only when a layer's
+    /// cache generation changes. Layers with no clean CPU cache entry keep
+    /// their placeholder. Called once per frame; cost is a few HashMap
+    /// probes when nothing changed.
+    pub(crate) fn refresh_layer_thumbnails(&mut self) {
+        use crate::ui::thumbnails::{render_height_thumbnail, LAYER_THUMB_RES};
+
+        let ids = self.session.document.stack.layer_ids();
+        self.layers_gui.thumbnails.retain_layers(&ids);
+        let mut todo: Vec<(terra_core::layer::LayerId, u64, terra_core::Heightfield)> = Vec::new();
+        for id in ids {
+            if let Some(cached) = self.scheduler.evaluator.cache.get(id) {
+                if !cached.dirty
+                    && self
+                        .layers_gui
+                        .thumbnails
+                        .needs_refresh(id, cached.generation)
+                {
+                    // CoW clone: refcount bump, no buffer copy.
+                    todo.push((id, cached.generation, cached.height.clone()));
+                }
+            }
+        }
+        for (id, generation, height) in todo {
+            let thumb = render_height_thumbnail(&height, LAYER_THUMB_RES);
+            self.layers_gui.thumbnails.insert_real(id, generation, thumb);
+        }
+    }
+
     /// Targeted invalidation for a mask-asset edit: dirty from the first
     /// layer that reads the mask instead of rebuilding the whole stack.
     /// Falls back to a full rebuild when a World Rule consumes it, and to no
@@ -299,7 +329,7 @@ impl TerraApp {
             self.mark_dirty_from(layer);
             self.request_rebuild();
         }
-        // Unreferenced masks change no terrain — overlay refresh is enough.
+        // Unreferenced masks change no terrain - overlay refresh is enough.
     }
 
     pub(crate) fn mark_dirty_from_stage(&mut self, id: LayerId) {
@@ -377,7 +407,7 @@ impl TerraApp {
             now_ms,
         );
         if !feedback.is_empty() {
-            self.ui_state.status = feedback.format_updating().replace('\n', " Â· ");
+            self.ui_state.status = feedback.format_updating().replace('\n', " - ");
             self.ui_state.affected_feedback = Some(feedback.format_updating());
         }
     }
@@ -465,7 +495,7 @@ impl TerraApp {
         let export = self.session.document.export_resolution;
         let base = self.session.document.metrics;
         let quality = self.scheduler.quality;
-        // Global + active region â€” interactive preview must include world.global.
+        // Global + active region - interactive preview must include world.global.
         let preview_stack = self.session.document.preview_eval_stack();
         self.ui_state.refining_layer_name = self
             .session
@@ -489,7 +519,7 @@ impl TerraApp {
 
         // Bridge for interactive suffix edits:
         // 1) CPU layer checkpoint for prev id (param tweaks)
-        // 2) last_height / last_good when first dirty layer is *new* (add filter) —
+        // 2) last_height / last_good when first dirty layer is *new* (add filter) -
         //    safe prefix: prior stack output does not include the new layer yet.
         let bridge_owned: Option<Heightfield> = {
             let layers = preview_stack.flatten_layers();
@@ -552,7 +582,7 @@ impl TerraApp {
                 ) {
                     Ok(result) => {
                         if token != self.eval_token {
-                            // Stale generation â€” discard.
+                            // Stale generation - discard.
                         } else {
                             let dx = metrics.dx();
                             let dz = metrics.dz();
@@ -600,7 +630,7 @@ impl TerraApp {
                                 self.ui_state.profile.upload_us = renderer.last_upload_us;
                                 self.ui_state.profile.terrain_grid_size =
                                     renderer.last_grid_resolution;
-                                // GPU present owns the viewport — don't let a stale CPU
+                                // GPU present owns the viewport - don't let a stale CPU
                                 // upload from a prior job clobber it on the next redraw.
                                 self.needs_height_upload = false;
                             } else {
@@ -619,16 +649,16 @@ impl TerraApp {
                             };
 
                             // Interactive path: GPU present is authoritative for the frame.
-                            // Never sync-evaluate CPU on the UI thread — that hangs the app
-                            // when stacks include unsupported layers (painted masks, SPE, …).
+                            // Never sync-evaluate CPU on the UI thread - that hangs the app
+                            // when stacks include unsupported layers (painted masks, SPE, ...).
                             let needs_cpu_suffix = result.resume_cpu_from.is_some();
                             self.last_eval_fully_gpu = result.fully_gpu;
                             if result.resume_cpu_from == Some(0)
                                 && !result.fully_gpu
                                 && !result.did_eval
                             {
-                                // Seed failed — keep last-good, refine async at current quality.
-                                self.ui_state.profile.path = "GPU→async CPU";
+                                // Seed failed - keep last-good, refine async at current quality.
+                                self.ui_state.profile.path = "GPU->async CPU";
                                 used_gpu = true;
                                 eval_completed = true;
                                 if !self.worker_refine_pending {
@@ -703,8 +733,8 @@ impl TerraApp {
                                 eval_completed = true;
                                 if needs_cpu_suffix {
                                     // Unsupported layers need CPU bake at *this* quality
-                                    // (not Draft), then lifecycle advances Draft→Medium→Full.
-                                    self.ui_state.profile.path = "GPU→async CPU";
+                                    // (not Draft), then lifecycle advances Draft->Medium->Full.
+                                    self.ui_state.profile.path = "GPU->async CPU";
                                     self.ui_state.refining = true;
                                     self.ui_state.build_progress =
                                         Some(quality_stage_progress(quality).max(0.15));
@@ -712,7 +742,7 @@ impl TerraApp {
                                         self.enqueue_async_eval(quality);
                                     }
                                 } else {
-                                    // GPU finished this quality — keep climbing toward Full.
+                                    // GPU finished this quality - keep climbing toward Full.
                                     self.ui_state.refining = quality.next_refine().is_some();
                                     if !self.ui_state.refining {
                                         self.ui_state.build_progress = None;
@@ -725,7 +755,7 @@ impl TerraApp {
                         }
                     }
                     Err(_) => {
-                        // GPU path failed — async CPU, keep last-good on screen.
+                        // GPU path failed - async CPU, keep last-good on screen.
                         self.last_eval_fully_gpu = false;
                         self.ui_state.profile.path = "async CPU";
                         if !self.worker_refine_pending {
@@ -868,7 +898,7 @@ impl TerraApp {
             self.preview_dirty = false;
             return;
         }
-        // Coloured biome placement overlay â€” bypass grayscale path.
+        // Coloured biome placement overlay - bypass grayscale path.
         if self.ui_state.preview_mode == Preview2dMode::Biome {
             if let Some(layer) = self.session.document.selected_placement_layer() {
                 if !layer.channels.is_empty() {

@@ -11,11 +11,11 @@ use std::collections::HashSet;
 /// How a process dirty region should expand for incremental recomputation.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum DirtyClass {
-    /// Local stencil (blur / single-pass thermal) — pad by stencil radius only.
+    /// Local stencil (blur / single-pass thermal) - pad by stencil radius only.
     Local,
-    /// Multi-iteration neighbourhood ops — expand by tile radius from iters.
+    /// Multi-iteration neighbourhood ops - expand by tile radius from iters.
     Expanding,
-    /// Drainage / SPE / amplify — basin-coupled; prefer full field or large expand.
+    /// Drainage / SPE / amplify - basin-coupled; prefer full field or large expand.
     BasinDependent,
 }
 
@@ -44,7 +44,7 @@ pub fn dirty_class_for(kind: &LayerKind) -> DirtyClass {
 
 /// Recommended halo (ghost) width for a neighbourhood process.
 ///
-/// `stencil_radius` is the single-pass read radius (thermal/hydraulic ≈ 1).
+/// `stencil_radius` is the single-pass read radius (thermal/hydraulic ~ 1).
 /// An implementation that skips per-pass halo refresh must both allocate and
 /// evolve an expanded domain of at least `stencil_radius * iters_per_batch`.
 /// Merely widening storage halos is not sufficient when only tile interiors are
@@ -73,7 +73,7 @@ pub fn expand_radius_for(class: DirtyClass, stencil: u32, iterations: u32) -> u3
 impl DirtyClass {
     /// Sample-space support radius for cache keys and invalidation expansion.
     ///
-    /// Basin-coupled processes are treated as global — callers should prefer
+    /// Basin-coupled processes are treated as global - callers should prefer
     /// `mark_all` when this returns `None`.
     pub fn support_radius_samples(
         self,

@@ -20,7 +20,7 @@ impl TerraApp {
         };
 
         // Coalesce fast brush motion: many stamps per frame, one Draft present.
-        // Mask paint updates overlay only â€” never force a height eval mid-stroke.
+        // Mask paint updates overlay only - never force a height eval mid-stroke.
         if self.pending_eval
             && (self.sculpt_stroke_active
                 || (self.mouse_pressed == Some(MouseButton::Left)
@@ -32,6 +32,9 @@ impl TerraApp {
 
         self.refresh_viewport_rect();
         self.refresh_2d_preview();
+        if self.screen != AppScreen::Home {
+            self.refresh_layer_thumbnails();
+        }
         if self.should_show_mask_overlay() {
             let target = self.ui_state.paint_mask.or(self.ui_state.selected_mask);
             if self.mask_overlay_dirty || self.last_mask_overlay_id != target {
@@ -189,7 +192,7 @@ impl TerraApp {
                 return;
             };
 
-            // Terrain pass — always draws last-good GPU textures (never waits on eval).
+            // Terrain pass - always draws last-good GPU textures (never waits on eval).
             let render_t0 = Instant::now();
             {
                 // (Re)seed the editable lighting when a preset is selected: either a
@@ -301,14 +304,14 @@ impl TerraApp {
             }
             // Frame seam (see TerrainRenderer::render_terrain's contract): this
             // acquires + submits terrain and returns the un-presented frame. The
-            // block below must keep that order — build the GUI view from *this*
+            // block below must keep that order - build the GUI view from *this*
             // frame, submit exactly one GUI pass (LoadOp::Load) over it, and
             // present only after that submit. Reordering present before the GUI
             // submit shows a stale frame; the compositing tests guard the rest.
             let frame = match renderer.render_terrain() {
                 Ok(f) => f,
                 // Exhaustive by design (A1-G2): no `_` arm, so a future
-                // wgpu::SurfaceError variant — or collapsing RenderError — fails
+                // wgpu::SurfaceError variant - or collapsing RenderError - fails
                 // to compile here instead of silently dropping frames forever.
                 Err(terra_render::RenderError::Surface(e)) => {
                     match e {
@@ -319,7 +322,7 @@ impl TerraApp {
                         wgpu::SurfaceError::Outdated | wgpu::SurfaceError::Lost => {
                             // Swap chain invalid (display re-plug, driver reset,
                             // DPI/fullscreen change without a Resized event).
-                            // Reconfigure and schedule the recovery frame — the
+                            // Reconfigure and schedule the recovery frame - the
                             // on-demand loop won't repaint on its own.
                             log::warn!("render: {e}; reconfiguring surface");
                             renderer.reconfigure();
@@ -396,7 +399,7 @@ impl TerraApp {
                 self.ui_outdated_fp = outdated_fp;
                 self.ui_state.outdated_layer_ids = self.session.outdated_sim_layers.clone();
             }
-            // Soft incomplete-project diagnostics (empty is valid â€” explain, don't block).
+            // Soft incomplete-project diagnostics (empty is valid - explain, don't block).
             let diag_fp = (self.session.document.stack.nodes.len() as u64)
                 ^ ((self.session.document.biome_library.definitions.len() as u64) << 16);
             if diag_fp != self.ui_soft_diag_fp {

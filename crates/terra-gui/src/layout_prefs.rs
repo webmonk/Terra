@@ -20,7 +20,7 @@ pub struct LayoutPrefs {
     pub tool_panel_w: f32,
     /// Right rail (layers + inspector) width.
     pub right_panel_w: f32,
-    /// Fraction of the right rail height for the layers stack (0–1).
+    /// Fraction of the right rail height for the layers stack (0-1).
     pub layers_frac: f32,
     /// When true, the contextual tool panel is hidden (mode rail remains when visible).
     pub tool_panel_collapsed: bool,

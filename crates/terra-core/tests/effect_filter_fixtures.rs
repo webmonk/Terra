@@ -238,7 +238,7 @@ fn mountain_field(res: u32) -> Heightfield {
 #[test]
 fn morphology_filters_change_height() {
     let hf = mountain_field(64);
-    // Cover every EffectFilterKind — including Wave D/E parity additions.
+    // Cover every EffectFilterKind - including Wave D/E parity additions.
     for &kind in EffectFilterKind::ALL {
         let p = EffectFilterParams {
             kind,
@@ -254,7 +254,7 @@ fn morphology_filters_change_height() {
         };
         let out = effect_filter(&hf, &p);
         let delta = max_abs_delta(&hf, &out);
-        // ZeroEdge / BorderBlend act on the rim; still measurable on 64².
+        // ZeroEdge / BorderBlend act on the rim; still measurable on 64^2.
         assert!(
             delta > 0.05,
             "{:?} should change height (max delta={delta})",
@@ -441,7 +441,7 @@ fn canyon_incises_drainage_not_noise() {
     let out = effect_filter(&hf, &p);
     let mid = res_mid(&hf);
     // Deepest incision follows the drainage trunk (valley centre column), not
-    // necessarily the geometric mid-cell — outlets sit near the N/S edges.
+    // necessarily the geometric mid-cell - outlets sit near the N/S edges.
     let mut channel_drop = 0.0f32;
     for j in 0..hf.metrics.height {
         channel_drop = channel_drop.max(hf.get(mid, j) - out.get(mid, j));
@@ -732,7 +732,7 @@ fn phase10_crater_has_rim_raise() {
     let out = effect_filter(&hf, &p);
     let mid = 32u32;
     let center_dh = out.get(mid, mid) - hf.get(mid, mid);
-    // Sample near geometric rim (~0.22 * 640 ≈ 140m → ~14 cells).
+    // Sample near geometric rim (~0.22 * 640 ~ 140m -> ~14 cells).
     let rim_i = mid + 14;
     let rim_dh = out.get(rim_i, mid) - hf.get(rim_i, mid);
     assert!(

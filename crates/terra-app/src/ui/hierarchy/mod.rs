@@ -22,7 +22,7 @@ use terra_core::layer::{BlendMode, LayerId, LayerKind, LayerStack, StackNode};
 use terra_core::mask::MaskId;
 use terra_gui::{icon_button, Color, DrawList, GuiContext, Icon, Id, Rect};
 
-// —— Layout constants ————————————————————————————————————————————————
+// -- Layout constants ------------------------------------------------
 
 const LIST_INSET: f32 = 10.0;
 const INDENT_STEP: f32 = 14.0;
@@ -38,9 +38,9 @@ const OPACITY_COL: f32 = 34.0;
 const CAT_ROW_H: f32 = 26.0;
 /// Single-line section / folder / mask-stack chrome (icon + label + controls).
 const SEC_ROW_H: f32 = 28.0;
-/// Two-line plain headers that show a meta subtitle (Mask Stack, Advanced, …).
+/// Two-line plain headers that show a meta subtitle (Mask Stack, Advanced, ...).
 const SEC_ROW_H_META: f32 = 40.0;
-/// Inline rename field height — matches a compact text input, not the full row.
+/// Inline rename field height - matches a compact text input, not the full row.
 const RENAME_FIELD_H: f32 = 22.0;
 const FOOTER_H: f32 = 36.0;
 const FOOTER_BTN: f32 = 26.0;
@@ -104,7 +104,7 @@ pub struct LayerPresentationState {
     pub show_thumbnails: bool,
     pub hover_layer: Option<LayerId>,
     pub hide_disabled: bool,
-    /// Optional workspace filter — hide de-emphasized rows (cleared easily).
+    /// Optional workspace filter - hide de-emphasized rows (cleared easily).
     pub show_only_relevant: bool,
     pub inspector_tab: Option<String>,
 }
@@ -332,7 +332,7 @@ pub fn draw_layers_gui(
         style::SEPARATOR,
     );
 
-    // —— Header ————————————————————————————————————————————————
+    // -- Header ------------------------------------------------
     let header = Rect::from_pos_size(panel.min_x, panel.min_y, panel.width(), style::HEADER_H);
     ui.panel(header, style::PANEL_BG);
     let hdr_icon_sz = 14.0;
@@ -368,7 +368,7 @@ pub fn draw_layers_gui(
         .and_then(|id| doc.stack.find(id))
         .is_some_and(|l| l.kind.is_sculpt_base());
 
-    // —— Footer ————————————————————————————————————————————————
+    // -- Footer ------------------------------------------------
     let footer = Rect::from_pos_size(panel.min_x, panel.max_y - FOOTER_H, panel.width(), FOOTER_H);
     ui.panel(footer, style::SURFACE);
     ui.panel(
@@ -392,7 +392,7 @@ pub fn draw_layers_gui(
                     actions.push(PanelAction::OpenQuickAdd);
                 }
                 "mask" => {
-                    // Create flow: open Mask Layers picker (Height / Slope / Painted / …).
+                    // Create flow: open Mask Layers picker (Height / Slope / Painted / ...).
                     actions.push(PanelAction::OpenQuickAddConcept {
                         concept: ArtistConcept::Masks,
                     });
@@ -418,7 +418,7 @@ pub fn draw_layers_gui(
 
     let list = Rect::from_min_max(panel.min_x, header.max_y, panel.max_x, footer.min_y);
 
-    // Optional relevance filter (presentation only — clearable).
+    // Optional relevance filter (presentation only - clearable).
     let filter_bar = Rect::from_pos_size(list.min_x, list.min_y, list.width(), FILTER_BAR_H);
     ui.panel(filter_bar, style::PANEL_BG);
     let filter_id = Id::new("layers_only_relevant");
@@ -572,7 +572,7 @@ pub fn draw_layers_gui(
 
         // Selection / hover chrome.
         if is_section {
-            // Subtle separator label — no fill card.
+            // Subtle separator label - no fill card.
         } else if dragging_this {
             ui.panel_rounded(row, style::SURFACE, style::RADIUS_SM);
             ui.panel(
@@ -694,7 +694,7 @@ pub fn draw_layers_gui(
                 let nest_zone = row_is_nest_target(row_data.role) && rel_y > 0.28 && rel_y < 0.72;
 
                 if tool_dragging {
-                    // Tools rail → biome / section: create into that container.
+                    // Tools rail -> biome / section: create into that container.
                     if matches!(
                         row_data.role,
                         TreeRole::Biome | TreeRole::BiomeSection | TreeRole::Group
@@ -715,7 +715,7 @@ pub fn draw_layers_gui(
                     let nest_into =
                         drop_should_nest_into(doc, moving, row_data.id, row_data.role, nest_zone);
                     let place_before_visual = if nest_into { false } else { rel_y < 0.5 };
-                    // Shape / Mask / Sim folders render bottom→top of the stack.
+                    // Shape / Mask / Sim folders render bottom->top of the stack.
                     let place_before = if row_data.list_reversed && !nest_into {
                         !place_before_visual
                     } else {
@@ -921,7 +921,7 @@ pub fn draw_layers_gui(
             }
         }
 
-        // Opacity % — hover/selection only (declutter).
+        // Opacity % - hover/selection only (declutter).
         let show_opacity = matches!(
             row_data.role,
             TreeRole::Layer | TreeRole::Foundation | TreeRole::Group | TreeRole::Biome
@@ -1065,7 +1065,7 @@ pub fn draw_layers_gui(
                 toggle_row_collapse(state, row_data.role, row_data.id);
                 state.add_menu_open = false;
             } else if can_rename && selected {
-                // Second click on the selected name → inline rename.
+                // Second click on the selected name -> inline rename.
                 begin_hierarchy_rename(ui, state, row_data.id, &row_data.name);
                 state.add_menu_open = false;
                 state.context_menu = None;
@@ -1289,7 +1289,7 @@ pub fn draw_layers_gui(
             state.drag_from = None;
         }
 
-        // Tools rail drag → create into hovered biome / Filters section.
+        // Tools rail drag -> create into hovered biome / Filters section.
         if let Some(drag) = ui_state.tool_drag.take() {
             if drag.force_shape_folder {
                 let layer = terra_core::layer::Layer::new(drag.name, drag.kind);
@@ -1301,7 +1301,7 @@ pub fn draw_layers_gui(
                 let layer = terra_core::layer::Layer::new(drag.name, drag.kind);
                 actions.push(PanelAction::AddLayerInto { parent, layer });
             }
-            // else: released over layers with no nest target — cancel
+            // else: released over layers with no nest target - cancel
         }
     }
 
@@ -1421,7 +1421,7 @@ fn row_is_nest_target(role: TreeRole) -> bool {
 /// Whether dropping `moving` on `target` should nest (vs sibling reorder).
 ///
 /// Filters / materials / objects / local sims dropped on a biome (or its section)
-/// always nest so they land under that biome's section — not as siblings of the biome.
+/// always nest so they land under that biome's section - not as siblings of the biome.
 fn drop_should_nest_into(
     doc: &TerrainDocument,
     moving: LayerId,
@@ -1439,7 +1439,7 @@ fn drop_should_nest_into(
             nest_zone
         }
         TreeRole::BiomeSection => {
-            // Any layer dropped on Filters / Materials / … goes into that section.
+            // Any layer dropped on Filters / Materials / ... goes into that section.
             doc.stack.find(moving).is_some() || nest_zone
         }
         TreeRole::Group => nest_zone,
@@ -1453,7 +1453,7 @@ fn push_nest_drop_actions(
     target: LayerId,
     actions: &mut Vec<PanelAction>,
 ) {
-    // Drop onto a biome → route into the kind's section (Filters, Materials, …).
+    // Drop onto a biome -> route into the kind's section (Filters, Materials, ...).
     if doc.stack.find_group(target).is_some_and(|g| g.is_biome()) {
         if let Some(layer) = doc.stack.find(moving) {
             if let Some(section) = terra_core::layer::biome_destination_section(&layer.kind) {
@@ -1472,7 +1472,7 @@ fn push_nest_drop_actions(
         return;
     }
 
-    // Drop onto Filters / Materials / Objects / Local Sims → that section.
+    // Drop onto Filters / Materials / Objects / Local Sims -> that section.
     if let Some(section) = doc
         .stack
         .find_group(target)
@@ -1900,7 +1900,7 @@ fn walk_node_flat(
                 return;
             }
             if role == TreeRole::Biome {
-                // WC under each biome: Filters → Materials → Objects → Local Sims,
+                // WC under each biome: Filters -> Materials -> Objects -> Local Sims,
                 // then Distribution (placement) after the surface sections.
                 emit_biome_sections_ordered(
                     g,
@@ -2020,7 +2020,7 @@ fn emit_advanced_placement(
     adv.first_mask = biome.masks.first().map(|e| e.mask.id);
     adv.child_count = 1;
     adv.meta = if biome.masks.is_empty() {
-        "Coverage —".into()
+        "Coverage -".into()
     } else {
         format!("{} masks", biome.masks.len())
     };
@@ -2045,7 +2045,7 @@ fn emit_advanced_placement(
     mask.mask_count = biome.masks.len();
     mask.first_mask = biome.masks.first().map(|e| e.mask.id);
     mask.meta = if biome.masks.is_empty() {
-        "Empty · edit placement".into()
+        "Empty - edit placement".into()
     } else {
         format!("{} rules", biome.masks.len())
     };
@@ -2180,7 +2180,7 @@ enum TreeRole {
     Foundation,
     Biome,
     BiomeSection,
-    /// Advanced Placement → Mask Stack (replaces Distribution).
+    /// Advanced Placement -> Mask Stack (replaces Distribution).
     MaskStack,
     Group,
     Layer,
@@ -2194,7 +2194,7 @@ enum TreeRole {
     SimulationScenarioEntity,
 }
 
-/// Soft hierarchy emphasis — dim only; never hide or block selection/editing.
+/// Soft hierarchy emphasis - dim only; never hide or block selection/editing.
 fn row_dimmed_for_workspace(ui_state: &UiState, row: &LayerRow) -> bool {
     if matches!(ui_state.active_workspace, WorkspaceId::AllTools) {
         return false;
@@ -2512,7 +2512,7 @@ fn commit_hierarchy_rename(
     ui.state.clear_text_focus();
 }
 
-/// Layers / biomes / user groups / masks — not fixed section labels.
+/// Layers / biomes / user groups / masks - not fixed section labels.
 fn row_can_rename(doc: &TerrainDocument, row: &LayerRow) -> bool {
     match row.role {
         TreeRole::Layer | TreeRole::Biome | TreeRole::MaskAsset => true,
@@ -2857,7 +2857,7 @@ mod hierarchy_tests {
         let Some(dim_row) = rows.iter().find(|r| {
             row_dimmed_for_workspace(&ui, r) && !matches!(r.role, TreeRole::SectionLabel)
         }) else {
-            // Default doc may have only shape-relevant rows in Sculpt — still ok.
+            // Default doc may have only shape-relevant rows in Sculpt - still ok.
             return;
         };
         state.presentation.show_only_relevant = true;
@@ -2874,7 +2874,7 @@ mod hierarchy_tests {
         assert!(!state.presentation.show_only_relevant);
         let rows = collect_rows(&doc, &state, &[]);
         assert!(!rows.is_empty());
-        // Filter off → nothing hidden.
+        // Filter off -> nothing hidden.
         for r in &rows {
             assert!(!row_hidden_by_filter(&ui, &state, r, false));
         }

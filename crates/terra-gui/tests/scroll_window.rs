@@ -21,9 +21,9 @@ fn render_window_frame(
     n_rows: usize,
 ) {
     let mut ctx = GuiContext::begin(SW, SH, 1.0, input, state);
-    // Mode bar draws viewport chrome inside an overlay layer …
+    // Mode bar draws viewport chrome inside an overlay layer ...
     ctx.begin_overlay();
-    // … and the open render menu is drawn through `with_menu_input`.
+    // ... and the open render menu is drawn through `with_menu_input`.
     ctx.with_menu_input(|ctx| {
         if ctx.begin_window(Id::new("vr"), "Viewport Rendering", win, open, scroll_y) {
             for _ in 0..n_rows {
@@ -49,7 +49,7 @@ fn advanced_window_overflows_and_reports_scroll_range() {
     let mut open = true;
     let mut scroll_y = 0.0;
 
-    // 20 rows * 32 = 640 px content vs ~492 px viewport → must overflow.
+    // 20 rows * 32 = 640 px content vs ~492 px viewport -> must overflow.
     render_window_frame(
         &mut state,
         GuiInput {
@@ -134,7 +134,7 @@ fn advanced_window_thumb_drag_scrolls_content() {
         20,
     );
 
-    // Frame 2: press on the thumb (down edge) — starts the drag.
+    // Frame 2: press on the thumb (down edge) - starts the drag.
     render_window_frame(
         &mut state,
         GuiInput {
@@ -148,7 +148,7 @@ fn advanced_window_thumb_drag_scrolls_content() {
         20,
     );
 
-    // Frame 3: hold and move the pointer down 120 px — content should scroll.
+    // Frame 3: hold and move the pointer down 120 px - content should scroll.
     render_window_frame(
         &mut state,
         GuiInput {

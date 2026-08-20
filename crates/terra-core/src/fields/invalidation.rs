@@ -1,4 +1,4 @@
-//! Phase 11 Rule 4 — recompute dependencies when shared physical state changes.
+//! Phase 11 Rule 4 - recompute dependencies when shared physical state changes.
 //!
 //! When height (or another producer field) changes, invalidate derived analysis
 //! and hydro dependents. Iterative algorithms that own temporary internal copies

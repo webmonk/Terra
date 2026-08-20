@@ -217,7 +217,7 @@ pub fn dist_kind_description(label: &str, is_effect: bool) -> &'static str {
             "Curvature" => "Mask from terrain curvature.",
             "Flow" => "Mask from flow accumulation.",
             "Sea Level" => "Band around sea level.",
-            "Occlusion" => "Ambient occlusion–style mask.",
+            "Occlusion" => "Ambient occlusion-style mask.",
             "Cavity" => "Concave cavity mask.",
             "Angle" => "Aspect / sun-facing angle mask.",
             "Roughness" => "Local roughness mask.",

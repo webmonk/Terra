@@ -7,7 +7,7 @@
 //! and solo semantics. Chronology matters only when authoring operations leave
 //! the stack in a different order.
 //!
-//! Incomplete but valid projects produce empty outputs and soft diagnostics —
+//! Incomplete but valid projects produce empty outputs and soft diagnostics -
 //! never fatal errors solely because coverage is zero or a stage has no sources.
 
 use crate::biome_definition::{BiomeDefinition, BiomeLibrary};
@@ -54,7 +54,7 @@ pub fn evaluation_eval_stage_order() -> &'static [EvalStage] {
     ]
 }
 
-/// Artist workflow metadata stages — presentation hints only, not eval order.
+/// Artist workflow metadata stages - presentation hints only, not eval order.
 pub fn workflow_stage_metadata_order() -> &'static [WorkflowStage] {
     &WorkflowStage::ALL
 }
@@ -77,7 +77,7 @@ pub fn incomplete_project_diagnostics(
     if stack.flatten_layers().is_empty() {
         out.push(SoftDiagnostic::new(
             "stack_without_shape_layers",
-            "Terrain stack has no layers yet — evaluates as identity height.",
+            "Terrain stack has no layers yet - evaluates as identity height.",
         ));
     }
 
@@ -94,7 +94,7 @@ pub fn incomplete_project_diagnostics(
             out.push(SoftDiagnostic::new(
                 "empty_biome_coverage",
                 format!(
-                    "Placement layer '{}' has no painted channels — coverage is empty (valid).",
+                    "Placement layer '{}' has no painted channels - coverage is empty (valid).",
                     bl.name
                 ),
             ));
@@ -113,7 +113,7 @@ fn diagnose_layer(layer: &crate::layer::Layer, out: &mut Vec<SoftDiagnostic>) {
             out.push(SoftDiagnostic::new(
                 "materials_without_rules",
                 format!(
-                    "Materials layer '{}' has no rules yet — height passes through.",
+                    "Materials layer '{}' has no rules yet - height passes through.",
                     layer.common.name
                 ),
             ));
@@ -149,7 +149,7 @@ fn diagnose_biome_definition(def: &BiomeDefinition, out: &mut Vec<SoftDiagnostic
         out.push(SoftDiagnostic::new(
             "biome_empty_placement_rules",
             format!(
-                "Biome '{}' has no placement rules — may produce zero coverage (valid).",
+                "Biome '{}' has no placement rules - may produce zero coverage (valid).",
                 def.name
             ),
         ));

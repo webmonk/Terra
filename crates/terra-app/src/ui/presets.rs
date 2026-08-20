@@ -8,7 +8,7 @@ pub struct LayerPreset {
     pub layers: Vec<(String, LayerKind)>,
 }
 
-/// Starting recipe for a new project (home / File â†’ New).
+/// Starting recipe for a new project (home / File -> New).
 #[derive(Debug, Clone)]
 pub struct ProjectTemplate {
     pub id: &'static str,
@@ -19,7 +19,7 @@ pub struct ProjectTemplate {
 }
 
 pub fn world_design_templates() -> Vec<ProjectTemplate> {
-    // WorldTemplate::all() is already Blank-first cause→effect catalog order.
+    // WorldTemplate::all() is already Blank-first cause->effect catalog order.
     project_templates()
 }
 
@@ -57,7 +57,7 @@ pub fn contextual_presets(kind: &LayerKind) -> Vec<ContextualPreset> {
             }),
             preset(
                 "Volcanic",
-                "Softer ridged massif (not a cone â€” use Volcano layer).",
+                "Softer ridged massif (not a cone - use Volcano layer).",
                 |k| {
                     if let LayerKind::Mountains(p) = k {
                         p.base.amplitude = 420.0;
@@ -624,7 +624,7 @@ pub fn builtin_presets() -> Vec<LayerPreset> {
         },
         LayerPreset {
             name: "Alpine Range".into(),
-            description: "WC arid-mountain craft: peaks â†’ Rocky Plateaus â†’ Soft/Thin Flows â†’ Talus Fill".into(),
+            description: "WC arid-mountain craft: peaks -> Rocky Plateaus -> Soft/Thin Flows -> Talus Fill".into(),
             layers: vec![
                 (
                     "Base".into(),

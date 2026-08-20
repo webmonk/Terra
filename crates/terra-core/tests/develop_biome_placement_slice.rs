@@ -1,4 +1,4 @@
-//! Develop workspace — Biome-scoped operation placement.
+//! Develop workspace - Biome-scoped operation placement.
 
 use std::collections::HashMap;
 use terra_core::command::{apply, CommandHistory, EditorCommand};
@@ -137,7 +137,7 @@ fn operation_moving_between_biomes_keeps_local_placement() {
         moved.common.operation_placement.definition.content_hash,
         local_hash
     );
-    // Inheritance is enclosure-based — no manual Biome Mask reassignment.
+    // Inheritance is enclosure-based - no manual Biome Mask reassignment.
     let summary = moved
         .common
         .operation_placement

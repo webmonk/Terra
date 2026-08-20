@@ -358,7 +358,7 @@ fn accurate_and_fast_share_high_level_params() {
         EvolutionSolverMode::Accurate,
         None,
     );
-    // Both should create meaningful relief and drainage — not identical, but same family.
+    // Both should create meaningful relief and drainage - not identical, but same family.
     assert!(relief(&fast.elevation) > 3.0);
     assert!(relief(&accurate.elevation) > 3.0);
     assert!(

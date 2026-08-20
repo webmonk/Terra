@@ -1,4 +1,4 @@
-//! Rebuild feedback — dependency-driven outdated state, debounce, why-diagnostics.
+//! Rebuild feedback - dependency-driven outdated state, debounce, why-diagnostics.
 
 use terra_core::deps::{DepKind, DependencyGraph, NodeRef};
 use terra_core::document::EditorSession;
@@ -206,7 +206,7 @@ fn no_redundant_builds() {
     );
     assert!(is_redundant_rebuild(&session, &first));
     assert!(is_redundant_rebuild(&session, &[hydro_id]));
-    // Fresh id not in building → not redundant.
+    // Fresh id not in building -> not redundant.
     let other = terra_core::layer::LayerId::new();
     assert!(!is_redundant_rebuild(&session, &[other]));
 }
@@ -296,7 +296,7 @@ fn collect_affected_uses_graph_not_ui() {
     let (session, source, _) = session_with_shape_and_hydro();
     let graph = session.document.dependency_graph();
     let items = collect_affected(&session.document, &graph, source);
-    // Graph-driven; may be empty if stacks aren't linked in world yet — then stack-order
+    // Graph-driven; may be empty if stacks aren't linked in world yet - then stack-order
     // still yields via outdated path in apply_upstream_change.
     let _ = items;
     let state = artist_state_for_layer(

@@ -1,12 +1,12 @@
 //! Shared research-backed kernels for biome EffectFilters.
 //!
 //! Citations (public literature; not World Creator proprietary kernels):
-//! - Tarboton 1997 — D∞ flow direction / multi-flow accumulation
-//! - Lagae et al. — sparse Gabor convolution noise
-//! - Tricard et al. SIGGRAPH 2019 — Phasor Noise
-//! - Musgrave — ridged / billow multifractals; thermal weathering (angle of repose)
-//! - Kuwahara 1976 / Kyprianidis — edge-preserving Kuwahara filtering
-//! - Tomasi & Manduchi — bilateral filtering
+//! - Tarboton 1997 - Dinf flow direction / multi-flow accumulation
+//! - Lagae et al. - sparse Gabor convolution noise
+//! - Tricard et al. SIGGRAPH 2019 - Phasor Noise
+//! - Musgrave - ridged / billow multifractals; thermal weathering (angle of repose)
+//! - Kuwahara 1976 / Kyprianidis - edge-preserving Kuwahara filtering
+//! - Tomasi & Manduchi - bilateral filtering
 //! - Werner / Nishimori-class aeolian dune & saltation models
 
 use crate::heightfield::Heightfield;
@@ -49,7 +49,7 @@ pub fn gradient(hf: &Heightfield, i: u32, j: u32) -> (f32, f32, f32) {
     }
 }
 
-/// D∞ / multi-flow accumulation (Tarboton-inspired).
+/// Dinf / multi-flow accumulation (Tarboton-inspired).
 ///
 /// Each cell distributes unit rainfall proportionally to downhill neighbors by
 /// drop magnitude (multi-flow), iterated for `passes` sweeps.
@@ -136,7 +136,7 @@ pub fn box_blur(input: &Heightfield, radius: u32) -> Heightfield {
     out
 }
 
-/// Bilateral (edge-aware) filter — Tomasi & Manduchi style on heightfields.
+/// Bilateral (edge-aware) filter - Tomasi & Manduchi style on heightfields.
 pub fn bilateral(
     input: &Heightfield,
     radius: u32,
@@ -434,7 +434,7 @@ pub fn sparse_gabor_fbm(
     }
 }
 
-/// Phasor noise (Tricard et al.): complex phasor field magnitude/phase → contrasty bands.
+/// Phasor noise (Tricard et al.): complex phasor field magnitude/phase -> contrasty bands.
 pub fn phasor_noise(x: f32, z: f32, frequency: f32, seed: u64) -> f32 {
     phasor_noise_oriented(x, z, frequency, seed, 0.0, 1.0)
 }
@@ -613,7 +613,7 @@ pub fn billow_mf(x: f32, z: f32, params: &crate::noise::NoiseParams) -> f32 {
             (z + params.offset_z) * freq,
             params.seed.wrapping_add(o as u64 * 1301),
         );
-        // |n| in [0,1] roughly → billow cushions.
+        // |n| in [0,1] roughly -> billow cushions.
         let billow = n.abs();
         sum += billow * amp;
         norm += amp;

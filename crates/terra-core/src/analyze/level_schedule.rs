@@ -1,4 +1,4 @@
-//! Global World Creator–style level-step schedule (upsample chain).
+//! Global World Creator-style level-step schedule (upsample chain).
 
 use serde::{Deserialize, Serialize};
 
@@ -89,7 +89,7 @@ impl Default for LevelStepSettings {
 }
 
 impl LevelStepSettings {
-    /// Number of upsample levels for a target resolution (2, 4, 8, …, ≥ target).
+    /// Number of upsample levels for a target resolution (2, 4, 8, ..., >= target).
     pub fn level_count_for_resolution(target_res: u32) -> u32 {
         let mut n = 1u32;
         let mut r = 2u32;
@@ -103,7 +103,7 @@ impl LevelStepSettings {
         n
     }
 
-    /// Resolution at level index `level` (0 → 2×2, 1 → 4×4, …).
+    /// Resolution at level index `level` (0 -> 2×2, 1 -> 4×4, ...).
     pub fn resolution_at_level(level: u32) -> u32 {
         2u32.saturating_pow(level.saturating_add(1).min(16))
     }
@@ -137,7 +137,7 @@ impl LevelStepSettings {
 
     /// Truncate a sim schedule for progressive preview quality.
     ///
-    /// Draft → coarsest third, Medium → two thirds, Full/Export → all levels.
+    /// Draft -> coarsest third, Medium -> two thirds, Full/Export -> all levels.
     pub fn truncate_for_preview(
         levels: Vec<SimLevel>,
         quality: crate::quality::PreviewQuality,

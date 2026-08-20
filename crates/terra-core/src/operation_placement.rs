@@ -4,7 +4,7 @@
 //!   effective operation placement = Biome Effective Placement × operation PlacementDefinition
 //!
 //! Default Apply Where = Entire Biome (identity local placement). Artists never
-//! manually assign a Biome Mask — inheritance is automatic from the enclosing biome.
+//! manually assign a Biome Mask - inheritance is automatic from the enclosing biome.
 
 use crate::mask::{
     CompareOp, Condition, ConditionChannel, Distribution, PlacementDefinition, PlacementSource,
@@ -16,7 +16,7 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ApplyWhere {
-    /// Full Biome Effective Placement — no extra local restriction.
+    /// Full Biome Effective Placement - no extra local restriction.
     #[default]
     EntireBiome,
     /// Local painted restriction (world/surface paint) × biome.
@@ -156,7 +156,7 @@ impl OperationPlacement {
         match self.apply_where {
             ApplyWhere::EntireBiome | ApplyWhere::AdvancedMask | ApplyWhere::CustomConditions => {}
             ApplyWhere::PaintedRestriction => {
-                // Paint entry is bound later via paint_mask; leave rules empty → paint-only when set.
+                // Paint entry is bound later via paint_mask; leave rules empty -> paint-only when set.
             }
             ApplyWhere::HeightRange => {
                 children.push(RuleNode::Condition(Condition {
@@ -261,7 +261,7 @@ impl OperationPlacement {
             }
             ApplyWhere::SlopeRange => {
                 lines.push(format!(
-                    "Where slope is between {:.0}° and {:.0}°",
+                    "Where slope is between {:.0} deg and {:.0} deg",
                     self.slope_min, self.slope_max
                 ));
             }
@@ -333,10 +333,10 @@ fn condition_phrase(c: &Condition) -> String {
         (ConditionChannel::Height, CompareOp::Between) => {
             format!("height is between {:.0} m and {:.0} m", c.a, c.b)
         }
-        (ConditionChannel::Slope, CompareOp::Above) => format!("slope is above {:.0}°", c.a),
-        (ConditionChannel::Slope, CompareOp::Below) => format!("slope is below {:.0}°", c.a),
+        (ConditionChannel::Slope, CompareOp::Above) => format!("slope is above {:.0} deg", c.a),
+        (ConditionChannel::Slope, CompareOp::Below) => format!("slope is below {:.0} deg", c.a),
         (ConditionChannel::Slope, CompareOp::Between) => {
-            format!("slope is between {:.0}° and {:.0}°", c.a, c.b)
+            format!("slope is between {:.0} deg and {:.0} deg", c.a, c.b)
         }
         (ConditionChannel::Flow, CompareOp::Above) => format!("flow is above {:.2}", c.a),
         (ConditionChannel::WaterDistance, CompareOp::Below) => {

@@ -1,4 +1,4 @@
-//! World Creator–style distribution nodes (procedural mask graph).
+//! World Creator-style distribution nodes (procedural mask graph).
 
 use super::geom::{dist_point_segment, point_in_polygon};
 use super::{MaskCombine, MaskField, MaskId, MaskRef};
@@ -184,7 +184,7 @@ pub enum DistNodeKind {
     EffectBlur {
         radius: u32,
     },
-    /// Effect: levels (in-black / in-white / gamma) — Region Mask Editor Levels op.
+    /// Effect: levels (in-black / in-white / gamma) - Region Mask Editor Levels op.
     EffectLevels {
         in_black: f32,
         in_white: f32,
@@ -251,7 +251,7 @@ pub enum DistNodeKind {
         /// Distance in samples mapping to 0 outside the core.
         max_distance: f32,
     },
-    /// Climate aux channel (real when aux is present; otherwise ones — full coverage).
+    /// Climate aux channel (real when aux is present; otherwise ones - full coverage).
     Climate {
         channel: ClimateMaskChannel,
     },
@@ -270,11 +270,11 @@ pub enum DistNodeKind {
     GroupAll,
     /// Fold children with Max (accumulator starts at zeros). Placement compile.
     GroupAny,
-    /// Morphological expand (dilate) — radius in meters, converted via cell size at bake.
+    /// Morphological expand (dilate) - radius in meters, converted via cell size at bake.
     EffectDilate {
         radius_m: f32,
     },
-    /// Morphological contract (erode) — radius in meters.
+    /// Morphological contract (erode) - radius in meters.
     EffectErode {
         radius_m: f32,
     },

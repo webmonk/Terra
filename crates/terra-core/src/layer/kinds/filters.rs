@@ -40,7 +40,7 @@ pub enum EffectFilterKind {
     Crater,
     #[serde(alias = "Denoise")]
     Denoise,
-    // Wave A â€” rocky / cliff morphology
+    // Wave A - rocky / cliff morphology
     #[serde(alias = "RockySharp")]
     RockySharp,
     #[serde(alias = "RockyWide")]
@@ -49,7 +49,7 @@ pub enum EffectFilterKind {
     RockyLayers,
     #[serde(alias = "CliffReinforce")]
     CliffReinforce,
-    // Wave B â€” flow morphology
+    // Wave B - flow morphology
     #[serde(alias = "SoftFlows")]
     SoftFlows,
     #[serde(alias = "ThinFlows")]
@@ -58,7 +58,7 @@ pub enum EffectFilterKind {
     RidgedFlows,
     #[serde(alias = "WideFlows")]
     WideFlows,
-    // Wave C â€” sediment fills
+    // Wave C - sediment fills
     #[serde(alias = "TalusFill")]
     TalusFill,
     #[serde(alias = "SedimentFillSoft")]
@@ -67,19 +67,19 @@ pub enum EffectFilterKind {
     MudSettle,
     #[serde(alias = "HydraulicSediment")]
     HydraulicSediment,
-    // Wave D â€” arid / advanced erosion / drift
+    // Wave D - arid / advanced erosion / drift
     RockyPlateaus,
     RockyCliffs,
     RockyHard,
     Canyon,
     Chipped,
     Cliffs,
-    /// Basic-erosion â€œRockyâ€ (particle-flow-like ridged carve).
+    /// Basic-erosion -œRocky- (particle-flow-like ridged carve).
     Rocky,
     SedimentFlows,
     AngleBreak,
     WindCarve,
-    // Wave E â€” effect / general
+    // Wave E - effect / general
     Inflate,
     Deflate,
     Balloon,
@@ -104,13 +104,13 @@ pub enum EffectFilterKind {
     Cutoff,
     /// True Kuwahara edge-preserving smoothing.
     Kuwahara,
-    /// Terrace Simple — uniform height steps with smooth risers.
+    /// Terrace Simple - uniform height steps with smooth risers.
     TerraceSimple,
-    /// Terrace Irregular — world-space perturbed elevation / spacing / riser phase.
+    /// Terrace Irregular - world-space perturbed elevation / spacing / riser phase.
     TerraceIrregular,
-    /// Terrace Steep — slope-gated terracing oriented to terrain gradient.
+    /// Terrace Steep - slope-gated terracing oriented to terrain gradient.
     TerraceSteep,
-    /// General: add a constant height, or set absolute height (`sea_level` â‰¥ 0.5 â‡’ Set).
+    /// General: add a constant height, or set absolute height (`sea_level` >= 0.5 => Set).
     AddSet,
     /// Design: Voronoi cell imprint.
     DesignVoronoi,
@@ -294,16 +294,16 @@ pub struct EffectFilterParams {
     /// Flow accumulation threshold (normalized) for flow filters.
     #[serde(default = "default_flow_threshold")]
     pub flow_threshold: f32,
-    /// Rock hardness / lithology \[0 soft … 1 hard\] for arid/rock filters.
+    /// Rock hardness / lithology \[0 soft ... 1 hard\] for arid/rock filters.
     #[serde(default = "default_rock_hardness")]
     pub rock_hardness: f32,
-    /// Canyon wall / cliff face steepness \[0 soft … 1 sheer\].
+    /// Canyon wall / cliff face steepness \[0 soft ... 1 sheer\].
     #[serde(default = "default_wall_steepness")]
     pub wall_steepness: f32,
-    /// Valley floor / plateau flatness bias \[0 none … 1 wide floors\].
+    /// Valley floor / plateau flatness bias \[0 none ... 1 wide floors\].
     #[serde(default = "default_valley_floor")]
     pub valley_floor: f32,
-    /// Talus / scree apron mix for cliff & canyon filters \[0 none … 1 full\].
+    /// Talus / scree apron mix for cliff & canyon filters \[0 none ... 1 full\].
     #[serde(default = "default_talus_mix")]
     pub talus_mix: f32,
     /// Terrace step height in meters. When `<= 0`, levels are derived from `amount`.
@@ -315,7 +315,7 @@ pub struct EffectFilterParams {
     /// Round tread tops toward source elevation \[0, 1\].
     #[serde(default = "default_top_smoothness")]
     pub top_smoothness: f32,
-    /// Riser sharpness \[0 soft … 1 sheer\].
+    /// Riser sharpness \[0 soft ... 1 sheer\].
     #[serde(default = "default_riser_sharpness")]
     pub riser_sharpness: f32,
     /// Fractal octave count for noise-family filters.
@@ -1025,7 +1025,7 @@ impl EffectFilterParams {
             kind: EffectFilterKind::AddSet,
             strength: 1.0,
             amount: 10.0,
-            sea_level: 0.0, // < 0.5 â‡’ Add; â‰¥ 0.5 â‡’ Set
+            sea_level: 0.0, // < 0.5 => Add; >= 0.5 => Set
             ..Self::default()
         }
     }

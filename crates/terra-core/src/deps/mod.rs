@@ -35,9 +35,9 @@ pub struct DepEdge {
 #[derive(Debug, Clone, Default)]
 pub struct DependencyGraph {
     pub edges: Vec<DepEdge>,
-    /// Forward: `from` → dependents (`to`).
+    /// Forward: `from` -> dependents (`to`).
     pub adjacency: HashMap<NodeRef, Vec<NodeRef>>,
-    /// Reverse: `to` → dependencies (`from`).
+    /// Reverse: `to` -> dependencies (`from`).
     pub reverse: HashMap<NodeRef, Vec<NodeRef>>,
 }
 
@@ -176,7 +176,7 @@ impl DependencyGraph {
         Ok(order)
     }
 
-    /// All nodes that depend on `source` (transitive) — "Used by".
+    /// All nodes that depend on `source` (transitive) - "Used by".
     pub fn dependents_of(&self, source: NodeRef) -> HashSet<NodeRef> {
         let mut out = HashSet::new();
         let mut stack = vec![source];
@@ -192,7 +192,7 @@ impl DependencyGraph {
         out
     }
 
-    /// Direct + transitive upstream dependencies — "Depends on".
+    /// Direct + transitive upstream dependencies - "Depends on".
     pub fn dependencies_of(&self, target: NodeRef) -> HashSet<NodeRef> {
         let mut out = HashSet::new();
         let mut stack = vec![target];

@@ -58,7 +58,7 @@ pub struct LayerCommon {
     /// Solo this layer for preview (others dimmed / skipped in UI).
     #[serde(default)]
     pub solo: bool,
-    /// Optional colour tag index (0 = none, 1–7 = palette).
+    /// Optional colour tag index (0 = none, 1-7 = palette).
     #[serde(default)]
     pub color_tag: u8,
     /// Intermediate output is cached / baked (legacy bool; prefer [`Self::cache_policy`]).

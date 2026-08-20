@@ -301,7 +301,7 @@ impl Heightfield {
     }
 
     /// Parallel per-sample rewrite; `f(i, j, current)` receives global sample
-    /// indices. Tiles run concurrently. Halos are left stale — callers must
+    /// indices. Tiles run concurrently. Halos are left stale - callers must
     /// `refresh_halos` afterwards, as with `set`.
     pub fn par_map_indexed<F: Fn(u32, u32, f32) -> f32 + Sync>(&mut self, f: F) {
         use rayon::prelude::*;

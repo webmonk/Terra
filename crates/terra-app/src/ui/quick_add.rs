@@ -2,7 +2,7 @@
 //!
 //! Layout mirrors a browser-style picker: title + search, tile grid, detail
 //! sidebar, and Confirm/Cancel footer. Tool art comes from the tools panel
-//! (`tool_thumbs` / `ToolDef.icon`) — not bespoke reference illustrations.
+//! (`tool_thumbs` / `ToolDef.icon`) - not bespoke reference illustrations.
 
 use crate::ui::actions::PanelAction;
 use crate::ui::command_registry::fuzzy_match;
@@ -87,7 +87,7 @@ fn modal_title(ui_state: &UiState) -> &'static str {
 
 fn modal_subtitle(ui_state: &UiState) -> &'static str {
     if ui_state.quick_add_distribution.is_some() {
-        return "Choose a generator or modifier for this biome’s distribution stack.";
+        return "Choose a generator or modifier for this biome's distribution stack.";
     }
     if let Some(section) = ui_state.quick_add_biome_section {
         return match section {
@@ -98,7 +98,7 @@ fn modal_subtitle(ui_state: &UiState) -> &'static str {
         };
     }
     if ui_state.quick_add_into.is_some() {
-        return "Choose content to place inside this biome’s sections.";
+        return "Choose content to place inside this biome's sections.";
     }
     if let Some(concept) = ui_state.quick_add_concept {
         return match concept {
@@ -136,7 +136,7 @@ fn modal_tip(ui_state: &UiState) -> &'static str {
                 "Tip: Filters shape biome character; they stay scoped to this biome."
             }
             BiomeSection::Materials => {
-                "Tip: Materials dress this biome’s surface and can drive hardness."
+                "Tip: Materials dress this biome's surface and can drive hardness."
             }
             BiomeSection::Objects => {
                 "Tip: Objects and vegetation scatter only where this biome owns."
@@ -199,7 +199,7 @@ fn search_placeholder(ui_state: &UiState) -> &'static str {
 /// WC Shape Layers: `shape.*` catalog entries, or kinds that route to the Shape folder.
 ///
 /// Do **not** use `OperationCategory::Generator/Modifier` / `StackCategory::from_operation`
-/// alone — Modifier-class filters (Terrace, EffectFilter, …) also map to Shape there.
+/// alone - Modifier-class filters (Terrace, EffectFilter, ...) also map to Shape there.
 fn tool_is_shape_layer(tool: &ToolDef) -> bool {
     match &tool.action {
         ToolAction::AddLayer { kind, .. } => tool.id.starts_with("shape.") || is_shape_kind(kind),
@@ -295,7 +295,7 @@ fn tool_matches_biome_root(tool: &ToolDef) -> bool {
 }
 
 fn catalog_for_modal(ui_state: &UiState) -> Vec<ToolDef> {
-    // Explicit concept (e.g. Mask Layers → Height/Slope/Painted) wins over into-target
+    // Explicit concept (e.g. Mask Layers -> Height/Slope/Painted) wins over into-target
     // filtering. `quick_add_into` alone is for nesting into a biome / section.
     if let Some(concept) = ui_state.quick_add_concept {
         return all_tools_cached()
@@ -387,7 +387,7 @@ impl PickerItem {
         if first.is_empty() {
             d.to_string()
         } else if first.len() > 48 {
-            format!("{}…", &first[..45])
+            format!("{}...", &first[..45])
         } else if d.contains('.') {
             format!("{first}.")
         } else {
@@ -397,7 +397,7 @@ impl PickerItem {
 }
 
 fn org_items(ui_state: &UiState) -> Vec<PickerItem> {
-    // Organisation shortcuts only for the unfiltered / generic Quick Add —
+    // Organisation shortcuts only for the unfiltered / generic Quick Add -
     // not when targeting a biome, biome section, distribution, or concept folder.
     let show_org = ui_state.quick_add_concept.is_none()
         && ui_state.quick_add_category.is_none()
@@ -832,7 +832,7 @@ pub fn draw_quick_add(
     ui.panel_rounded(popup, style::POPUP_BG, style::RADIUS_LG);
     ui.state.set_hot(Id::new("__quick_add_modal"));
 
-    // —— Header ——————————————————————————————————————————————————————
+    // -- Header ------------------------------------------------------
     let title = modal_title(ui_state);
     ui.label_at(
         popup.min_x + PAD,
@@ -948,7 +948,7 @@ pub fn draw_quick_add(
                 ui.panel_rounded(row, style::HOVER_BG, 4.0);
             }
             let mark = if state.recent_only == *recent {
-                "● "
+                "* "
             } else {
                 "   "
             };
@@ -969,7 +969,7 @@ pub fn draw_quick_add(
         }
     }
 
-    // —— Body: grid + sidebar ————————————————————————————————————————
+    // -- Body: grid + sidebar ----------------------------------------
     let body_top = popup.min_y + HEADER_BLOCK;
     let body_bot = popup.max_y - FOOTER_H;
     let grid_area = Rect::from_min_max(
@@ -1109,7 +1109,7 @@ pub fn draw_quick_add(
         );
     }
 
-    // —— Footer ——————————————————————————————————————————————————————
+    // -- Footer ------------------------------------------------------
     let footer = Rect::from_min_max(popup.min_x, body_bot, popup.max_x, popup.max_y);
     ui.panel(
         Rect::from_pos_size(
@@ -1370,7 +1370,7 @@ fn draw_sidebar(ui: &mut GuiContext<'_>, sidebar: Rect, item: &PickerItem) {
     if line1.len() < desc.len() {
         let rest = desc.get(line1.len().saturating_sub(1)..).unwrap_or("");
         let line2 = DrawList::truncate_to_width(
-            rest.trim_start_matches(['…', ' ']),
+            rest.trim_start_matches(['.', ' ']),
             FONT_SCALE * TYPE_LABEL,
             desc_w,
         );
@@ -1417,7 +1417,7 @@ fn draw_sidebar(ui: &mut GuiContext<'_>, sidebar: Rect, item: &PickerItem) {
         ui.label_at(
             sidebar.min_x + PAD,
             y,
-            &format!("• {use_line}"),
+            &format!("- {use_line}"),
             style::TEXT_MUTED,
             FONT_SCALE * TYPE_CAPTION,
         );

@@ -10,7 +10,7 @@ use super::keys;
 /// Display names remain separate; this enum (and [`FieldId::Custom`]) is what
 /// references and serialisation use.
 ///
-/// Variants are additive only — never rename serde tags used by documents.
+/// Variants are additive only - never rename serde tags used by documents.
 #[derive(Debug, Clone, PartialEq, Eq, Hash, Serialize, Deserialize)]
 pub enum FieldId {
     // --- Geometry ---

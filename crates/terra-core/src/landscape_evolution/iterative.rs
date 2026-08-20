@@ -66,7 +66,7 @@ pub fn evolve_iterative(
             cache = DrainageCache::build(&z, true, routing_outlets);
         }
 
-        // Discharge Q ≈ rain × drainage area.
+        // Discharge Q ~ rain × drainage area.
         let mut q = vec![0.0f32; n];
         for idx in 0..n {
             q[idx] = (cache.accumulation[idx] * cell_area * area_scale).max(cell_area);

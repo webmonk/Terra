@@ -139,7 +139,7 @@ pub struct AuxMaps {
     pub erosion: Option<MaskField>,
     pub deposition: Option<MaskField>,
     pub hardness: Option<MaskField>,
-    /// Bedrock elevation (m) under loose cover — shared geological state.
+    /// Bedrock elevation (m) under loose cover - shared geological state.
     pub bedrock_height: Option<MaskField>,
     /// Loose sediment / alluvium thickness (m).
     pub sediment_thickness: Option<MaskField>,
@@ -162,7 +162,7 @@ pub struct AuxMaps {
     pub curvature: Option<MaskField>,
     /// Heightfield snapshot (as MaskField meters) when Materials baked strata.
     pub strata_reference: Option<MaskField>,
-    /// Vertical material stack from the last Materials layer (surface → bedrock).
+    /// Vertical material stack from the last Materials layer (surface -> bedrock).
     pub strata: Option<Vec<crate::layer::Stratum>>,
     /// Bed attitude from the last Materials layer (tilted / folded / warped).
     pub bed_geometry: crate::layer::BedGeometry,
@@ -447,7 +447,7 @@ pub fn erodibility_at_strata_depth(
         .unwrap_or_else(|| (1.0 - default_hardness).clamp(0.0, 1.0))
 }
 
-/// Thermal material stability at depth ∈ \[0,1\] (1 = holds steep faces).
+/// Thermal material stability at depth in \[0,1\] (1 = holds steep faces).
 pub fn stability_at_strata_depth(
     strata: &[crate::layer::Stratum],
     depth: f32,
@@ -547,7 +547,7 @@ pub fn bake_hardness_from_materials(
     bake_hardness_from_materials_ex(materials, rules, &[], default_hardness)
 }
 
-/// Materials → \(K\) bake with optional strata fallback for unmatched IDs.
+/// Materials -> \(K\) bake with optional strata fallback for unmatched IDs.
 pub fn bake_hardness_from_materials_ex(
     materials: &MaskField,
     rules: &[crate::layer::MaterialRule],

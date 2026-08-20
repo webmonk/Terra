@@ -14,7 +14,7 @@ use crate::style;
 use crate::types::{Align, Color, Rect};
 use crate::widgets::{self, WidgetLabState};
 
-/// Default dock insets (logical px) — left tool chrome, right inspector, title + status.
+/// Default dock insets (logical px) - left tool chrome, right inspector, title + status.
 pub const INSET_LEFT: f32 = 300.0; // 72 + 228 default left chrome
 pub const INSET_RIGHT: f32 = style::RIGHT_PANEL_W;
 pub const INSET_TOP: f32 = style::APP_BAR_H;
@@ -72,7 +72,7 @@ pub struct GuiContext<'a> {
     pub pixels_per_point: f32,
     pub input: GuiInput,
     pub draw: DrawList,
-    /// Popups / menus — always composited after `draw`.
+    /// Popups / menus - always composited after `draw`.
     pub overlay: DrawList,
     pub state: &'a mut GuiState,
     layout: Option<Layout>,
@@ -85,7 +85,7 @@ pub struct GuiContext<'a> {
     overlay_stack: Vec<OverlayFrame>,
     /// RGBA images queued this frame; packed into one atlas at render time.
     pub images: Vec<(u32, u32, Vec<u8>)>,
-    /// Frame-local content keys → `images` index (dedupe identical thumbs).
+    /// Frame-local content keys -> `images` index (dedupe identical thumbs).
     image_keys: HashMap<u64, u32>,
     /// When set, background chrome has pointer edges cleared so open menus
     /// do not click-through. Restored by [`Self::with_menu_input`].
@@ -248,7 +248,7 @@ impl<'a> GuiContext<'a> {
                 ui.begin_overlay();
                 widgets::draw_combo_menu(ui, menu.id, menu.rect, &menu.items, menu.selected);
                 // Match context menus: dismiss on press outside the popup.
-                // Must run inside `with_menu_input` — `suspend_pointer_edges`
+                // Must run inside `with_menu_input` - `suspend_pointer_edges`
                 // clears `primary_pressed` for background chrome while open.
                 // Exclude the owner field too: the very press that opens the
                 // combo lands on it, and would otherwise close it the same frame.
@@ -284,7 +284,7 @@ impl<'a> GuiContext<'a> {
         if self.input.escape_pressed {
             self.state.open_combo = None;
         }
-        // Owner scrolled away / not drawn: no popup to hit-test — any press closes.
+        // Owner scrolled away / not drawn: no popup to hit-test - any press closes.
         if !had_combo_menu {
             let primary = self
                 .pointer_edge_stash
@@ -408,7 +408,7 @@ impl<'a> GuiContext<'a> {
         )
     }
 
-    /// Top half of the right rail — Layers list (empty when demoted for artist intents).
+    /// Top half of the right rail - Layers list (empty when demoted for artist intents).
     pub fn right_layers_rect(&self) -> Rect {
         let full = self.right_panel_rect();
         if self.state.layout.hide_layers_panel {
@@ -430,7 +430,7 @@ impl<'a> GuiContext<'a> {
         Rect::from_min_max(full.min_x, full.min_y, full.max_x, mid)
     }
 
-    /// Bottom half of the right rail — Inspector (full height when layers demoted).
+    /// Bottom half of the right rail - Inspector (full height when layers demoted).
     pub fn right_inspector_rect(&self) -> Rect {
         let full = self.right_panel_rect();
         if self.state.layout.hide_layers_panel {
@@ -780,7 +780,7 @@ impl<'a> GuiContext<'a> {
         self.begin_panel_scrolled_with_pad(id, rect, color, scroll_y, pad);
     }
 
-    /// Scrollable panel with no content inset — rows sit flush against the shell edges.
+    /// Scrollable panel with no content inset - rows sit flush against the shell edges.
     pub fn begin_panel_scrolled_flush(
         &mut self,
         id: Id,
@@ -841,7 +841,7 @@ impl<'a> GuiContext<'a> {
         let max = self.state.scroll_max.get(&id.0).copied().unwrap_or(0.0);
         self.scroll_consumed = true;
         if max < 1.0 {
-            // Content fits — keep offset at zero so layout doesn't jitter.
+            // Content fits - keep offset at zero so layout doesn't jitter.
             *scroll_y = 0.0;
             return;
         }
@@ -872,7 +872,7 @@ impl<'a> GuiContext<'a> {
         let mut layout = Layout::with_pad(rect, pad);
         if scroll_id.is_some() {
             // Reserve a scrollbar gutter only when pad is too tight to host the thumb
-            // inside the right inset — otherwise left/right content padding stay equal
+            // inside the right inset - otherwise left/right content padding stay equal
             // and the bar paints in the right pad strip.
             let gutter = style::SCROLLBAR_W + style::SCROLLBAR_PAD;
             if pad + 0.5 < gutter {
@@ -1246,7 +1246,7 @@ fn image_content_key(width: u32, height: u32, rgba: &[u8]) -> u64 {
     if rgba.is_empty() {
         return h;
     }
-    // Sample head / mid / tail plus a sparse stride — enough for thumb identity.
+    // Sample head / mid / tail plus a sparse stride - enough for thumb identity.
     let n = rgba.len();
     let head = n.min(32);
     for &b in &rgba[..head] {

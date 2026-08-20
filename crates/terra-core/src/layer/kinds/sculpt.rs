@@ -8,7 +8,7 @@ use serde::{Deserialize, Serialize};
 pub struct SculptParams {
     /// Resolution of the paint buffer (square).
     pub resolution: u32,
-    /// Heights in world meters, row-major, length = resolutionÂ².
+    /// Heights in world meters, row-major, length = resolution^2.
     pub samples: Vec<f32>,
     /// Fill / reset height when buffer is created or reset.
     pub fill_height: f32,

@@ -44,6 +44,43 @@ pub struct EvalWorkResult {
     pub strata: Option<Vec<crate::layer::Stratum>>,
     pub eval_us: u64,
     pub layer_timings: Vec<super::LayerEvalTiming>,
+    /// Compact per-layer height previews for UI thumbnails, taken from the
+    /// worker's own layer cache (the UI thread never sees that cache).
+    pub layer_previews: Vec<LayerPreview>,
+}
+
+/// Downsampled height grid for one layer's cached (cumulative) output.
+#[derive(Debug, Clone)]
+pub struct LayerPreview {
+    pub layer: LayerId,
+    /// Worker cache generation; changes whenever the layer re-evaluates.
+    pub generation: u64,
+    /// Grid edge length; `heights` is `res * res` row-major.
+    pub res: u32,
+    pub world_size_x: f32,
+    pub heights: Vec<f32>,
+}
+
+pub const LAYER_PREVIEW_RES: u32 = 48;
+
+fn downsample_preview(layer: LayerId, generation: u64, hf: &Heightfield) -> LayerPreview {
+    let res = LAYER_PREVIEW_RES;
+    let (w, h) = (hf.metrics.width.max(1), hf.metrics.height.max(1));
+    let mut heights = Vec::with_capacity((res * res) as usize);
+    for ty in 0..res {
+        for tx in 0..res {
+            let i = (tx as u64 * (w as u64 - 1) / (res as u64 - 1)) as u32;
+            let j = (ty as u64 * (h as u64 - 1) / (res as u64 - 1)) as u32;
+            heights.push(hf.get(i.min(w - 1), j.min(h - 1)));
+        }
+    }
+    LayerPreview {
+        layer,
+        generation,
+        res,
+        world_size_x: hf.metrics.world_size_x,
+        heights,
+    }
 }
 
 enum WorkerMsg {
@@ -55,7 +92,7 @@ enum WorkerMsg {
 pub struct EvalWorker {
     tx: Sender<WorkerMsg>,
     rx: Receiver<EvalWorkResult>,
-    /// Shared cancel / generation id — worker skips jobs with older tokens.
+    /// Shared cancel / generation id - worker skips jobs with older tokens.
     pub current_token: Arc<AtomicU64>,
     _handle: JoinHandle<()>,
     /// True while a job may still be running (best-effort).
@@ -191,7 +228,7 @@ fn run_cpu_job(
             prev.as_ref()
         }
         Some(prev) => {
-            // Resolution changed between qualities — resample nearest for mask bake.
+            // Resolution changed between qualities - resample nearest for mask bake.
             reference = resample_height_nearest(prev.as_ref(), metrics);
             &reference
         }
@@ -215,6 +252,14 @@ fn run_cpu_job(
     }
 
     ctx.sync_aux_hashmap();
+    let mut layer_previews = Vec::new();
+    for id in job.stack.layer_ids() {
+        if let Some(entry) = evaluator.cache.get(id) {
+            if !entry.dirty && entry.height.metrics.width == metrics.width {
+                layer_previews.push(downsample_preview(id, entry.generation, &entry.height));
+            }
+        }
+    }
     Ok(EvalWorkResult {
         token: job.token,
         quality: job.quality,
@@ -223,6 +268,7 @@ fn run_cpu_job(
         strata: ctx.aux_maps.strata.clone(),
         eval_us: t0.elapsed().as_micros() as u64,
         layer_timings: ctx.layer_timings,
+        layer_previews,
     })
 }
 

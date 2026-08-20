@@ -130,7 +130,7 @@ fn diff_values(prefix: &str, a: &Value, b: &Value, out: &mut Vec<String>) {
     }
 }
 
-/// Artist-facing label for a dot-path: last segment, snake_case → Title Case.
+/// Artist-facing label for a dot-path: last segment, snake_case -> Title Case.
 pub fn humanize_path(path: &str) -> String {
     let leaf = path.rsplit('.').next().unwrap_or(path);
     let mut out = String::with_capacity(leaf.len());
@@ -185,7 +185,7 @@ mod tests {
         let b = LayerKind::Flat(FlatParams { height: 2.0 });
         assert_eq!(changed_paths(&a, &b), vec!["height".to_string()]);
         assert!(changed_paths(&a, &a.clone()).is_empty());
-        // Different variants → no per-param paths (real kind swap).
+        // Different variants -> no per-param paths (real kind swap).
         assert!(changed_paths(&a, &fbm()).is_empty());
     }
 

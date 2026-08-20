@@ -1,4 +1,4 @@
-//! Plain geometry / color types — no egui dependency.
+//! Plain geometry / color types - no egui dependency.
 
 #[derive(Debug, Clone, Copy, PartialEq, Default)]
 pub struct Rect {

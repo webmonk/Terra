@@ -4,19 +4,19 @@
 //! terra-gui is a reusable, app-agnostic wgpu UI toolkit. The editor's whole
 //! separation of concerns rests on this crate never entangling with
 //! terra-core/terra-render. The crate graph enforces edges that *exist*, but
-//! nothing guards the manifest — the one file that can *create* the edge. These
+//! nothing guards the manifest - the one file that can *create* the edge. These
 //! two std-only tests are that guard, and ride plain `cargo test`.
 //!
 //! - `dependencies_match_allowlist` pins `Cargo.toml`'s dependency tables to an
-//!   exact set. Adding any crate — sibling or third-party — fails the test until
+//!   exact set. Adding any crate - sibling or third-party - fails the test until
 //!   the allowlist here is edited in the same diff, making the boundary change
 //!   reviewable instead of silent.
 //! - `no_sibling_crate_imports` scans `src/` and `tests/` for a sibling import
 //!   path, belt-and-braces for cfg-gated code the manifest test cannot see.
 //!
-//! Kept deliberately dumb — line scanning, no `syn` — so it grows no
+//! Kept deliberately dumb - line scanning, no `syn` - so it grows no
 //! dependencies of its own and cannot rot. Two consequences follow, both erring
-//! toward a false failure (which forces a reviewed guard edit — the safe
+//! toward a false failure (which forces a reviewed guard edit - the safe
 //! direction) rather than a false pass: a forbidden token inside a string
 //! literal or a `/* */` block comment is treated as real, and the manifest
 //! parser assumes the one-entry-per-line dependency form the crate uses today.
@@ -139,7 +139,7 @@ enum Section {
 /// Classify a manifest section header. Only the bare `[dependencies]` and
 /// `[dev-dependencies]` inline tables are sanctioned; every other section whose
 /// name carries `dependencies` (build deps, a `[target.'cfg(..)'.dependencies]`
-/// table, a dotted `[dependencies.foo]` entry) is a violation on sight — those
+/// table, a dotted `[dependencies.foo]` entry) is a violation on sight - those
 /// are the ways a forbidden edge could hide from a header-literal scan.
 fn classify_section(name: &str, violations: &mut Vec<String>) -> Section {
     if name == "dependencies" {

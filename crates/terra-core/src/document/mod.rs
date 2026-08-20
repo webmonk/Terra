@@ -100,7 +100,7 @@ pub struct TerrainDocument {
     /// First-class World Rules (condition-driven ops).
     #[serde(default)]
     pub world_rules: crate::world_rules::WorldRuleLibrary,
-    /// Simulation Scenarios — authoring containers over Simulation Layers.
+    /// Simulation Scenarios - authoring containers over Simulation Layers.
     #[serde(default)]
     pub simulation_scenarios: crate::simulation_scenario::SimulationScenarioLibrary,
     /// Presentation lighting for the 3D viewport (saved with the project).
@@ -129,16 +129,16 @@ impl TerrainDocument {
     pub fn new_default() -> Self {
         let metrics = HeightfieldMetrics::preview_default();
         let mut stack = LayerStack::new();
-        // Sculptable foundation — selected by default for raise/lower.
+        // Sculptable foundation - selected by default for raise/lower.
         let base = Layer::new(
             "Base",
             LayerKind::SculptBase(SculptParams::filled(512, 20.0)),
         );
         let base_id = base.id();
         stack.push(base);
-        // World Creator–style category folders (pass-through).
+        // World Creator-style category folders (pass-through).
         stack.ensure_category_folders();
-        // Light detail under Shape Layers — re-evaluates when Base is sculpted.
+        // Light detail under Shape Layers - re-evaluates when Base is sculpted.
         stack.push_into_category(Layer::new(
             "Hills",
             LayerKind::NoiseValue(NoiseParams {
@@ -428,7 +428,7 @@ impl TerrainDocument {
     }
 
     /// Per-layer paint mask: return the layer's owned painted mask, creating
-    /// and binding one (filled white — reveal-all) on first use. Works for
+    /// and binding one (filled white - reveal-all) on first use. Works for
     /// layers and groups; returns `None` when `layer_id` is not in the stack.
     pub fn ensure_layer_paint_mask(&mut self, layer_id: LayerId) -> Option<MaskId> {
         let name = self
@@ -478,7 +478,7 @@ impl TerrainDocument {
             .retain(|m| m.owner.is_none() || m.owner.is_some_and(|o| ids.contains(&o)));
     }
 
-    /// Interactive viewport preview — the single terrain stack.
+    /// Interactive viewport preview - the single terrain stack.
     pub fn preview_eval_stack(&self) -> LayerStack {
         self.stack.clone()
     }

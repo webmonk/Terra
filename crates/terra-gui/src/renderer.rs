@@ -415,7 +415,7 @@ impl GuiRenderer {
     ///
     /// The pass loads the existing attachment (`LoadOp::Load` below), so in the
     /// editor's frame seam this draws on top of the terrain already rendered
-    /// into the same surface — it must never clear. Flipping that load op blanks
+    /// into the same surface - it must never clear. Flipping that load op blanks
     /// the viewport with no compile error; `tests/frame_seam.rs` and terra-app's
     /// `frame_compositing` test guard it.
     pub fn render(
@@ -449,7 +449,7 @@ impl GuiRenderer {
 
         let fb_w = fb_w.max(1);
         let fb_h = fb_h.max(1);
-        // Logical → framebuffer. Match glyph bake DPI so text and chrome share one grid.
+        // Logical -> framebuffer. Match glyph bake DPI so text and chrome share one grid.
         let ppp = ctx.pixels_per_point.max(0.5);
         let sx = ppp;
         let sy = ppp;

@@ -243,7 +243,7 @@ fn sample_height(heights: Option<&Heightfield>, x: f32, z: f32) -> f32 {
     hf.get(i, j)
 }
 
-/// Raycast cursor through the camera onto the terrain XZ plane → UV.
+/// Raycast cursor through the camera onto the terrain XZ plane -> UV.
 ///
 /// `cursor` / `screen` are logical pixels (same space as terra-gui).
 /// Returns `None` if the ray misses the world footprint.

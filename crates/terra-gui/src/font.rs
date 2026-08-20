@@ -70,7 +70,7 @@ fn icon_physical_px_for(ppp: f32) -> u32 {
     (ICON_PX * ppp.max(0.5)).round().clamp(14.0, 64.0) as u32
 }
 
-/// Prefer native atlas size — fractional scales resample and look soft.
+/// Prefer native atlas size - fractional scales resample and look soft.
 #[inline]
 pub fn snap_text_scale(scale: f32) -> f32 {
     let s = scale.max(0.5);
@@ -271,7 +271,7 @@ fn bake_font(physical_px: u32, ppp: f32) -> BakedFont {
             }
         }
 
-        // UV at exact texel edges — with 1:1 quads this samples coverage without blur.
+        // UV at exact texel edges - with 1:1 quads this samples coverage without blur.
         let u0 = ox as f32 / atlas_w as f32;
         let v0 = oy as f32 / atlas_h as f32;
         let u1 = (ox + gw.max(1)) as f32 / atlas_w as f32;

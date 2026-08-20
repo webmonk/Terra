@@ -62,7 +62,7 @@ impl Precipitation {
         }
     }
 
-    /// Sample precipitation P(x,y) ≥ 0 for each cell.
+    /// Sample precipitation P(x,y) >= 0 for each cell.
     pub fn sample(&self, metrics: HeightfieldMetrics) -> Vec<f32> {
         let w = metrics.width as usize;
         let h = metrics.height as usize;
@@ -120,7 +120,7 @@ pub fn accumulate_drainage_area(graph: &FlowGraph, precip: &Precipitation) -> Ve
     accumulate_with_weights(graph, &p)
 }
 
-/// Discharge Q ≈ Σ P · cell_area along the flow graph (world m² · precip units).
+/// Discharge Q ~ Σ P - cell_area along the flow graph (world m^2 - precip units).
 pub fn accumulate_discharge(
     graph: &FlowGraph,
     precip: &Precipitation,
@@ -169,7 +169,7 @@ fn accumulate_with_weights(graph: &FlowGraph, weights: &[f32]) -> Vec<f32> {
     let n = graph.width * graph.height;
     assert_eq!(weights.len(), n);
     let mut acc = weights.to_vec();
-    // Upstream → downstream along topo order.
+    // Upstream -> downstream along topo order.
     for &idx in &graph.topo_order {
         let a = acc[idx];
         if a <= 0.0 {
@@ -204,7 +204,7 @@ mod tests {
         let g = build_flow_graph(&filled, FlowModel::D8);
         let acc = accumulate_drainage_area(&g, &Precipitation::uniform(1.0));
         // Total precip = 64; sinks hold the conserved mass that didn't leave
-        // the domain — sum over all cells is NOT conserved (each cell's water
+        // the domain - sum over all cells is NOT conserved (each cell's water
         // is also counted in downstream cells). Sum of *local contribution*
         // equals n. Max accumulation should equal full domain for single outlet.
         let max = acc.iter().copied().fold(0.0f32, f32::max);
@@ -233,7 +233,7 @@ mod tests {
         let acc = accumulate_drainage_area(&g, &Precipitation::from_map(map));
         let left: f32 = (0..8).map(|j| acc[j * 8 + 0]).sum();
         let right: f32 = (0..8).map(|j| acc[j * 8 + 7]).sum();
-        // Left half has precip; paths drain south — still expect structure.
+        // Left half has precip; paths drain south - still expect structure.
         assert!(acc.iter().copied().fold(0.0f32, f32::max) > 1.0);
         let _ = (left, right);
     }

@@ -169,7 +169,7 @@ fn attempt_b_network(spe_iters: u32, hydro_iters: u32) -> LayerStack {
             ],
             auto_generate: true,
             max_length: 400,
-            // World is 4 km; cell ≈ 40 m at 96² — radius must exceed one cell.
+            // World is 4 km; cell ~ 40 m at 96^2 - radius must exceed one cell.
             carve_depth: 35.0,
             valley_width: 90.0,
             seed: 7,
@@ -387,7 +387,7 @@ fn baseline_river_valley_produces_relief_and_channels() {
     );
     assert!(r.flow.is_some(), "SPE/RiverCarve should publish flow aux");
     // Note: valley_flow (accum in lowest height quartile) is often weak after Coastal
-    // flattens the outlet — channels exist but are not synonymous with "lowest cells".
+    // flattens the outlet - channels exist but are not synonymous with "lowest cells".
 }
 
 #[test]
@@ -411,7 +411,7 @@ fn attempt_a_tuned_changes_drainage_pattern() {
         "retuning SPE/RiverCarve should change the DEM (got {mean_abs})"
     );
     // Product finding: lowering accumulation_threshold does NOT reliably raise
-    // channel_frac under a relative (max*0.08) definition — network shape changes.
+    // channel_frac under a relative (max*0.08) definition - network shape changes.
 }
 
 #[test]
@@ -469,7 +469,7 @@ fn export_valley_diagnostics() {
     ];
 
     let mut summary = String::from("# Valley + river trial report\n\n");
-    summary.push_str("Resolution: 192² Draft-quality eval (UI Full would be higher).\n\n");
+    summary.push_str("Resolution: 192^2 Draft-quality eval (UI Full would be higher).\n\n");
 
     for (label, stack) in cases {
         let mut r = eval_stack(&stack, 192, PreviewQuality::Draft);
@@ -491,7 +491,7 @@ fn export_valley_diagnostics() {
 
     summary.push_str(
         "## Verdict notes\n\
-         - Baseline uses the River Valley UI recipe (Uplift→SPE→fill→RiverCarve→Coast).\n\
+         - Baseline uses the River Valley UI recipe (Uplift->SPE->fill->RiverCarve->Coast).\n\
          - Tributaries are drainage-emergent via SPE+RiverCarve; Path/RiverNetwork can add tracks but lack viewport authoring and confluence graphs.\n\
          - Wetness aux is typically absent after RiverCarve (carve only lowers DEM / publishes flow).\n\
          - See PNGs beside this report for height + log-flow overlays.\n",

@@ -7,7 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Physical frequency band an operator prefers to run at.
 ///
-/// These are not alternate algorithms — the same operator family should converge
+/// These are not alternate algorithms - the same operator family should converge
 /// across Interactive / Preview / Final. Bands guide which pyramid level or
 /// sample spacing is appropriate.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize, Default)]
@@ -19,7 +19,7 @@ pub enum ScaleBand {
     Meso,
     /// Gullies, small channels, talus, rock breakup, fine erosion.
     Micro,
-    /// Cascades Macro→Meso→Micro while preserving longer wavelengths.
+    /// Cascades Macro->Meso->Micro while preserving longer wavelengths.
     MultiScale,
 }
 

@@ -57,8 +57,8 @@ impl ApplicationHandler for TerraApp {
         self.tile_atlas = tile_atlas;
         self.gui_renderer = Some(gui_renderer);
         self.refresh_window_title();
-        // Decode 1024² tool thumbs on a background pool before the user opens
-        // Quick Add / Tools — avoids Lucide→3D icon flash on first dialog open.
+        // Decode 1024^2 tool thumbs on a background pool before the user opens
+        // Quick Add / Tools - avoids Lucide->3D icon flash on first dialog open.
         crate::ui::prefetch_tool_thumbnails();
         // Terrain eval waits until the user opens or creates a project.
     }
@@ -454,7 +454,7 @@ impl ApplicationHandler for TerraApp {
             self.ui_state.export_progress = None;
         }
 
-        // Stall heavy eval during camera orbit / UI drag â€” never during an active
+        // Stall heavy eval during camera orbit / UI drag - never during an active
         // sculpt/paint stroke (GUI overlays must not block live height updates).
         let mut did_eval = false;
         let mut live_paint = false;
@@ -473,7 +473,7 @@ impl ApplicationHandler for TerraApp {
                     && self.viewport_paint_active()
                     && !self.modifiers_alt
                     && !mask_painting);
-            // Stall Draft while the user is actively dragging UI / holding a button â€”
+            // Stall Draft while the user is actively dragging UI / holding a button -
             // mere hover over panels must not block rebuilds or progressive refine.
             // Also stall during mask paint so overlay stays responsive (no height rebuild).
             let stall_draft = if mask_painting {
@@ -517,6 +517,25 @@ impl ApplicationHandler for TerraApp {
                 self.scheduler.last_aux = result.aux;
                 self.scheduler.last_strata = result.strata;
                 self.scheduler.last_layer_timings = result.layer_timings;
+                // Worker-evaluated per-layer previews -> panel thumbnails.
+                for preview in &result.layer_previews {
+                    if self
+                        .layers_gui
+                        .thumbnails
+                        .needs_refresh(preview.layer, preview.generation)
+                    {
+                        let thumb = crate::ui::thumbnails::shade_height_samples(
+                            preview.res,
+                            &preview.heights,
+                            preview.world_size_x,
+                        );
+                        self.layers_gui.thumbnails.insert_real(
+                            preview.layer,
+                            preview.generation,
+                            thumb,
+                        );
+                    }
+                }
                 self.ui_state
                     .profile
                     .update_layer_timings(&self.scheduler.last_layer_timings);
@@ -578,7 +597,7 @@ impl ApplicationHandler for TerraApp {
                 did_eval = true;
             }
 
-            // Debounced draft eval. During paint/sculpt, key off last eval time â€” stamps
+            // Debounced draft eval. During paint/sculpt, key off last eval time - stamps
             // keep resetting last_edit, which would otherwise starve live updates.
             if !stall_draft && self.pending_eval {
                 let edit_ms = self.session.rebuild_feedback.prefs.edit_debounce_ms.max(1) as u128;
@@ -627,7 +646,7 @@ impl ApplicationHandler for TerraApp {
                 }
             }
 
-            // Progressive refine — one quality step per interval, never while interacting.
+            // Progressive refine - one quality step per interval, never while interacting.
             // WC path: stay GPU-resident when the last Draft/Medium was fully_gpu.
             // CPU worker is only for unsupported suffixes / export oracle.
             if !stall_refine
@@ -669,7 +688,7 @@ impl ApplicationHandler for TerraApp {
                     self.ui_state.quality = self.scheduler.quality;
                     // Always prefer GPU-resident refine when an engine exists. Hybrid stacks
                     // still present Draft/Medium on GPU; run_eval_step enqueues CPU only for
-                    // unsupported bake correction — never block the viewport on the worker.
+                    // unsupported bake correction - never block the viewport on the worker.
                     if self.gpu_engine.is_some() {
                         self.run_eval_step();
                     } else {

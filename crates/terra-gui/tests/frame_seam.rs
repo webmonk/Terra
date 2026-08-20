@@ -10,7 +10,7 @@
 //!
 //! `GuiRenderer::render` returns early when a frame produces no vertices, so
 //! the render pass is never begun and `LoadOp` is never reached. A frame that
-//! draws nothing therefore cannot detect a clear — it leaves the target intact
+//! draws nothing therefore cannot detect a clear - it leaves the target intact
 //! for the unrelated reason that no pass ran. Every test that means to exercise
 //! the load behaviour must emit geometry and then sample a region that geometry
 //! does not cover.
@@ -104,7 +104,7 @@ fn gui_pass_can_modify_the_target() {
     let covered = gpu.read_rgba8(&target).get(2, 2);
     assert_ne!(
         covered, BACKDROP_RGBA,
-        "GUI geometry never reached the target — the preserve test would be vacuous"
+        "GUI geometry never reached the target - the preserve test would be vacuous"
     );
     assert_eq!(
         covered, MARKER_RGBA,

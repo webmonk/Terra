@@ -1,4 +1,4 @@
-//! Simulation Scenarios — authoring containers over Simulation Layers.
+//! Simulation Scenarios - authoring containers over Simulation Layers.
 
 use terra_core::document::EditorSession;
 use terra_core::fields::FieldId;
@@ -27,7 +27,7 @@ fn scenario_lifecycle_run_outdated_freeze_reset() {
     assert_eq!(s.result_state, ScenarioResultState::Outdated);
     assert_eq!(s.snapshots[0].state, ScenarioResultState::Outdated);
 
-    // Second run — previous becomes outdated, new is current.
+    // Second run - previous becomes outdated, new is current.
     s.begin_run();
     let snap2 = s.complete_run(2);
     assert_eq!(s.snapshots.len(), 2);

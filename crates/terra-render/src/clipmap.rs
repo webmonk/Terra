@@ -79,7 +79,7 @@ impl ClipmapRingLevel {
 /// Nested camera-centered rings plus a coarse full-world fallback grid.
 #[derive(Debug, Clone)]
 pub struct ClipmapConfig {
-    /// Finest → coarsest rings drawn around the camera target.
+    /// Finest -> coarsest rings drawn around the camera target.
     pub rings: Vec<ClipmapRingLevel>,
     /// Full-world coarse grid when rings do not reach the horizon.
     pub fallback: WorldGridConfig,
@@ -110,7 +110,7 @@ impl ClipmapConfig {
         let tex = height_tex_res.max(9);
         let tex_spacing = extent / tex.saturating_sub(1).max(1) as f32;
 
-        // Dense inner ring ≈ height sample spacing; outer rings double.
+        // Dense inner ring ~ height sample spacing; outer rings double.
         let ring_grids = [129u32, 129, 97, 65];
         let mut rings = Vec::with_capacity(ring_grids.len());
         for (i, &requested) in ring_grids.iter().enumerate() {
@@ -147,7 +147,7 @@ impl ClipmapConfig {
     }
 }
 
-/// One clipmap draw call (coarse → fine order in [`ClipmapPresentPlan::rings`]).
+/// One clipmap draw call (coarse -> fine order in [`ClipmapPresentPlan::rings`]).
 #[derive(Debug, Clone, Copy)]
 pub struct ClipmapRingDraw {
     pub ring_index: usize,
@@ -172,7 +172,7 @@ pub struct ClipmapPresentPlan {
     pub fallback_spacing: f32,
     pub fallback_grid_size: u32,
     pub fallback_exclude_half_extent: f32,
-    /// Coarse → fine rings (fine wins depth; coarse holes prevent overdraw).
+    /// Coarse -> fine rings (fine wins depth; coarse holes prevent overdraw).
     pub rings: Vec<ClipmapRingDraw>,
 }
 
@@ -212,7 +212,7 @@ impl ClipmapPresentPlan {
         }
 
         let origins = clipmap.ring_origins(camera_x, camera_z, world_x, world_z);
-        // rings[] is fine → coarse; draw order is coarse → fine.
+        // rings[] is fine -> coarse; draw order is coarse -> fine.
         let mut draws = Vec::with_capacity(clipmap.rings.len());
         for (rev_i, ring) in clipmap.rings.iter().enumerate().rev() {
             let (ox, oz) = origins[rev_i];

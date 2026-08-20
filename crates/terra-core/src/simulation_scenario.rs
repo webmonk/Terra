@@ -1,14 +1,14 @@
-//! Simulation Scenarios — artist-facing authoring containers for physical setups.
+//! Simulation Scenarios - artist-facing authoring containers for physical setups.
 //!
 //! A [`SimulationScenario`] is **not** a second solver. It groups Domain, Sources,
 //! Passes, Quality, and Result Snapshots around existing Simulation Layers executed
 //! by [`crate::eval::StackEvaluator`]. Scenarios may be created, edited, run, frozen,
-//! or ignored at any time — they are not mandatory workflow steps.
+//! or ignored at any time - they are not mandatory workflow steps.
 //!
 //! Three spatial concepts are kept separate:
-//! 1. **Source** — where matter originates
-//! 2. **Simulation Domain** — where matter may move
-//! 3. **Output Influence** — where results may affect the project
+//! 1. **Source** - where matter originates
+//! 2. **Simulation Domain** - where matter may move
+//! 3. **Output Influence** - where results may affect the project
 
 use crate::biome_definition::BiomeDefinitionId;
 use crate::domain::SoftDiagnostic;
@@ -63,7 +63,7 @@ impl ScenarioScope {
     }
 }
 
-/// Where matter originates (rainfall, springs, snowmelt, …).
+/// Where matter originates (rainfall, springs, snowmelt, ...).
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum MatterSourceKind {
@@ -396,7 +396,7 @@ impl ScenarioPassKind {
     }
 }
 
-/// One pass in a scenario — references an existing Simulation Layer when bound.
+/// One pass in a scenario - references an existing Simulation Layer when bound.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct ScenarioPass {
     pub id: Uuid,
@@ -521,7 +521,7 @@ pub enum ScenarioResultState {
     Current,
     /// Upstream changed; snapshot kept.
     Outdated,
-    /// Artist froze this snapshot — never auto-delete.
+    /// Artist froze this snapshot - never auto-delete.
     Frozen,
     Failed,
     Cancelled,
@@ -603,7 +603,7 @@ pub struct OutputApplicationSettings {
     /// When true, height deltas from the scenario may update the live stack.
     #[serde(default)]
     pub apply_height: bool,
-    /// When true, aux maps (wetness, sediment, …) are published for downstream use.
+    /// When true, aux maps (wetness, sediment, ...) are published for downstream use.
     #[serde(default = "default_true")]
     pub apply_aux: bool,
     /// Respect Output Influence mask when applying.
@@ -612,7 +612,7 @@ pub struct OutputApplicationSettings {
 }
 
 // ---------------------------------------------------------------------------
-// Matter-sim configuration — persisted document state embedded below in
+// Matter-sim configuration - persisted document state embedded below in
 // `SimulationScenario::matter`. The behavior over these types (diagnostics,
 // downstream consumers, scenario-output sync) lives in `crate::matter_sim`,
 // which re-exports the names so callers keep their `matter_sim::` paths.
@@ -845,7 +845,7 @@ pub struct MatterSimConfig {
     pub advanced: MatterAdvancedParams,
     #[serde(default)]
     pub sources: Vec<MatterArtistSource>,
-    /// Declared input fields (Height, Hardness, …).
+    /// Declared input fields (Height, Hardness, ...).
     #[serde(default)]
     pub inputs: Vec<FieldId>,
     /// Declared output maps reusable by World Rules / Materials / Scatter / sims.
@@ -965,7 +965,7 @@ impl MatterSimConfig {
         scenario.sources = built.sources;
         scenario.domain = built.domain;
         scenario.output_influence = built.output_influence;
-        // Merge passes by kind — keep existing layer bindings.
+        // Merge passes by kind - keep existing layer bindings.
         let mut bound: std::collections::HashMap<ScenarioPassKind, Option<crate::layer::LayerId>> =
             scenario
                 .passes
@@ -1262,7 +1262,7 @@ impl SimulationScenario {
         diagnose_scenario(self)
     }
 
-    // —— Lifecycle ——
+    // -- Lifecycle --
 
     pub fn begin_run(&mut self) {
         self.cancel_requested = false;
@@ -1297,7 +1297,7 @@ impl SimulationScenario {
     }
 
     pub fn complete_run(&mut self, generation: u64) -> Uuid {
-        let mut snap = ScenarioSnapshot::new(format!("{} · gen {generation}", self.name));
+        let mut snap = ScenarioSnapshot::new(format!("{} - gen {generation}", self.name));
         snap.state = ScenarioResultState::Current;
         snap.generation = generation;
         snap.retained_fields = self
@@ -1308,7 +1308,7 @@ impl SimulationScenario {
             .collect();
         snap.apply_selected = self.output_application.selected_fields.clone();
         let id = snap.id;
-        // Previous current → Outdated (unless Frozen).
+        // Previous current -> Outdated (unless Frozen).
         if let Some(cur) = self.current_snapshot {
             if let Some(s) = self.snapshots.iter_mut().find(|s| s.id == cur) {
                 if s.state != ScenarioResultState::Frozen {
@@ -1324,7 +1324,7 @@ impl SimulationScenario {
         id
     }
 
-    /// Upstream project change — mark current result Outdated, keep snapshots.
+    /// Upstream project change - mark current result Outdated, keep snapshots.
     pub fn mark_outdated(&mut self) {
         if matches!(
             self.result_state,
@@ -1610,7 +1610,7 @@ pub fn diagnose_scenario(scenario: &SimulationScenario) -> Vec<SoftDiagnostic> {
         out.push(SoftDiagnostic::new(
             "scenario_no_passes",
             format!(
-                "‘{}’ has no simulation passes yet — add Flow, Erosion, or Sediment.",
+                "'{}' has no simulation passes yet - add Flow, Erosion, or Sediment.",
                 scenario.name
             ),
         ));
@@ -1619,7 +1619,7 @@ pub fn diagnose_scenario(scenario: &SimulationScenario) -> Vec<SoftDiagnostic> {
         out.push(SoftDiagnostic::new(
             "scenario_no_sources",
             format!(
-                "‘{}’ has no matter sources — rainfall / springs optional but recommended.",
+                "'{}' has no matter sources - rainfall / springs optional but recommended.",
                 scenario.name
             ),
         ));
@@ -1639,7 +1639,7 @@ pub fn diagnose_scenario(scenario: &SimulationScenario) -> Vec<SoftDiagnostic> {
                 out.push(SoftDiagnostic::new(
                     "scenario_missing_dependency",
                     format!(
-                        "Pass ‘{}’ depends on a missing pass in ‘{}’.",
+                        "Pass '{}' depends on a missing pass in '{}'.",
                         pass.name, scenario.name
                     ),
                 ));
@@ -1648,7 +1648,7 @@ pub fn diagnose_scenario(scenario: &SimulationScenario) -> Vec<SoftDiagnostic> {
                     out.push(SoftDiagnostic::new(
                         "scenario_invalid_order",
                         format!(
-                            "Pass ‘{}’ runs before its dependency — reorder passes in ‘{}’.",
+                            "Pass '{}' runs before its dependency - reorder passes in '{}'.",
                             pass.name, scenario.name
                         ),
                     ));
@@ -1662,7 +1662,7 @@ pub fn diagnose_scenario(scenario: &SimulationScenario) -> Vec<SoftDiagnostic> {
                 out.push(SoftDiagnostic::new(
                     "scenario_unusual_order",
                     format!(
-                        "‘{}’ ({}) appears after ‘{}’ ({}) — unusual but allowed.",
+                        "'{}' ({}) appears after '{}' ({}) - unusual but allowed.",
                         pass.name,
                         pass.kind.label(),
                         prev.name,
@@ -1673,7 +1673,7 @@ pub fn diagnose_scenario(scenario: &SimulationScenario) -> Vec<SoftDiagnostic> {
         }
     }
 
-    // Output influence vs domain — informational when painted influence with world domain.
+    // Output influence vs domain - informational when painted influence with world domain.
     if matches!(scenario.output_influence, OutputInfluence::Painted { .. })
         && matches!(
             scenario.domain,
@@ -1683,7 +1683,7 @@ pub fn diagnose_scenario(scenario: &SimulationScenario) -> Vec<SoftDiagnostic> {
         out.push(SoftDiagnostic::new(
             "scenario_influence_subset",
             format!(
-                "‘{}’ output influence is painted — results apply only inside the paint.",
+                "'{}' output influence is painted - results apply only inside the paint.",
                 scenario.name
             ),
         ));
@@ -1716,7 +1716,7 @@ mod tests {
         let mut late = ScenarioPass::new(ScenarioPassKind::Flow);
         let early = ScenarioPass::new(ScenarioPassKind::Sediment);
         late.depends_on.push(early.id);
-        // Put dependent BEFORE dependency → invalid.
+        // Put dependent BEFORE dependency -> invalid.
         s.passes.push(late);
         s.passes.push(early);
         let diags = diagnose_scenario(&s);

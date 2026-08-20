@@ -30,7 +30,7 @@ pub(crate) fn try_apply(
             app.session.document.active_biome = Some(id);
             app.session.document.selected = Some(id);
             app.ui_state.focus_created_biome();
-            // Structural biome create — full stack topology changed.
+            // Structural biome create - full stack topology changed.
             app.mark_all_layers_dirty();
             app.request_rebuild();
             ctx.doc_mutated = true;
@@ -277,7 +277,7 @@ pub(crate) fn try_apply(
             if let Some(def) = app.session.document.biome_library.get(def_id) {
                 if let Some(gid) = def.group_id {
                     app.session.document.active_biome = Some(gid);
-                    // Stay in artist inspector â€” do not select the stack group.
+                    // Stay in artist inspector - do not select the stack group.
                     app.session.document.selected = None;
                 } else {
                     app.ui_state.status = format!("{} has no linked biome group yet.", def.name);
@@ -311,14 +311,14 @@ pub(crate) fn try_apply(
                 terra_core::biome_definition::PlacementCombineMode::PaintMulRules
             ) {
                 app.ui_state.status = format!(
-                    "Painting {name} (guided by rules â€” switch to Paint owns if strokes vanish)"
+                    "Painting {name} (guided by rules - switch to Paint owns if strokes vanish)"
                 );
             } else {
-                app.ui_state.status = format!("Painting {name} â€” paint owns this area");
+                app.ui_state.status = format!("Painting {name} - paint owns this area");
             }
         }
         PanelAction::SetBiomeColorPreview(on) => {
-            // Workspace-only overlay preference â€” do not create placement
+            // Workspace-only overlay preference - do not create placement
             // layers or write BiomeLayer fields (project must stay clean).
             app.ui_state.set_biome_color_preview(on);
             app.placement_tint_dirty = true;
@@ -336,7 +336,7 @@ pub(crate) fn try_apply(
                     ctx.dirty_from = Some(gid);
                 }
                 ctx.doc_mutated = true;
-                app.ui_state.status = format!("{name} â€” {label}");
+                app.ui_state.status = format!("{name} - {label}");
             }
         }
         PanelAction::MarkBiomePlacementCustom { definition } => {
@@ -353,7 +353,7 @@ pub(crate) fn try_apply(
                     .unwrap_or_else(|| def.placement.compiled_distribution());
                 def.placement.mark_mask_stack_custom(stack);
                 ctx.doc_mutated = true;
-                app.ui_state.status = format!("{} â€” Mask Stack (Custom)", def.name);
+                app.ui_state.status = format!("{} - Mask Stack (Custom)", def.name);
             }
         }
         PanelAction::ResetBiomePlacementToRules { definition } => {
@@ -367,7 +367,7 @@ pub(crate) fn try_apply(
                     ctx.dirty_from = Some(gid);
                 }
                 ctx.doc_mutated = true;
-                app.ui_state.status = format!("{name} â€” reset to Placement rules");
+                app.ui_state.status = format!("{name} - reset to Placement rules");
             }
         }
         other => return Err(other),

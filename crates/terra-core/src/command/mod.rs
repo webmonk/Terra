@@ -495,7 +495,7 @@ fn invert(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
                     let idx = idx.min(group.children.len());
                     group.children.insert(idx, node.clone());
                 } else {
-                    // Parent gone — restore at root.
+                    // Parent gone - restore at root.
                     let idx = idx.min(stack.nodes.len());
                     stack.nodes.insert(idx, node.clone());
                 }

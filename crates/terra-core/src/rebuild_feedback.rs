@@ -1,6 +1,6 @@
 //! Artist-facing rebuild / dependency feedback.
 //!
-//! Builds on [`crate::deps::DependencyGraph`] — never invents a parallel UI dependency model.
+//! Builds on [`crate::deps::DependencyGraph`] - never invents a parallel UI dependency model.
 //! Simulation results become **Outdated** (snapshots kept) rather than being discarded.
 
 use crate::deps::{DependencyGraph, NodeRef};
@@ -33,7 +33,7 @@ pub enum ArtistBuildState {
     Building,
     /// Result kept but no longer matches upstream (sims, frozen-stale).
     Outdated,
-    /// Artist froze this result — never auto-discard.
+    /// Artist froze this result - never auto-discard.
     Frozen,
     /// Last build failed.
     Failed,
@@ -134,7 +134,7 @@ impl AffectedItem {
     }
 }
 
-/// Compact “Updating:” feedback after an upstream change (non-blocking).
+/// Compact "Updating:" feedback after an upstream change (non-blocking).
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 pub struct AffectedContentFeedback {
     pub source_name: String,
@@ -252,7 +252,7 @@ impl RebuildFeedbackState {
         if !self.prefs.live_preview {
             return false;
         }
-        // While sculpting, paint path owns draft frames — don't double-schedule.
+        // While sculpting, paint path owns draft frames - don't double-schedule.
         if sculpting {
             return false;
         }
@@ -309,7 +309,7 @@ pub fn is_expensive_physics(kind: &LayerKind) -> bool {
     )
 }
 
-/// Artist-facing label for a layer (Biome placement, Hydrology, Materials, …).
+/// Artist-facing label for a layer (Biome placement, Hydrology, Materials, ...).
 pub fn artist_layer_label(doc: &TerrainDocument, id: LayerId) -> String {
     let layer = doc.stack.find(id);
     let Some(layer) = layer else {
@@ -333,7 +333,7 @@ pub fn artist_layer_label(doc: &TerrainDocument, id: LayerId) -> String {
             return format!("{} {}", biome.name, hint.to_ascii_lowercase());
         }
         if biome.is_biome() {
-            return format!("{} — {}", biome.name, base);
+            return format!("{} - {}", biome.name, base);
         }
     }
     kind_hint.map(|h| h.to_string()).unwrap_or(base)
@@ -447,7 +447,7 @@ pub fn collect_affected(
 
     for node in &deps {
         let name = resolve_node_name(doc, *node);
-        // Deduplicate by artist label for compact “Updating:” lists.
+        // Deduplicate by artist label for compact "Updating:" lists.
         if !seen_names.insert(name.clone()) {
             continue;
         }
@@ -459,7 +459,7 @@ pub fn collect_affected(
         items.push(AffectedItem { id, name, state });
     }
 
-    // Scenarios / world rules are not NodeRefs yet — append from libraries when
+    // Scenarios / world rules are not NodeRefs yet - append from libraries when
     // any expensive physics layer was affected.
     let physics_hit = deps.iter().any(|n| {
         if let NodeRef::Layer(id) = n {
@@ -505,7 +505,7 @@ pub fn collect_affected(
     items
 }
 
-/// Explain why a node is outdated / needs rebuild — uses the dependency graph only.
+/// Explain why a node is outdated / needs rebuild - uses the dependency graph only.
 pub fn why_outdated(
     doc: &TerrainDocument,
     graph: &DependencyGraph,
@@ -538,7 +538,7 @@ pub fn why_outdated(
             diagnostics.push(SoftDiagnostic::new(
                 "outdated_sim_result",
                 format!(
-                    "{name} cached result is outdated — upstream shape/geometry changed (snapshot kept)"
+                    "{name} cached result is outdated - upstream shape/geometry changed (snapshot kept)"
                 ),
             ));
         }
@@ -547,7 +547,7 @@ pub fn why_outdated(
                 diagnostics.push(SoftDiagnostic::new(
                     "waiting_manual_rebuild",
                     format!(
-                        "{name} is expensive physics — not auto-rebuilt while sculpting unless Live / automatic rebuild is enabled"
+                        "{name} is expensive physics - not auto-rebuilt while sculpting unless Live / automatic rebuild is enabled"
                     ),
                 ));
             }
@@ -557,7 +557,7 @@ pub fn why_outdated(
             ) {
                 diagnostics.push(SoftDiagnostic::new(
                     "frozen_result",
-                    format!("{name} is frozen — showing previous result"),
+                    format!("{name} is frozen - showing previous result"),
                 ));
             }
         }
@@ -616,7 +616,7 @@ pub fn apply_upstream_change(
         }
     }
 
-    // Scenarios → Outdated (Frozen preserved inside mark_outdated).
+    // Scenarios -> Outdated (Frozen preserved inside mark_outdated).
     session.document.simulation_scenarios.mark_all_outdated();
 
     // Refresh scenario rows in feedback after mark.
@@ -712,7 +712,7 @@ pub fn apply_feedback_action(session: &mut EditorSession, action: RebuildFeedbac
                 .get_mut(scenario)
                 .is_some_and(|s| s.freeze_result(None))
             {
-                "Result frozen — will not be discarded".into()
+                "Result frozen - will not be discarded".into()
             } else {
                 "No snapshot to freeze".into()
             }

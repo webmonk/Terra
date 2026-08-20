@@ -66,7 +66,7 @@ impl MaskField {
         &self.data
     }
 
-    /// True when both fields still share the same copy-on-write buffer —
+    /// True when both fields still share the same copy-on-write buffer -
     /// i.e. neither has been written since they were clones of each other.
     pub fn shares_storage(&self, other: &Self) -> bool {
         Arc::ptr_eq(&self.data, &other.data)

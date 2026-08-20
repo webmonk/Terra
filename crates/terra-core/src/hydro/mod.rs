@@ -1,6 +1,6 @@
 //! River carving and stream-power incision oracles.
 //!
-//! Flow routing (D8 / D∞), accumulation, depression handling, watersheds, and
+//! Flow routing (D8 / Dinf), accumulation, depression handling, watersheds, and
 //! Strahler streams live in [`crate::geomorph`]. This module keeps the CPU
 //! stream-power / river-carve oracles used by the erosion processors; their
 //! drainage prep builds on the geomorph [`crate::geomorph::FlowGraph`].
@@ -28,7 +28,7 @@ pub fn fill_depressions(hf: &Heightfield) -> Heightfield {
 /// Log2 stream-order bucket for the published `STREAM_ORDER` aux overlay.
 ///
 /// This is a visualisation bucketing, `1 + floor(log2(acc / threshold))`, **not**
-/// Horton–Strahler order — see [`crate::geomorph::strahler_order`] for the real
+/// Horton-Strahler order - see [`crate::geomorph::strahler_order`] for the real
 /// donor-graph ordering carried by `analyze_terrain`'s `StreamNetwork`.
 pub fn stream_order_log2(acc: &[f32], w: usize, h: usize, threshold: f32) -> Vec<u32> {
     let mut order = vec![0u32; w * h];
@@ -308,18 +308,18 @@ fn max_local_slope(hf: &Heightfield, i: u32, j: u32) -> f32 {
 /// Per-cell stream-power increment shared by the hydro oracles and the
 /// `landscape_evolution` iterative solver.
 ///
-/// `rate = k · q_or_area^m · slope^n · soft`; `step = (rate · dt)` capped first by
+/// `rate = k - q_or_area^m - slope^n - soft`; `step = (rate - dt)` capped first by
 /// `slope_cap` then by `max_step`. Callers pass their own conventions explicitly,
 /// because the same K/m/n vocabulary encodes **different physics per module**:
 ///
-/// - `hydro` (this module): `q_or_area` is world-m² drainage area from a
-///   Priority-Flood D8/D∞ accumulation; `slope` is grid-relative (drop per
+/// - `hydro` (this module): `q_or_area` is world-m^2 drainage area from a
+///   Priority-Flood D8/Dinf accumulation; `slope` is grid-relative (drop per
 ///   1 / √2 cells, via `slope_along_d8`); caps `slope * 2.0`, then `50.0`.
 /// - `landscape_evolution::iterative`: `q_or_area` is rain-scaled discharge Q;
 ///   `slope` is world-metric (drop per dx/dz metres); caps
 ///   `slope * ((dx + dz) / 2) * 4.0`, then `80.0`.
 ///
-/// The two K's are therefore not interchangeable — see the notes on
+/// The two K's are therefore not interchangeable - see the notes on
 /// [`crate::layer::StreamPowerParams`] and
 /// [`crate::landscape_evolution::LandscapeEvolutionParams`]. The Tzathas analytical
 /// solver and the mass-wasting fluvial term are separate cited models that do not
@@ -346,7 +346,7 @@ pub fn spe_increment(
 
 /// Stream-power incision with Priority-Flood drainage (CPU oracle core).
 ///
-/// Each iteration: optional fill → D8/D∞ accumulation →
+/// Each iteration: optional fill -> D8/Dinf accumulation ->
 /// \(z \mathrel{-}= K\,A^{m}\,S^{n}\,(1-K_{\mathrm{hard}})\,\Delta t\), then optional uplift.
 /// Interactive Draft may reuse drainage across iters (`drainage_reuse_stride`) and
 /// the GPU path runs an approximate multi-pass D8 solver (no Priority-Flood).
@@ -382,7 +382,7 @@ fn stream_power_erode_impl(
     let mut last_dirs = vec![0u8; w * h];
     // Reused across D8 refreshes so the drainage graph is not reallocated each
     // SPE iteration (issue #27): flat receiver + topo arrays in place of the
-    // general graph's per-cell `Vec`s. D∞ still needs the multi-receiver
+    // general graph's per-cell `Vec`s. Dinf still needs the multi-receiver
     // `FlowGraph`, so it stays on `build_flow_graph` below.
     let mut d8_cache: Option<D8Drainage> = None;
 
@@ -422,7 +422,7 @@ fn stream_power_erode_impl(
             (last_dirs.clone(), last_acc.clone(), out.clone())
         };
 
-        // Cell area in world units² so K is resolution-aware enough for previews.
+        // Cell area in world units^2 so K is resolution-aware enough for previews.
         let cell_area = (input.metrics.world_size_x / input.metrics.width.max(1) as f32)
             * (input.metrics.world_size_z / input.metrics.height.max(1) as f32);
         let cell_area = cell_area.max(1e-6);

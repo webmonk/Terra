@@ -137,7 +137,7 @@ fn format_scale_label(world_size_m: f32) -> Option<String> {
     if world_size_m <= 0.0 {
         return None;
     }
-    // Decorative bar â‰ˆ 10% of world extent, snapped to a readable distance.
+    // Decorative bar ~ 10% of world extent, snapped to a readable distance.
     let raw = (world_size_m * 0.1).max(1.0);
     let nice = nice_distance(raw);
     Some(format_distance(nice))
@@ -230,7 +230,7 @@ pub fn draw_viewport_overlays(
         draw_dirty_tiles_overlay(ui, ui_state, &layout);
     }
 
-    // Top-right chip column (below gizmo / progressive) â€” avoids gizmo overlap.
+    // Top-right chip column (below gizmo / progressive) - avoids gizmo overlap.
     let chip_top = layout.chip_top;
     if ui_state.preview_mode == Preview2dMode::Biome {
         if let Some((w, h, rgba)) = ui_state.preview_rgba.as_ref() {
@@ -541,7 +541,7 @@ fn draw_viewport_mode_bar(
     bar
 }
 
-/// Display aids bar (wireframe, grid, bounds, …) — sits beside the mode bar.
+/// Display aids bar (wireframe, grid, bounds, ...) - sits beside the mode bar.
 fn draw_viewport_display_bar(
     ui: &mut GuiContext<'_>,
     state: &mut UiState,
@@ -874,7 +874,7 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
         menu_w,
         menu_h,
     );
-    // Scroll offset must persist across frames — a per-frame `0.0` local would
+    // Scroll offset must persist across frames - a per-frame `0.0` local would
     // snap the panel back to the top every frame, defeating wheel and thumb drag.
     let mut scroll = state.viewport_render.menu_scroll;
     let was_open = state.viewport_render.menu_open;
@@ -926,8 +926,8 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
         ui.separator();
         section_header(ui, "Lighting");
         let mut lighting_edited = false;
-        lighting_edited |= slider_f32(ui, "Sun azimuth °", &mut vr.sun_azimuth_deg, 0.0, 360.0);
-        lighting_edited |= slider_f32(ui, "Sun elevation °", &mut vr.sun_elevation_deg, 0.0, 90.0);
+        lighting_edited |= slider_f32(ui, "Sun azimuth  deg", &mut vr.sun_azimuth_deg, 0.0, 360.0);
+        lighting_edited |= slider_f32(ui, "Sun elevation  deg", &mut vr.sun_elevation_deg, 0.0, 90.0);
         lighting_edited |= slider_f32(ui, "Sun intensity", &mut vr.sun_intensity, 0.0, 3.0);
         lighting_edited |= slider_f32(ui, "Exposure", &mut vr.exposure, 0.1, 4.0);
         lighting_edited |= slider_f32(ui, "Sky R", &mut vr.sky_color[0], 0.0, 1.0);
@@ -1072,7 +1072,7 @@ fn draw_lighting_menu(ui: &mut GuiContext<'_>, state: &mut UiState, anchor: Rect
             }
             state.lighting_menu_open = false;
             state.viewport_lighting_selected = false;
-            // Lighting is presentation for the 3D terrain view â€” leave analysis
+            // Lighting is presentation for the 3D terrain view - leave analysis
             // modes alone, but exit mask chrome so the viewport stays visible.
             if state.is_mask_view() {
                 state.leave_mask_view();
@@ -1151,7 +1151,7 @@ fn draw_progressive_status(
 }
 
 fn draw_view_gizmo(ui: &mut GuiContext<'_>, state: &UiState, gizmo: Rect) {
-    // Thin RGB axes â€” floating viewport chrome (no cube / ring).
+    // Thin RGB axes - floating viewport chrome (no cube / ring).
     let cx = gizmo.center_x();
     let cy = gizmo.center_y() + 1.0;
     let scale = 22.0; // pixels per unit
@@ -1638,7 +1638,7 @@ mod tests {
         ui_state.viewport_render.menu_open = true;
         ui_state.viewport_render.advanced_open = true;
 
-        // Anchor (the Render button): max_x = 900, max_y = 60 → window at (600, 64) 300x520.
+        // Anchor (the Render button): max_x = 900, max_y = 60 -> window at (600, 64) 300x520.
         let anchor = Rect::from_pos_size(836.0, 40.0, 64.0, 20.0);
         let content_pt = (750.0, 338.0); // inside the panel's scrollable body
 

@@ -1,4 +1,4 @@
-//! EffectFilter → GPU preview mode mapping (CPU remains export oracle).
+//! EffectFilter -> GPU preview mode mapping (CPU remains export oracle).
 
 use terra_core::layer::EffectFilterKind;
 

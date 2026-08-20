@@ -50,7 +50,7 @@ impl PlacementCombineMode {
     /// Plain-language ownership control for artists.
     pub fn artist_label(self) -> &'static str {
         match self {
-            Self::PaintOverridesRules | Self::RulesOutsidePaint => "Paint owns · rules fill gaps",
+            Self::PaintOverridesRules | Self::RulesOutsidePaint => "Paint owns - rules fill gaps",
             Self::PaintMulRules => "Guided by rules",
             Self::PaintAddRules => "Paint + rules",
             Self::PaintOnly => "Paint only",
@@ -305,7 +305,7 @@ impl BiomeLibrary {
     pub fn tropical_island_palette() -> Self {
         let mut lib = Self::default();
 
-        // —— Beach ——
+        // -- Beach --
         let mut beach = BiomeDefinition::new("Beach", [0.90, 0.82, 0.55])
             .with_description("Sandy shore above sea level");
         beach.placement.combine = PlacementCombineMode::PaintOverridesRules;
@@ -322,7 +322,7 @@ impl BiomeLibrary {
         )];
         beach.material_layers = vec![("Beach Sand".into(), LayerKind::Materials(sand_materials()))];
 
-        // —— Tropical Forest ——
+        // -- Tropical Forest --
         let mut forest = BiomeDefinition::new("Tropical Forest", [0.12, 0.48, 0.18])
             .with_description("Warm wet canopy interior");
         forest.placement.combine = PlacementCombineMode::PaintOverridesRules;
@@ -363,7 +363,7 @@ impl BiomeLibrary {
             }),
         )];
 
-        // —— Rocky Peaks ——
+        // -- Rocky Peaks --
         let mut rock = BiomeDefinition::new("Rocky Peaks", [0.55, 0.52, 0.50])
             .with_description("Exposed volcanic rock");
         rock.placement.combine = PlacementCombineMode::PaintOverridesRules;
@@ -389,7 +389,7 @@ impl BiomeLibrary {
         ];
         rock.material_layers = vec![("Basalt".into(), LayerKind::Materials(rock_materials()))];
 
-        // —— Wetland ——
+        // -- Wetland --
         let mut wetland = BiomeDefinition::new("Wetland", [0.20, 0.55, 0.48])
             .with_description("Low coastal wetlands");
         wetland.placement.combine = PlacementCombineMode::PaintOverridesRules;
@@ -406,7 +406,7 @@ impl BiomeLibrary {
         wetland.material_layers =
             vec![("Wet Soil".into(), LayerKind::Materials(wetland_materials()))];
 
-        // —— Shallow Water / Reef ——
+        // -- Shallow Water / Reef --
         let mut reef = BiomeDefinition::new("Shallow Water / Reef", [0.15, 0.55, 0.70])
             .with_description("Shallow shelf and reef");
         reef.placement.combine = PlacementCombineMode::PaintOverridesRules;
@@ -692,7 +692,7 @@ fn material_rule(name: &str, id: u32, tint: [f32; 3], hardness: f32) -> Material
         id,
         min_slope_deg: 0.0,
         max_slope_deg: 90.0,
-        // Finite bounds — serde_json cannot roundtrip ±Infinity as f32.
+        // Finite bounds - serde_json cannot roundtrip +/-Infinity as f32.
         min_height: crate::layer::OPEN_HEIGHT_MIN,
         max_height: crate::layer::OPEN_HEIGHT_MAX,
         mask: MaskSource::None,

@@ -116,7 +116,7 @@ pub struct SandSimParams {
     /// Avalanche sweeps per transport step.
     #[serde(default = "default_sand_avalanche_iters")]
     pub avalanche_iters: u32,
-    /// Ridge coherence \[0, 1\] (high → linear/transverse fields).
+    /// Ridge coherence \[0, 1\] (high -> linear/transverse fields).
     #[serde(default = "default_sand_linearity")]
     pub linearity: f32,
     /// Bedrock abrasion on bounce \[0, 1\].

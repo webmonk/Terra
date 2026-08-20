@@ -1,7 +1,7 @@
 //! Mass-wasting: layered thermal/talus (Musgrave + Yang 2024) and debris flow (Jain et al. 2024).
 //!
-//! Bedrock and loose debris/sediment are tracked separately so Landscape Evolution →
-//! Hydraulic → Debris Flow → Thermal stacks can exchange real sediment fields.
+//! Bedrock and loose debris/sediment are tracked separately so Landscape Evolution ->
+//! Hydraulic -> Debris Flow -> Thermal stacks can exchange real sediment fields.
 
 use crate::geomorph::{
     accumulate_drainage_area, build_flow_graph, priority_flood_fill, FlowModel, Precipitation,
@@ -23,7 +23,7 @@ pub struct MassWastingState {
     pub bedrock: Vec<f32>,
     /// Loose debris / talus thickness (meters).
     pub debris: Vec<f32>,
-    /// Fine sediment thickness (meters) — fluvial / mud / fill soft.
+    /// Fine sediment thickness (meters) - fluvial / mud / fill soft.
     pub sediment: Vec<f32>,
 }
 
@@ -276,9 +276,9 @@ fn bilateral_settle(input: &Heightfield, radius: u32, sigma_range: f32) -> Heigh
 
 /// Layered thermal erosion (classical talus + Yang 2024 weathering / rock discharge).
 ///
-/// 1. Weather bedrock → loose debris where slope exceeds the talus angle (`weathering_rate`).
+/// 1. Weather bedrock -> loose debris where slope exceeds the talus angle (`weathering_rate`).
 /// 2. Transport loose downhill until slopes are stable, limited by `transport_distance`
-///    and `material_amount` — never Laplacian blur.
+///    and `material_amount` - never Laplacian blur.
 /// 3. Hard bedrock resists (hardness \(K\)); deposited debris forms talus aprons.
 pub fn thermal_erode_layered(
     input: &Heightfield,
@@ -310,7 +310,7 @@ pub fn thermal_erode_layered(
     let mut instability = vec![0.0f32; n];
 
     for _ in 0..p.iterations.max(1) {
-        // --- Weathering: bedrock → debris (Yang K_th excess slope) ---
+        // --- Weathering: bedrock -> debris (Yang K_th excess slope) ---
         let surface = state.sync_surface();
         for j in 0..hh as i32 {
             for i in 0..w as i32 {
@@ -1214,7 +1214,7 @@ mod tests {
         let after: f32 = r.height.to_dense().iter().sum();
         assert!(
             (before - after).abs() < 1.0,
-            "mass drift too large: {before} → {after}"
+            "mass drift too large: {before} -> {after}"
         );
         assert!(r.height.get(12, 12) < 40.0);
         let loose: f32 = r.loose_debris.data().iter().sum();
@@ -1232,7 +1232,7 @@ mod tests {
         let mut hf = Heightfield::filled(m, -200.0);
         for j in 0..6 {
             for i in 0..6 {
-                hf.set(i, j, 40.0); // rim above water → real slope to weather
+                hf.set(i, j, 40.0); // rim above water -> real slope to weather
             }
         }
         let p = ThermalErosionParams {

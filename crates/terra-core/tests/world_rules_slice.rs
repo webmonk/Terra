@@ -1,4 +1,4 @@
-//! World Rules — first-class condition-driven operations.
+//! World Rules - first-class condition-driven operations.
 
 use std::collections::HashMap;
 use terra_core::document::EditorSession;
@@ -86,7 +86,7 @@ fn priority_reordering() {
     assert_eq!(sorted[0].id, bid);
     assert_eq!(sorted[1].id, aid);
 
-    assert!(lib.reorder(aid, Some(bid))); // move snowline before beach → top
+    assert!(lib.reorder(aid, Some(bid))); // move snowline before beach -> top
     let sorted = lib.sorted_by_priority();
     assert_eq!(sorted[0].id, aid);
 }
@@ -118,7 +118,7 @@ fn empty_coverage_is_not_an_error() {
     };
     let cov = rule.refresh_coverage(m, &ctx);
     assert!(cov < 0.05);
-    // Allowed — diagnostics are soft, not hard errors.
+    // Allowed - diagnostics are soft, not hard errors.
     let diags = diagnose_world_rule(&rule);
     assert!(diags.iter().any(|d| d.code == "world_rule_zero_coverage"));
     assert!(rule.enabled); // still a valid project entity
@@ -137,7 +137,7 @@ fn execution_phases_inferred_and_overridable() {
     assert!(!beach.phase_needs_user_input() || beach.phase_override.is_some());
 
     let cliff = cliff_preset();
-    // Material + ObjectExclusion → ambiguous or Objects/Materials
+    // Material + ObjectExclusion -> ambiguous or Objects/Materials
     let phase = cliff.resolved_phase();
     assert!(matches!(
         phase,

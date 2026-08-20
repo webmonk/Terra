@@ -199,7 +199,7 @@ pub struct TerraApp {
     gui_wants_pointer: bool,
     /// Quit requested from the custom caption close button.
     pending_exit: bool,
-    /// True while GUI has active pointer capture (drag/scroll/text) â€” not hover.
+    /// True while GUI has active pointer capture (drag/scroll/text) - not hover.
     gui_interacting: bool,
     /// A sculpt gesture changed the base buffer; represented in History as an annotation.
     sculpt_stroke_active: bool,
@@ -207,7 +207,7 @@ pub struct TerraApp {
     /// (layer, strokes.len(), last stroke's point count). Diffed on mouse-up
     /// into an undoable `SculptGesture` command.
     sculpt_gesture_base: Option<(terra_core::layer::LayerId, usize, usize)>,
-    /// Last terrain UV stamped this stroke â€” used to fill gaps on fast brush moves.
+    /// Last terrain UV stamped this stroke - used to fill gaps on fast brush moves.
     last_paint_uv: Option<(f32, f32)>,
     /// App-owned 3D viewport in logical pixels.
     viewport_rect: Rect,
@@ -254,7 +254,7 @@ pub struct TerraApp {
     last_lighting_customized: bool,
     /// Last mask id uploaded to the viewport overlay (detect enter/leave paint mode).
     last_mask_overlay_id: Option<terra_core::mask::MaskId>,
-    /// Region Mask Editor session â€” paint/op edits invalidate mask cache only.
+    /// Region Mask Editor session - paint/op edits invalidate mask cache only.
     /// Terrain rebuild deferred until Apply / editor close / explicit apply.
     /// Paint buffer snapshot at the start of a mask paint stroke (for undo).
     mask_paint_stroke_before: Option<(terra_core::mask::MaskId, Vec<f32>, u32, u32)>,

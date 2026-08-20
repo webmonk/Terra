@@ -1,7 +1,7 @@
 //! Quantitative terrain realism statistics (Phase 11 Rule 6).
 //!
 //! Prefer these metrics over screenshot-only judgment. Compare against public
-//! DEM samples when available — distributions matter more than absolute RMSE.
+//! DEM samples when available - distributions matter more than absolute RMSE.
 
 use crate::geomorph::{analyze_terrain, multi_radius_roughness, GeomorphOptions, StreamNetwork};
 use crate::heightfield::Heightfield;
@@ -53,22 +53,22 @@ impl Histogram {
         self.counts.iter().sum()
     }
 
-    /// Normalised bin fractions (sum ≈ 1).
+    /// Normalised bin fractions (sum ~ 1).
     pub fn fractions(&self) -> Vec<f32> {
         let n = self.total().max(1) as f32;
         self.counts.iter().map(|&c| c as f32 / n).collect()
     }
 }
 
-/// Hypsometric (area–elevation) curve: cumulative fraction of area below each
+/// Hypsometric (area-elevation) curve: cumulative fraction of area below each
 /// elevation quantile. Classic Strahler hypsometric integral is also reported.
 #[derive(Debug, Clone)]
 pub struct HypsometricCurve {
-    /// Elevation samples at equal area fractions (low → high).
+    /// Elevation samples at equal area fractions (low -> high).
     pub elevations_m: Vec<f32>,
-    /// Area fraction below corresponding elevation (0…1).
+    /// Area fraction below corresponding elevation (0...1).
     pub area_fractions: Vec<f32>,
-    /// Hypsometric integral ≈ area under the curve in elevation–area space.
+    /// Hypsometric integral ~ area under the curve in elevation-area space.
     pub integral: f32,
     pub z_min: f32,
     pub z_max: f32,
@@ -240,7 +240,7 @@ impl TerrainStatistics {
     /// Compact summary line for logs / CI.
     pub fn summary_line(&self) -> String {
         format!(
-            "relief={:.1}m hyps_I={:.3} mean_slope={:.1}° drain_d={:.3} ridge={:.3} valley={:.3} max_strahler={} pits={:.4}",
+            "relief={:.1}m hyps_I={:.3} mean_slope={:.1} deg drain_d={:.3} ridge={:.3} valley={:.3} max_strahler={} pits={:.4}",
             self.hypsometry.relief_m,
             self.hypsometry.integral,
             self.mean_slope_deg,
