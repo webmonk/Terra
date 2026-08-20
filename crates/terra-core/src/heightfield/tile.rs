@@ -103,6 +103,20 @@ impl HeightTile {
         }
     }
 
+    /// Rewrite interior samples with access to local interior coordinates.
+    pub fn map_interior_indexed<F: FnMut(u32, u32, f32) -> f32>(&mut self, mut f: F) {
+        let halo = self.halo;
+        let iw = self.interior_width;
+        let ih = self.interior_height;
+        let stride = self.stride();
+        for lz in 0..ih {
+            for lx in 0..iw {
+                let idx = ((lz + halo) * stride + (lx + halo)) as usize;
+                self.data[idx] = f(lx, lz, self.data[idx]);
+            }
+        }
+    }
+
     pub fn data(&self) -> &[f32] {
         &self.data
     }

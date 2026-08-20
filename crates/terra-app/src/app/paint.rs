@@ -96,6 +96,20 @@ impl TerraApp {
                 return;
             };
             self.ui_state.ensure_sculpt_defaults();
+            if !self.sculpt_stroke_active {
+                // First dab of a gesture: snapshot the pre-gesture stroke
+                // shape so mouse-up can record an undoable SculptGesture.
+                self.sculpt_gesture_base =
+                    self.session.document.stack.find(layer_id).and_then(|l| {
+                        if let terra_core::layer::LayerKind::SculptStrokes(p) = &l.kind {
+                            let last_points =
+                                p.strokes.last().map(|s| s.points.len()).unwrap_or(0);
+                            Some((layer_id, p.strokes.len(), last_points))
+                        } else {
+                            None
+                        }
+                    });
+            }
             self.sculpt_stroke_active = true;
             let strength = match shape_tool {
                 terra_core::shape_history::ShapeTool::Smooth
@@ -596,17 +610,37 @@ impl TerraApp {
     /// Execute keyboard bindings through the shared command IDs.
 
     pub(crate) fn commit_mask_paint_stroke(&mut self) {
-        let Some((mask_id, before, w, h)) = self.mask_paint_stroke_before.take() else {
+        let Some((mask_id, mut before, w, h)) = self.mask_paint_stroke_before.take() else {
             return;
         };
-        self.session
-            .push_mask_paint_undo(terra_core::document::MaskPaintStrokeUndo {
-                label: "Painted Mask".into(),
-                mask_id,
-                before_samples: before,
-                width: w,
-                height: h,
-            });
+        let Some(after) = self
+            .session
+            .document
+            .masks
+            .iter()
+            .find(|a| a.id == mask_id)
+            .and_then(|a| a.paint.as_ref())
+            .filter(|p| p.width == w && p.height == h)
+            .map(|p| p.samples.clone())
+        else {
+            return;
+        };
+        if before.is_empty() {
+            // Buffer was created by this stroke; pre-stroke state is all zeros.
+            before = vec![0.0; (w * h) as usize];
+        }
+        let Some(patch) = terra_core::document::MaskPaintPatch::from_diff(
+            "Painted Mask",
+            mask_id,
+            w,
+            h,
+            &before,
+            &after,
+        ) else {
+            // Stroke changed nothing — no undo entry, no rebuild.
+            return;
+        };
+        self.session.push_mask_paint_patch(patch);
         // Project/layer masks: one rebuild after the stroke (not per dab).
         self.mark_all_layers_dirty();
         self.request_rebuild();

@@ -689,7 +689,33 @@ impl LayerStack {
         true
     }
 
-    fn insert_at_parent(&mut self, parent: Option<LayerId>, index: usize, node: StackNode) {
+    /// Detach `id` and reinsert it under `parent` (root when `None`) at
+    /// `index`. Used by undo/redo to replay recorded moves exactly, so it
+    /// applies no kind-routing rules beyond cycle prevention. Returns false
+    /// (tree unchanged) when the node is missing, the parent is missing, or
+    /// the move would parent a group into its own subtree.
+    pub fn move_node_to(&mut self, id: LayerId, parent: Option<LayerId>, index: usize) -> bool {
+        if Some(id) == parent {
+            return false;
+        }
+        if let Some(pid) = parent {
+            let Some(_) = self.find_group(pid) else {
+                return false;
+            };
+            if let Some(g) = self.find_group(id) {
+                if contains_id(&g.children, pid) {
+                    return false;
+                }
+            }
+        }
+        let Some(node) = self.remove(id) else {
+            return false;
+        };
+        self.insert_at_parent(parent, index, node);
+        true
+    }
+
+    pub(crate) fn insert_at_parent(&mut self, parent: Option<LayerId>, index: usize, node: StackNode) {
         let nodes = match parent {
             None => &mut self.nodes,
             Some(pid) => {

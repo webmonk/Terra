@@ -285,6 +285,18 @@ impl Heightfield {
         });
     }
 
+    /// Parallel per-sample rewrite; `f(i, j, current)` receives global sample
+    /// indices. Tiles run concurrently. Halos are left stale — callers must
+    /// `refresh_halos` afterwards, as with `set`.
+    pub fn par_map_indexed<F: Fn(u32, u32, f32) -> f32 + Sync>(&mut self, f: F) {
+        use rayon::prelude::*;
+        let metrics = self.metrics;
+        self.tiles.par_iter_mut().for_each(|tile| {
+            let (ox, oz) = tile.interior_origin(&metrics);
+            tile.map_interior_indexed(|lx, lz, v| f(ox + lx, oz + lz, v));
+        });
+    }
+
     pub fn min_max(&self) -> (f32, f32) {
         let mut min_v = f32::INFINITY;
         let mut max_v = f32::NEG_INFINITY;

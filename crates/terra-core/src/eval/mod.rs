@@ -507,19 +507,13 @@ impl StackEvaluator {
         ) {
             gate_aux_by_mask(ctx, &mask);
         }
-        let mut out = input.clone();
-        let w = input.metrics.width;
-        let h = input.metrics.height;
-        for j in 0..h {
-            for i in 0..w {
-                let hin = input.get(i, j);
-                let hlayer = generated.get(i, j);
-                let m = mask.get(i, j);
-                let v = blend_heights(layer.common.blend, hin, hlayer, layer.common.opacity, m);
-                out.set(i, j, v);
-            }
-        }
-        out.refresh_halos();
+        let out = mix_heightfields(
+            input,
+            &generated,
+            layer.common.blend,
+            layer.common.opacity,
+            &mask,
+        );
         publish_layer_outputs(ctx, layer, &out);
         record_layer_timing(ctx, layer, timing_started, LayerEvalStatus::Computed);
         Ok(out)
@@ -794,18 +788,9 @@ fn mix_heightfields(
     mask: &MaskField,
 ) -> Heightfield {
     let mut out = h_in.clone();
-    for j in 0..h_in.metrics.height {
-        for i in 0..h_in.metrics.width {
-            let v = blend_heights(
-                blend,
-                h_in.get(i, j),
-                h_layer.get(i, j),
-                opacity,
-                mask.get(i, j),
-            );
-            out.set(i, j, v);
-        }
-    }
+    out.par_map_indexed(|i, j, hin| {
+        blend_heights(blend, hin, h_layer.get(i, j), opacity, mask.get(i, j))
+    });
     out.refresh_halos();
     out
 }
@@ -822,13 +807,10 @@ fn mix_height_delta(
     mask: &MaskField,
 ) -> Heightfield {
     let mut out = h_parent.clone();
-    for j in 0..h_parent.metrics.height {
-        for i in 0..h_parent.metrics.width {
-            let w = (mask.get(i, j) * opacity).clamp(0.0, 1.0);
-            let delta = biome_result.get(i, j) - shared.get(i, j);
-            out.set(i, j, h_parent.get(i, j) + w * delta);
-        }
-    }
+    out.par_map_indexed(|i, j, hp| {
+        let w = (mask.get(i, j) * opacity).clamp(0.0, 1.0);
+        hp + w * (biome_result.get(i, j) - shared.get(i, j))
+    });
     out.refresh_halos();
     out
 }
@@ -847,12 +829,19 @@ fn merge_aux_masked(
             .get(&key)
             .cloned()
             .unwrap_or_else(|| MaskField::zeros(ctx.metrics));
-        for j in 0..ctx.metrics.height {
-            for i in 0..ctx.metrics.width {
-                let w = (mask.get(i, j) * opacity).clamp(0.0, 1.0);
-                let v = out.get(i, j) * (1.0 - w) + child_field.get(i, j) * w;
-                out.set(i, j, v);
-            }
+        {
+            use rayon::prelude::*;
+            let width = ctx.metrics.width as usize;
+            out.data_mut()
+                .par_chunks_mut(width)
+                .enumerate()
+                .for_each(|(j, row)| {
+                    for (i, v) in row.iter_mut().enumerate() {
+                        let (i, j) = (i as u32, j as u32);
+                        let w = (mask.get(i, j) * opacity).clamp(0.0, 1.0);
+                        *v = *v * (1.0 - w) + child_field.get(i, j) * w;
+                    }
+                });
         }
         ctx.aux_insert(key, out);
     }

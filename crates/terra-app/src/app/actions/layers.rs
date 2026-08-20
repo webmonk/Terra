@@ -212,11 +212,22 @@ pub(crate) fn try_apply(
                 .find(id)
                 .map(|l| l.kind.clone())
                 .unwrap_or(LayerKind::Flat(Default::default()));
+            // Key coalescing on (layer, changed param) so consecutive drags of
+            // *different* sliders stay separate undo steps.
+            let mut coalesce = coalesce_layer_id(id);
+            if let Some(path) =
+                terra_core::layer::param_reflect::changed_paths(&previous, &kind).first()
+            {
+                use std::hash::{Hash, Hasher};
+                let mut h = std::collections::hash_map::DefaultHasher::new();
+                path.hash(&mut h);
+                coalesce ^= h.finish();
+            }
             let cmd = EditorCommand::SetKind { id, kind, previous };
             apply(&cmd, &mut app.session.document.stack);
             app.session
                 .history
-                .push_coalesced(cmd, Some((coalesce_layer_id(id), "kind")));
+                .push_coalesced(cmd, Some((coalesce, "kind")));
             ctx.dirty_from = Some(id);
         }
         PanelAction::Rename { id, name } => {
@@ -350,12 +361,26 @@ pub(crate) fn try_apply(
             ctx.doc_mutated = true;
         }
         PanelAction::MoveLayerToBiome { id, biome, section } => {
+            let from = app.session.document.stack.sibling_location(id);
             if app
                 .session
                 .document
                 .stack
                 .move_layer_to_biome_section(id, biome, section)
             {
+                if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
+                    (from, app.session.document.stack.sibling_location(id))
+                {
+                    app.session
+                        .history
+                        .push_executed(EditorCommand::MoveNode {
+                            id,
+                            from_parent,
+                            from_index,
+                            to_parent,
+                            to_index,
+                        });
+                }
                 app.session.document.active_biome = Some(biome);
                 app.session.document.selected = Some(id);
                 // Placement stays Entire Biome / local â€” inheritance is by enclosure.
@@ -580,14 +605,45 @@ pub(crate) fn try_apply(
             }
         }
         PanelAction::MoveIntoGroup { child, group } => {
+            let from = app.session.document.stack.sibling_location(child);
             if app.session.document.stack.move_into_group(child, group) {
+                if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
+                    (from, app.session.document.stack.sibling_location(child))
+                {
+                    app.session
+                        .history
+                        .push_executed(EditorCommand::MoveNode {
+                            id: child,
+                            from_parent,
+                            from_index,
+                            to_parent,
+                            to_index,
+                        });
+                }
                 app.mark_all_layers_dirty();
                 app.request_rebuild();
                 ctx.doc_mutated = true;
             }
         }
         PanelAction::MoveToRoot { id } => {
+            let from = app.session.document.stack.sibling_location(id);
+            let was_at_root = app.session.document.stack.index_of(id).is_some();
             if app.session.document.stack.move_to_root(id) {
+                if !was_at_root {
+                    if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
+                        (from, app.session.document.stack.sibling_location(id))
+                    {
+                        app.session
+                            .history
+                            .push_executed(EditorCommand::MoveNode {
+                                id,
+                                from_parent,
+                                from_index,
+                                to_parent,
+                                to_index,
+                            });
+                    }
+                }
                 app.mark_all_layers_dirty();
                 app.request_rebuild();
                 ctx.doc_mutated = true;
@@ -875,12 +931,26 @@ pub(crate) fn try_apply(
             target,
             place_before,
         } => {
+            let from = app.session.document.stack.sibling_location(moving);
             if app
                 .session
                 .document
                 .stack
                 .reorder_relative(moving, target, place_before)
             {
+                if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
+                    (from, app.session.document.stack.sibling_location(moving))
+                {
+                    app.session
+                        .history
+                        .push_executed(EditorCommand::MoveNode {
+                            id: moving,
+                            from_parent,
+                            from_index,
+                            to_parent,
+                            to_index,
+                        });
+                }
                 app.mark_all_layers_dirty();
                 app.request_rebuild();
                 ctx.doc_mutated = true;

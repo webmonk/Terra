@@ -76,6 +76,38 @@ pub enum EditorCommand {
         id: LayerId,
         index: usize,
     },
+    /// Cross-parent structural move (drag reorder, group, ungroup, biome
+    /// section move). Records the sibling location before and after the move
+    /// so undo/redo replay it exactly.
+    MoveNode {
+        id: LayerId,
+        from_parent: Option<LayerId>,
+        from_index: usize,
+        to_parent: Option<LayerId>,
+        to_index: usize,
+    },
+    /// Insert a prebuilt node under `parent` (root when `None`) at `index`.
+    /// Used for auto-created layers (e.g. sculpt Shape Layers) so their
+    /// creation is undoable at the exact tree location.
+    InsertNode {
+        node: StackNode,
+        parent: Option<LayerId>,
+        index: usize,
+    },
+    /// One sculpt gesture on a `SculptStrokes` layer. Undo truncates the
+    /// stroke list back to its pre-gesture shape; redo re-appends the
+    /// recorded strokes/points.
+    SculptGesture {
+        id: LayerId,
+        /// `strokes.len()` before the gesture.
+        base_strokes: usize,
+        /// Point count of the last pre-existing stroke (it may have been extended).
+        base_last_points: usize,
+        /// Points appended to that pre-existing last stroke.
+        last_extension: Vec<crate::authoring::SculptPoint>,
+        /// Whole strokes appended by the gesture.
+        added_strokes: Vec<crate::authoring::SculptStroke>,
+    },
     /// Records an artist action whose data cannot yet be restored by undo.
     Annotate {
         label: String,
@@ -218,7 +250,15 @@ impl EditorCommand {
             .into(),
             Self::SetOpacity { .. } => "Changed Opacity".into(),
             Self::SetBlend { .. } => "Changed Blend Mode".into(),
-            Self::SetKind { .. } => "Changed Layer Type".into(),
+            Self::SetKind { kind, previous, .. } => {
+                use crate::layer::param_reflect::{changed_paths, humanize_path};
+                let paths = changed_paths(previous, kind);
+                match paths.as_slice() {
+                    [] => "Changed Layer Type".into(),
+                    [path] => format!("Changed {}", humanize_path(path)),
+                    many => format!("Changed {} Parameters", many.len()),
+                }
+            }
             Self::Rename { name, .. } => format!("Renamed to {}", name),
             Self::Duplicate { .. } => "Duplicated Layer".into(),
             Self::SetLocked { locked, .. } => if *locked {
@@ -241,6 +281,12 @@ impl EditorCommand {
             }
             .into(),
             Self::AddGroup { name, .. } => format!("Added Group {}", name),
+            Self::MoveNode { .. } => "Moved Layer".into(),
+            Self::InsertNode { node, .. } => match node {
+                StackNode::Layer(l) => format!("Added {}", l.common.name),
+                StackNode::Group(g) => format!("Added Group {}", g.name),
+            },
+            Self::SculptGesture { .. } => "Sculpt Stroke".into(),
             Self::Annotate { label } => label.clone(),
             Self::SetOperationPlacement { .. } => "Changed Apply Where".into(),
         }
@@ -338,6 +384,45 @@ pub fn apply(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
             g.id = *id;
             let idx = (*index).min(stack.nodes.len());
             stack.nodes.insert(idx, StackNode::Group(g));
+            Some(*id)
+        }
+        EditorCommand::MoveNode {
+            id,
+            to_parent,
+            to_index,
+            ..
+        } => {
+            stack.move_node_to(*id, *to_parent, *to_index);
+            Some(*id)
+        }
+        EditorCommand::InsertNode {
+            node,
+            parent,
+            index,
+        } => {
+            stack.insert_at_parent(*parent, *index, node.clone());
+            match node {
+                StackNode::Layer(l) => Some(l.id()),
+                StackNode::Group(g) => Some(g.id),
+            }
+        }
+        EditorCommand::SculptGesture {
+            id,
+            base_strokes,
+            last_extension,
+            added_strokes,
+            ..
+        } => {
+            if let Some(l) = stack.find_mut(*id) {
+                if let LayerKind::SculptStrokes(p) = &mut l.kind {
+                    if *base_strokes > 0 && !last_extension.is_empty() {
+                        if let Some(s) = p.strokes.get_mut(base_strokes - 1) {
+                            s.points.extend(last_extension.iter().cloned());
+                        }
+                    }
+                    p.strokes.extend(added_strokes.iter().cloned());
+                }
+            }
             Some(*id)
         }
         EditorCommand::Annotate { .. } => None,
@@ -462,6 +547,40 @@ fn invert(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
             stack.remove(*id);
             None
         }
+        EditorCommand::MoveNode {
+            id,
+            from_parent,
+            from_index,
+            ..
+        } => {
+            stack.move_node_to(*id, *from_parent, *from_index);
+            Some(*id)
+        }
+        EditorCommand::InsertNode { node, .. } => {
+            match node {
+                StackNode::Layer(l) => stack.remove(l.id()),
+                StackNode::Group(g) => stack.remove(g.id),
+            };
+            None
+        }
+        EditorCommand::SculptGesture {
+            id,
+            base_strokes,
+            base_last_points,
+            ..
+        } => {
+            if let Some(l) = stack.find_mut(*id) {
+                if let LayerKind::SculptStrokes(p) = &mut l.kind {
+                    p.strokes.truncate(*base_strokes);
+                    if *base_strokes > 0 {
+                        if let Some(s) = p.strokes.get_mut(base_strokes - 1) {
+                            s.points.truncate(*base_last_points);
+                        }
+                    }
+                }
+            }
+            Some(*id)
+        }
         EditorCommand::Annotate { .. } => None,
         EditorCommand::SetOperationPlacement {
             id,
@@ -502,6 +621,117 @@ mod tests {
         assert_eq!(stack.find(id).unwrap().common.opacity, 1.0);
         hist.redo(&mut stack);
         assert_eq!(stack.find(id).unwrap().common.opacity, 0.5);
+    }
+
+    #[test]
+    fn sculpt_gesture_undo_redo_round_trip() {
+        use crate::authoring::{SculptPoint, SculptStroke, SculptStrokeKind, SculptStrokeParams};
+
+        let pre = SculptStroke {
+            kind: SculptStrokeKind::Raise,
+            points: vec![SculptPoint::default()],
+            ..Default::default()
+        };
+        let mut stack = LayerStack::new();
+        let layer = Layer::new(
+            "Sculpt",
+            LayerKind::SculptStrokes(SculptStrokeParams {
+                strokes: vec![pre.clone()],
+                ..Default::default()
+            }),
+        );
+        let id = layer.id();
+        stack.push(layer);
+
+        // Gesture: extend the pre-existing stroke and add one new stroke.
+        let ext = SculptPoint {
+            u: 0.5,
+            v: 0.5,
+            pressure: 1.0,
+        };
+        let added = SculptStroke {
+            kind: SculptStrokeKind::Smooth,
+            points: vec![SculptPoint::default(); 3],
+            ..Default::default()
+        };
+        let cmd = EditorCommand::SculptGesture {
+            id,
+            base_strokes: 1,
+            base_last_points: 1,
+            last_extension: vec![ext],
+            added_strokes: vec![added],
+        };
+        apply(&cmd, &mut stack);
+        let strokes = |stack: &LayerStack| match &stack.find(id).unwrap().kind {
+            LayerKind::SculptStrokes(p) => p.strokes.clone(),
+            _ => unreachable!(),
+        };
+        assert_eq!(strokes(&stack).len(), 2);
+        assert_eq!(strokes(&stack)[0].points.len(), 2);
+
+        let mut hist = CommandHistory::new(32);
+        hist.push_executed(cmd);
+        hist.undo(&mut stack);
+        assert_eq!(strokes(&stack).len(), 1);
+        assert_eq!(strokes(&stack)[0].points.len(), 1);
+        hist.redo(&mut stack);
+        assert_eq!(strokes(&stack).len(), 2);
+        assert_eq!(strokes(&stack)[0].points.len(), 2);
+    }
+
+    #[test]
+    fn insert_node_undo_removes_layer() {
+        let mut stack = LayerStack::new();
+        let group = LayerGroup::new("G");
+        let gid = group.id;
+        stack.nodes.push(StackNode::Group(group));
+        let layer = Layer::new("A", LayerKind::Flat(FlatParams { height: 1.0 }));
+        let id = layer.id();
+
+        let cmd = EditorCommand::InsertNode {
+            node: StackNode::Layer(layer),
+            parent: Some(gid),
+            index: 0,
+        };
+        apply(&cmd, &mut stack);
+        assert_eq!(stack.sibling_location(id), Some((Some(gid), 0)));
+        let mut hist = CommandHistory::new(32);
+        hist.push_executed(cmd);
+        hist.undo(&mut stack);
+        assert!(stack.sibling_location(id).is_none());
+        hist.redo(&mut stack);
+        assert_eq!(stack.sibling_location(id), Some((Some(gid), 0)));
+    }
+
+    #[test]
+    fn move_node_undo_redo_round_trip() {
+        let mut stack = LayerStack::new();
+        let group = LayerGroup::new("G");
+        let gid = group.id;
+        stack.nodes.push(StackNode::Group(group));
+        let layer = Layer::new("A", LayerKind::Flat(FlatParams { height: 1.0 }));
+        let id = layer.id();
+        stack.push(layer);
+        assert_eq!(stack.sibling_location(id), Some((None, 1)));
+
+        // Simulate an already-performed "move into group" and record it.
+        let (from_parent, from_index) = stack.sibling_location(id).unwrap();
+        assert!(stack.move_into_group(id, gid));
+        let (to_parent, to_index) = stack.sibling_location(id).unwrap();
+        let mut hist = CommandHistory::new(32);
+        hist.push_executed(EditorCommand::MoveNode {
+            id,
+            from_parent,
+            from_index,
+            to_parent,
+            to_index,
+        });
+        assert_eq!(stack.sibling_location(id), Some((Some(gid), 0)));
+
+        hist.undo(&mut stack);
+        assert_eq!(stack.sibling_location(id), Some((None, 1)));
+        hist.redo(&mut stack);
+        assert_eq!(stack.sibling_location(id), Some((Some(gid), 0)));
     }
 
     #[test]

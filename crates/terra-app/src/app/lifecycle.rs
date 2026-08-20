@@ -255,10 +255,53 @@ impl ApplicationHandler for TerraApp {
                             self.commit_mask_paint_stroke();
                         }
                         if self.sculpt_stroke_active {
-                            // Non-destructive Shape history â€” undoable via layer/command history later.
-                            self.session.history.push_executed(EditorCommand::Annotate {
-                                label: "Shape stroke (draft â†’ full on refine)".into(),
-                            });
+                            // Diff the target layer's stroke IR against the
+                            // gesture-start snapshot into an undoable command.
+                            let gesture = self.sculpt_gesture_base.take().and_then(
+                                |(layer_id, base_strokes, base_last_points)| {
+                                    let layer = self.session.document.stack.find(layer_id)?;
+                                    let terra_core::layer::LayerKind::SculptStrokes(p) =
+                                        &layer.kind
+                                    else {
+                                        return None;
+                                    };
+                                    let added_strokes: Vec<_> =
+                                        p.strokes.iter().skip(base_strokes).cloned().collect();
+                                    let last_extension: Vec<_> = if base_strokes > 0 {
+                                        p.strokes
+                                            .get(base_strokes - 1)
+                                            .map(|s| {
+                                                s.points
+                                                    .iter()
+                                                    .skip(base_last_points)
+                                                    .cloned()
+                                                    .collect()
+                                            })
+                                            .unwrap_or_default()
+                                    } else {
+                                        Vec::new()
+                                    };
+                                    if added_strokes.is_empty() && last_extension.is_empty() {
+                                        return None;
+                                    }
+                                    Some(EditorCommand::SculptGesture {
+                                        id: layer_id,
+                                        base_strokes,
+                                        base_last_points,
+                                        last_extension,
+                                        added_strokes,
+                                    })
+                                },
+                            );
+                            if let Some(cmd) = gesture {
+                                self.session.history.push_executed(cmd);
+                            } else {
+                                // Sculpt paths without stroke IR (e.g. base
+                                // buffer painting) stay annotation-only.
+                                self.session.history.push_executed(EditorCommand::Annotate {
+                                    label: "Shape stroke (draft \u{2192} full on refine)".into(),
+                                });
+                            }
                             self.sculpt_stroke_active = false;
                             // Mark dependents outdated without forcing sim rebuilds now.
                             self.mark_shape_dependents_outdated();

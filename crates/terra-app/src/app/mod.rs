@@ -203,6 +203,10 @@ pub struct TerraApp {
     gui_interacting: bool,
     /// A sculpt gesture changed the base buffer; represented in History as an annotation.
     sculpt_stroke_active: bool,
+    /// Pre-gesture stroke shape of the target `SculptStrokes` layer:
+    /// (layer, strokes.len(), last stroke's point count). Diffed on mouse-up
+    /// into an undoable `SculptGesture` command.
+    sculpt_gesture_base: Option<(terra_core::layer::LayerId, usize, usize)>,
     /// Last terrain UV stamped this stroke â€” used to fill gaps on fast brush moves.
     last_paint_uv: Option<(f32, f32)>,
     /// App-owned 3D viewport in logical pixels.
@@ -332,6 +336,7 @@ impl Default for TerraApp {
             pending_exit: false,
             gui_interacting: false,
             sculpt_stroke_active: false,
+            sculpt_gesture_base: None,
             last_paint_uv: None,
             viewport_rect: Rect::from_min_max(88.0, 44.0, 1300.0, 690.0),
             preview_dirty: true,

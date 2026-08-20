@@ -553,6 +553,26 @@ impl TerraApp {
                 let id = layer.id();
                 self.session.document.stack.ensure_category_folders();
                 self.session.document.stack.push_routed(layer, None, false);
+                // Record the auto-created Shape Layer at its routed location
+                // so the creation itself is undoable.
+                if let Some((parent, index)) = self.session.document.stack.sibling_location(id) {
+                    if let Some(node) = self
+                        .session
+                        .document
+                        .stack
+                        .find(id)
+                        .cloned()
+                        .map(terra_core::layer::StackNode::Layer)
+                    {
+                        self.session.history.push_executed(
+                            terra_core::command::EditorCommand::InsertNode {
+                                node,
+                                parent,
+                                index,
+                            },
+                        );
+                    }
+                }
                 self.session.document.selected = Some(id);
                 self.ui_state.shape_session_layer = Some(id);
                 Some(id)
@@ -671,7 +691,7 @@ impl TerraApp {
     }
 
     pub(crate) fn undo(&mut self) {
-        if let Some(_stroke) = self.session.undo_mask_paint() {
+        if self.session.undo_mask_paint() {
             self.mark_all_layers_dirty();
             self.request_rebuild();
             self.mask_overlay_dirty = true;
@@ -709,6 +729,15 @@ impl TerraApp {
     }
 
     pub(crate) fn redo(&mut self) {
+        if self.session.redo_mask_paint() {
+            self.mark_all_layers_dirty();
+            self.request_rebuild();
+            self.mask_overlay_dirty = true;
+            self.preview_dirty = true;
+            self.mark_document_dirty();
+            self.ui_state.status = "Redid mask paint stroke".into();
+            return;
+        }
         if self.session.redo_world_rule() {
             self.mark_all_layers_dirty();
             self.mark_document_dirty();
