@@ -641,9 +641,9 @@ impl TerraApp {
             return;
         };
         self.session.push_mask_paint_patch(patch);
-        // Project/layer masks: one rebuild after the stroke (not per dab).
-        self.mark_all_layers_dirty();
-        self.request_rebuild();
+        // One rebuild after the stroke (not per dab), scoped to the layers
+        // that actually read this mask.
+        self.mark_dirty_for_mask(mask_id);
         self.preview_dirty = true;
         self.mask_overlay_dirty = true;
         self.mark_document_dirty();

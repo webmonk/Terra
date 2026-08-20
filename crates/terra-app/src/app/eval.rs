@@ -279,6 +279,29 @@ impl TerraApp {
         }
     }
 
+    /// Targeted invalidation for a mask-asset edit: dirty from the first
+    /// layer that reads the mask instead of rebuilding the whole stack.
+    /// Falls back to a full rebuild when a World Rule consumes it, and to no
+    /// rebuild at all when nothing references it.
+    pub(crate) fn mark_dirty_for_mask(&mut self, mask_id: terra_core::mask::MaskId) {
+        let doc = &self.session.document;
+        let used_by_rules = doc
+            .world_rules
+            .rules
+            .iter()
+            .any(|r| r.enabled && r.compile_placement().references_mask(mask_id));
+        if used_by_rules {
+            self.mark_all_layers_dirty();
+            self.request_rebuild();
+            return;
+        }
+        if let Some(layer) = doc.stack.first_layer_referencing_mask(mask_id) {
+            self.mark_dirty_from(layer);
+            self.request_rebuild();
+        }
+        // Unreferenced masks change no terrain — overlay refresh is enough.
+    }
+
     pub(crate) fn mark_dirty_from_stage(&mut self, id: LayerId) {
         let preview = self.session.document.preview_eval_stack();
         self.scheduler.evaluator.mark_dirty_from_stage(&preview, id);

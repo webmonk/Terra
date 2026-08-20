@@ -212,22 +212,22 @@ impl EditorSession {
         }
     }
 
-    pub fn undo_mask_paint(&mut self) -> bool {
-        let Some(patch) = self.mask_paint_undo.pop() else {
-            return false;
-        };
+    /// Returns the edited mask's id so callers can invalidate selectively.
+    pub fn undo_mask_paint(&mut self) -> Option<MaskId> {
+        let patch = self.mask_paint_undo.pop()?;
         Self::apply_mask_patch(&mut self.document, &patch, true);
+        let id = patch.mask_id;
         self.mask_paint_redo.push(patch);
-        true
+        Some(id)
     }
 
-    pub fn redo_mask_paint(&mut self) -> bool {
-        let Some(patch) = self.mask_paint_redo.pop() else {
-            return false;
-        };
+    /// Returns the edited mask's id so callers can invalidate selectively.
+    pub fn redo_mask_paint(&mut self) -> Option<MaskId> {
+        let patch = self.mask_paint_redo.pop()?;
         Self::apply_mask_patch(&mut self.document, &patch, false);
+        let id = patch.mask_id;
         self.mask_paint_undo.push(patch);
-        true
+        Some(id)
     }
 
     #[cfg(test)]
@@ -288,19 +288,19 @@ mod tests {
         session.push_mask_paint_patch(patch);
         assert_eq!(session.mask_paint_stack_depths(), (1, 0));
 
-        assert!(session.undo_mask_paint());
+        assert_eq!(session.undo_mask_paint(), Some(mask_id));
         assert_eq!(
             session.document.masks[0].paint.as_ref().unwrap().samples,
             before
         );
         assert_eq!(session.mask_paint_stack_depths(), (0, 1));
 
-        assert!(session.redo_mask_paint());
+        assert_eq!(session.redo_mask_paint(), Some(mask_id));
         assert_eq!(
             session.document.masks[0].paint.as_ref().unwrap().samples,
             after
         );
-        assert!(!session.redo_mask_paint());
+        assert!(session.redo_mask_paint().is_none());
     }
 
     #[test]

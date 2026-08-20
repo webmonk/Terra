@@ -691,9 +691,8 @@ impl TerraApp {
     }
 
     pub(crate) fn undo(&mut self) {
-        if self.session.undo_mask_paint() {
-            self.mark_all_layers_dirty();
-            self.request_rebuild();
+        if let Some(mask_id) = self.session.undo_mask_paint() {
+            self.mark_dirty_for_mask(mask_id);
             self.mask_overlay_dirty = true;
             self.preview_dirty = true;
             self.mark_document_dirty();
@@ -729,9 +728,8 @@ impl TerraApp {
     }
 
     pub(crate) fn redo(&mut self) {
-        if self.session.redo_mask_paint() {
-            self.mark_all_layers_dirty();
-            self.request_rebuild();
+        if let Some(mask_id) = self.session.redo_mask_paint() {
+            self.mark_dirty_for_mask(mask_id);
             self.mask_overlay_dirty = true;
             self.preview_dirty = true;
             self.mark_document_dirty();

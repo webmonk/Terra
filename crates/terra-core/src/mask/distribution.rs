@@ -143,6 +143,25 @@ impl Distribution {
         self.entries.retain(|e| f(e));
     }
 
+    /// True when this distribution reads `mask` anywhere — legacy entries or
+    /// dist nodes (including nested children).
+    pub fn references_mask(&self, mask: crate::mask::MaskId) -> bool {
+        fn node_refs(node: &DistNode, mask: crate::mask::MaskId) -> bool {
+            use crate::mask::DistNodeKind;
+            let direct = matches!(
+                &node.kind,
+                DistNodeKind::MaskAsset { mask: m }
+                    | DistNodeKind::Paint { mask: m }
+                    | DistNodeKind::ImportedMask { mask: m }
+                    | DistNodeKind::Distance { mask: m, .. }
+                    if m.id == mask
+            );
+            direct || node.children.iter().any(|c| node_refs(c, mask))
+        }
+        self.entries.iter().any(|e| e.mask.id == mask)
+            || self.nodes.iter().any(|n| node_refs(n, mask))
+    }
+
     pub fn iter(&self) -> impl Iterator<Item = &DistributionEntry> {
         self.entries.iter()
     }

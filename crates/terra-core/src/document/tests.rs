@@ -36,6 +36,38 @@ fn legacy_document_without_lighting_loads_with_default() {
 }
 
 #[test]
+fn mask_reference_scan_finds_first_consumer() {
+    use crate::layer::{FlatParams, LayerGroup, LayerKind, StackNode};
+    use crate::mask::MaskRef;
+
+    let mut stack = LayerStack::new();
+    let direct = MaskId::new();
+    let inherited = MaskId::new();
+
+    let below = Layer::new("Below", LayerKind::Flat(FlatParams { height: 1.0 }));
+    let mut consumer = Layer::new("Consumer", LayerKind::Flat(FlatParams { height: 2.0 }));
+    consumer.common.masks.push(MaskRef::new(direct));
+    let consumer_id = consumer.id();
+    stack.push(below);
+    stack.push(consumer);
+    assert_eq!(stack.first_layer_referencing_mask(direct), Some(consumer_id));
+
+    let mut group = LayerGroup::new("G");
+    group.masks.push(MaskRef::new(inherited));
+    let child = Layer::new("Child", LayerKind::Flat(FlatParams { height: 3.0 }));
+    let child_id = child.id();
+    group.children.push(StackNode::Layer(child));
+    stack.nodes.push(StackNode::Group(group));
+    assert_eq!(
+        stack.first_layer_referencing_mask(inherited),
+        Some(child_id),
+        "a group mask affects its descendant layers"
+    );
+
+    assert_eq!(stack.first_layer_referencing_mask(MaskId::new()), None);
+}
+
+#[test]
 fn layer_paint_mask_lifecycle() {
     let mut doc = TerrainDocument::new_default();
     let layer = Layer::new(

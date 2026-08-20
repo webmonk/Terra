@@ -21,7 +21,7 @@ pub(crate) fn try_apply(
                 app.ui_state.paint_mask = None;
             }
             app.ui_state.focus_created_mask(painted);
-            ctx.mask_assets_mutated = true;
+            ctx.note_mask_mutation(id);
             ctx.doc_mutated = true;
             app.preview_dirty = true;
             app.mask_overlay_dirty = true;
@@ -32,7 +32,7 @@ pub(crate) fn try_apply(
                 app.ui_state.selected_mask = Some(mask_id);
                 app.ui_state.paint_mask = Some(mask_id);
                 app.ui_state.focus_created_mask(true);
-                ctx.mask_assets_mutated = true;
+                ctx.note_mask_mutation(mask_id);
                 ctx.doc_mutated = true;
                 app.preview_dirty = true;
                 app.mask_overlay_dirty = true;
@@ -84,12 +84,13 @@ pub(crate) fn try_apply(
                         .zip(asset.paint.as_ref())
                         .map(|(a, b)| a.samples == b.samples)
                         .unwrap_or(true);
+                let mutated_id = existing.id;
                 *existing = asset;
                 if color_only {
                     // Display colour is visual-only â€” refresh overlay, skip rebuild.
                     app.mask_overlay_dirty = true;
                 } else {
-                    ctx.mask_assets_mutated = true;
+                    ctx.note_mask_mutation(mutated_id);
                     app.preview_dirty = true;
                     app.mask_overlay_dirty = true;
                 }
@@ -270,7 +271,7 @@ pub(crate) fn try_apply(
                         app.session.push_mask_paint_patch(patch);
                     }
                 }
-                ctx.mask_assets_mutated = true;
+                ctx.note_mask_mutation(mask_id);
                 ctx.doc_mutated = true;
                 app.preview_dirty = true;
                 app.mask_overlay_dirty = true;

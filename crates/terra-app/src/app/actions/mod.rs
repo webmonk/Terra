@@ -19,6 +19,10 @@ pub(crate) struct ApplyCtx {
     pub sculpt_dirty_rect: Option<(u32, u32, u32, u32)>,
     pub doc_mutated: bool,
     pub mask_assets_mutated: bool,
+    /// Masks changed this batch when each is individually known; when
+    /// `mask_assets_mutated` is set with this empty, the batch falls back to
+    /// a full rebuild.
+    pub mutated_masks: Vec<terra_core::mask::MaskId>,
     pub continue_loop: bool,
 }
 
@@ -29,7 +33,16 @@ impl ApplyCtx {
             sculpt_dirty_rect: None,
             doc_mutated: false,
             mask_assets_mutated: false,
+            mutated_masks: Vec::new(),
             continue_loop: false,
+        }
+    }
+
+    /// Record a mutation of one specific mask asset (targeted invalidation).
+    pub fn note_mask_mutation(&mut self, mask: terra_core::mask::MaskId) {
+        self.mask_assets_mutated = true;
+        if !self.mutated_masks.contains(&mask) {
+            self.mutated_masks.push(mask);
         }
     }
 }
@@ -133,8 +146,14 @@ impl TerraApp {
             }
         }
         if mask_assets_mutated {
-            self.mark_all_layers_dirty();
-            self.request_rebuild();
+            if ctx.mutated_masks.is_empty() {
+                self.mark_all_layers_dirty();
+                self.request_rebuild();
+            } else {
+                for mask in std::mem::take(&mut ctx.mutated_masks) {
+                    self.mark_dirty_for_mask(mask);
+                }
+            }
         }
         if doc_mutated || dirty_from.is_some() || sculpt_stamp {
             self.mark_document_dirty();

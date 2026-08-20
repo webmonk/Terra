@@ -842,6 +842,34 @@ impl LayerStack {
         self.flatten_layers().iter().map(|l| l.id()).collect()
     }
 
+    /// First layer in evaluation order whose effective mask reads `mask` —
+    /// directly or through an ancestor group's mask. Used for targeted
+    /// invalidation: everything below that layer is unaffected by the mask.
+    pub fn first_layer_referencing_mask(
+        &self,
+        mask: crate::mask::MaskId,
+    ) -> Option<LayerId> {
+        fn walk(nodes: &[StackNode], mask: crate::mask::MaskId, inherited: bool) -> Option<LayerId> {
+            for n in nodes {
+                match n {
+                    StackNode::Layer(l) => {
+                        if inherited || l.common.masks.references_mask(mask) {
+                            return Some(l.id());
+                        }
+                    }
+                    StackNode::Group(g) => {
+                        let refs = inherited || g.masks.references_mask(mask);
+                        if let Some(id) = walk(&g.children, mask, refs) {
+                            return Some(id);
+                        }
+                    }
+                }
+            }
+            None
+        }
+        walk(&self.nodes, mask, false)
+    }
+
     /// Every layer and group id in the tree, including inside disabled groups.
     pub fn all_node_ids(&self) -> Vec<LayerId> {
         fn walk(nodes: &[StackNode], out: &mut Vec<LayerId>) {
