@@ -66,6 +66,12 @@ impl MaskField {
         &self.data
     }
 
+    /// True when both fields still share the same copy-on-write buffer —
+    /// i.e. neither has been written since they were clones of each other.
+    pub fn shares_storage(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.data, &other.data)
+    }
+
     pub fn data_mut(&mut self) -> &mut [f32] {
         Arc::make_mut(&mut self.data).as_mut_slice()
     }

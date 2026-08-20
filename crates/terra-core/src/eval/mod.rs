@@ -395,7 +395,15 @@ impl StackEvaluator {
                             mix_heightfields(&current, &group_out, group.blend, mix_opacity, &mask)
                         };
                         // Merge child aux weighted by group mask (non-destructive leak fix).
-                        merge_aux_masked(ctx, &child_aux, &mask, mix_opacity);
+                        // Biomes keep plain interpolation (height uses delta semantics);
+                        // other isolated groups honor the group blend for weight channels.
+                        let aux_blend =
+                            if matches!(group.group_kind, crate::layer::GroupKind::Biome) {
+                                crate::layer::BlendMode::Interpolate
+                            } else {
+                                group.blend
+                            };
+                        merge_aux_masked(ctx, &child_aux, &mask, mix_opacity, aux_blend);
                     }
                 }
             }
@@ -496,16 +504,17 @@ impl StackEvaluator {
 
         let scaled_layer = layer_with_world_scale(layer, ctx.level_steps.world_scale);
         let mut bound_layer = apply_param_bindings(ctx, &scaled_layer);
+        // Scoped layers (mask or partial opacity): snapshot aux before the
+        // processor so its channel writes composite under the same weight as
+        // height. Copy-on-write storage makes the snapshot a refcount bump.
+        let scoped = !layer.common.masks.is_empty() || layer.common.opacity < 0.999;
+        let aux_before = scoped.then(|| ctx.aux_maps.clone());
         let generated = self.registry.evaluate(ctx, input, &bound_layer)?;
         // Avoid unused-mut warning if future passes mutate further.
         let _ = &mut bound_layer;
         let mask = effective_layer_mask(ctx, &layer.common.masks, input);
-        // Gate materials / vegetation aux by local placement (Biome × Local at group+layer).
-        if matches!(
-            layer.kind,
-            crate::layer::LayerKind::Materials(_) | crate::layer::LayerKind::Vegetation(_)
-        ) {
-            gate_aux_by_mask(ctx, &mask);
+        if let Some(before) = aux_before {
+            scope_aux_writes(ctx, &before, &mask, layer.common.opacity);
         }
         let out = mix_heightfields(
             input,
@@ -815,13 +824,17 @@ fn mix_height_delta(
     out
 }
 
-/// Merge child aux maps into the parent context, weighted by the group mask.
+/// Merge child aux maps into the parent context, weighted by the group mask
+/// and composited with the group's blend mode (weight-field semantics — see
+/// `blend_weights` for which modes participate).
 fn merge_aux_masked(
     ctx: &mut EvalContext,
     child: &crate::fields::AuxMaps,
     mask: &MaskField,
     opacity: f32,
+    blend: crate::layer::BlendMode,
 ) {
+    use crate::layer::blend_weights;
     let child_map = child.to_hashmap();
     for (key, child_field) in child_map {
         let mut out = ctx
@@ -838,8 +851,13 @@ fn merge_aux_masked(
                 .for_each(|(j, row)| {
                     for (i, v) in row.iter_mut().enumerate() {
                         let (i, j) = (i as u32, j as u32);
-                        let w = (mask.get(i, j) * opacity).clamp(0.0, 1.0);
-                        *v = *v * (1.0 - w) + child_field.get(i, j) * w;
+                        *v = blend_weights(
+                            blend,
+                            *v,
+                            child_field.get(i, j),
+                            opacity,
+                            mask.get(i, j),
+                        );
                     }
                 });
         }
@@ -919,32 +937,53 @@ fn height_fingerprint(h: &Heightfield) -> u64 {
     state
 }
 
-/// Multiply recent materials / vegetation aux fields by a placement mask.
-fn gate_aux_by_mask(ctx: &mut EvalContext, mask: &MaskField) {
+/// Composite a scoped layer's aux-channel writes under its weight
+/// (opacity × mask), mirroring what `blend_heights` does for height:
+/// `out = prior * (1 - w) + written * w`, with zeros standing in for a
+/// channel the layer introduced. Channels the processor never wrote (still
+/// sharing storage with the pre-layer snapshot) are left untouched, as are
+/// the slope/curvature caches — those must always describe the actual
+/// current height, not a blend of two heights' derivatives.
+fn scope_aux_writes(
+    ctx: &mut EvalContext,
+    before: &crate::fields::AuxMaps,
+    mask: &MaskField,
+    opacity: f32,
+) {
     use crate::fields::keys;
-    let mul = |field: &mut MaskField| {
-        let w = field.metrics.width;
-        let h = field.metrics.height;
-        for j in 0..h {
-            for i in 0..w {
-                let v = field.get(i, j) * mask.get(i, j);
-                field.set(i, j, v);
-            }
+    use rayon::prelude::*;
+
+    let before_map = before.to_hashmap();
+    let after_map = ctx.aux_maps.to_hashmap();
+    let metrics = ctx.metrics;
+    for (key, after) in after_map {
+        if key == keys::SLOPE || key == keys::CURVATURE {
+            continue;
         }
-    };
-    for slot in [
-        &mut ctx.aux_maps.materials,
-        &mut ctx.aux_maps.hardness,
-        &mut ctx.aux_maps.vegetation,
-    ] {
-        if let Some(field) = slot.as_mut() {
-            mul(field);
+        let prior = before_map.get(&key);
+        if prior.is_some_and(|p| p.shares_storage(&after)) {
+            continue;
         }
-    }
-    for key in [keys::MATERIALS, keys::HARDNESS, keys::VEGETATION] {
-        if let Some(field) = ctx.aux.get_mut(key) {
-            mul(field);
+        if after.metrics.width != metrics.width || after.metrics.height != metrics.height {
+            continue;
         }
+        let prior = prior.filter(|p| {
+            p.metrics.width == metrics.width && p.metrics.height == metrics.height
+        });
+        let mut out = after;
+        let width = metrics.width as usize;
+        out.data_mut()
+            .par_chunks_mut(width)
+            .enumerate()
+            .for_each(|(j, row)| {
+                for (i, v) in row.iter_mut().enumerate() {
+                    let (iu, ju) = (i as u32, j as u32);
+                    let w = (mask.get(iu, ju) * opacity).clamp(0.0, 1.0);
+                    let base = prior.map(|p| p.get(iu, ju)).unwrap_or(0.0);
+                    *v = base * (1.0 - w) + *v * w;
+                }
+            });
+        ctx.aux_insert(key, out);
     }
 }
 
