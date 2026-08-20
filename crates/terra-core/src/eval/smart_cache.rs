@@ -203,10 +203,12 @@ fn write_f32_blob(path: &Path, data: &[f32]) -> Result<(), EvalError> {
         .map_err(|e| EvalError::Io(e.to_string()))?;
     file.write_all(&(data.len() as u32).to_le_bytes())
         .map_err(|e| EvalError::Io(e.to_string()))?;
+    let mut bytes = Vec::with_capacity(data.len() * 4);
     for v in data {
-        file.write_all(&v.to_bits().to_le_bytes())
-            .map_err(|e| EvalError::Io(e.to_string()))?;
+        bytes.extend_from_slice(&v.to_bits().to_le_bytes());
     }
+    file.write_all(&bytes)
+        .map_err(|e| EvalError::Io(e.to_string()))?;
     Ok(())
 }
 
@@ -222,13 +224,13 @@ fn read_f32_blob(path: &Path) -> Result<Vec<f32>, EvalError> {
     file.read_exact(&mut len_buf)
         .map_err(|e| EvalError::Io(e.to_string()))?;
     let len = u32::from_le_bytes(len_buf) as usize;
-    let mut out = Vec::with_capacity(len);
-    let mut word = [0u8; 4];
-    for _ in 0..len {
-        file.read_exact(&mut word)
-            .map_err(|e| EvalError::Io(e.to_string()))?;
-        out.push(f32::from_le_bytes(word));
-    }
+    let mut bytes = vec![0u8; len * 4];
+    file.read_exact(&mut bytes)
+        .map_err(|e| EvalError::Io(e.to_string()))?;
+    let out = bytes
+        .chunks_exact(4)
+        .map(|w| f32::from_le_bytes([w[0], w[1], w[2], w[3]]))
+        .collect();
     Ok(out)
 }
 
