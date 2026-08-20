@@ -67,7 +67,7 @@ pub use biome_definition::{
 pub use biome_paint::{
     BiomeLayer, BiomeLayerId, BiomePaintTool, BiomeWeightChannel, HoleLayer, ShapeTransform,
 };
-pub use document::{EditorSession, MaskPaintStrokeUndo, PaintStrokeUndo, TerrainDocument};
+pub use document::{EditorSession, MaskPaintPatch, PaintStrokeUndo, TerrainDocument};
 pub use domain::{
     authoring_order_is_arbitrary, behavioural_differences, classify_in_context,
     classify_layer_kind, evaluation_eval_stage_order, incomplete_project_diagnostics,

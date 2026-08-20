@@ -217,6 +217,12 @@ impl LayerKind {
             }
         };
         let Some(base) = get_base(self) else {
+            // Not a curated alias name — treat the target as a dot-path into
+            // the params struct and modulate it via serde reflection.
+            if let Some(base) = crate::layer::param_reflect::get_param_f32(self, path) {
+                let out = binding.apply_scalar(base, sample);
+                let _ = crate::layer::param_reflect::set_param_f32(self, path, out);
+            }
             return;
         };
         let out = binding.apply_scalar(base, sample);

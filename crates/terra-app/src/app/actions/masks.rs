@@ -237,6 +237,7 @@ pub(crate) fn try_apply(
                 let paint = asset
                     .paint
                     .get_or_insert_with(|| terra_core::mask::PaintBuffer::new(512, 512));
+                let (before, w, h) = (paint.samples.clone(), paint.width, paint.height);
                 match action {
                     MaskEditAction::Clear => paint.clear(),
                     MaskEditAction::Fill => paint.fill(),
@@ -244,6 +245,18 @@ pub(crate) fn try_apply(
                     MaskEditAction::FlipY => paint.flip_y(),
                     MaskEditAction::RotateLeft => paint.rotate_left(),
                     MaskEditAction::RotateRight => paint.rotate_right(),
+                }
+                if paint.width == w && paint.height == h {
+                    if let Some(patch) = terra_core::document::MaskPaintPatch::from_diff(
+                        "Edited Mask",
+                        mask_id,
+                        w,
+                        h,
+                        &before,
+                        &paint.samples,
+                    ) {
+                        app.session.push_mask_paint_patch(patch);
+                    }
                 }
                 ctx.mask_assets_mutated = true;
                 ctx.doc_mutated = true;

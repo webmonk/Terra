@@ -8,6 +8,7 @@ mod kinds;
 mod metadata;
 mod operation;
 mod output;
+pub mod param_reflect;
 mod registry;
 mod scale;
 mod stack;
