@@ -691,70 +691,89 @@ impl TerraApp {
     }
 
     pub(crate) fn undo(&mut self) {
-        if let Some(mask_id) = self.session.undo_mask_paint() {
-            self.mark_dirty_for_mask(mask_id);
-            self.mask_overlay_dirty = true;
-            self.preview_dirty = true;
-            self.mark_document_dirty();
-            self.ui_state.status = "Undid mask paint stroke".into();
-            return;
+        use terra_core::document::UndoDomain;
+        // Chronological across all stacks: pop whichever holds the newest edit.
+        match self.session.newest_undo_domain() {
+            Some(UndoDomain::MaskPaint) => {
+                if let Some(mask_id) = self.session.undo_mask_paint() {
+                    self.mark_dirty_for_mask(mask_id);
+                    self.mask_overlay_dirty = true;
+                    self.preview_dirty = true;
+                    self.mark_document_dirty();
+                    self.ui_state.status = "Undid mask paint stroke".into();
+                }
+            }
+            Some(UndoDomain::WorldRule) => {
+                if self.session.undo_world_rule() {
+                    self.mark_all_layers_dirty();
+                    self.mark_document_dirty();
+                    self.request_rebuild();
+                    self.ui_state.status = "Undid World Rule edit".into();
+                }
+            }
+            Some(UndoDomain::Scenario) => {
+                if self.session.undo_scenario() {
+                    self.mark_document_dirty();
+                    self.ui_state.status = "Undid Scenario edit".into();
+                }
+            }
+            Some(UndoDomain::BiomePaint) => {
+                if self.session.undo_paint_stroke() {
+                    self.mark_all_layers_dirty();
+                    self.mark_document_dirty();
+                    self.request_rebuild();
+                    self.ui_state.status = "Undid biome paint stroke".into();
+                }
+            }
+            Some(UndoDomain::Stack) | None => {
+                if let Some(id) = self.session.history.undo(&mut self.session.document.stack) {
+                    self.mark_dirty_from(id);
+                } else {
+                    self.mark_all_layers_dirty();
+                }
+                self.mark_document_dirty();
+                self.request_rebuild();
+            }
         }
-        if self.session.undo_world_rule() {
-            self.mark_all_layers_dirty();
-            self.mark_document_dirty();
-            self.request_rebuild();
-            self.ui_state.status = "Undid World Rule edit".into();
-            return;
-        }
-        if self.session.undo_scenario() {
-            self.mark_document_dirty();
-            self.ui_state.status = "Undid Scenario edit".into();
-            return;
-        }
-        if self.session.undo_paint_stroke() {
-            self.mark_all_layers_dirty();
-            self.mark_document_dirty();
-            self.request_rebuild();
-            self.ui_state.status = "Undid biome paint stroke".into();
-            return;
-        }
-        if let Some(id) = self.session.history.undo(&mut self.session.document.stack) {
-            self.mark_dirty_from(id);
-        } else {
-            self.mark_all_layers_dirty();
-        }
-        self.mark_document_dirty();
-        self.request_rebuild();
     }
 
     pub(crate) fn redo(&mut self) {
-        if let Some(mask_id) = self.session.redo_mask_paint() {
-            self.mark_dirty_for_mask(mask_id);
-            self.mask_overlay_dirty = true;
-            self.preview_dirty = true;
-            self.mark_document_dirty();
-            self.ui_state.status = "Redid mask paint stroke".into();
-            return;
+        use terra_core::document::UndoDomain;
+        // Chronological: re-apply the oldest pending redo first.
+        match self.session.oldest_redo_domain() {
+            Some(UndoDomain::MaskPaint) => {
+                if let Some(mask_id) = self.session.redo_mask_paint() {
+                    self.mark_dirty_for_mask(mask_id);
+                    self.mask_overlay_dirty = true;
+                    self.preview_dirty = true;
+                    self.mark_document_dirty();
+                    self.ui_state.status = "Redid mask paint stroke".into();
+                }
+            }
+            Some(UndoDomain::WorldRule) => {
+                if self.session.redo_world_rule() {
+                    self.mark_all_layers_dirty();
+                    self.mark_document_dirty();
+                    self.request_rebuild();
+                    self.ui_state.status = "Redid World Rule edit".into();
+                }
+            }
+            Some(UndoDomain::Scenario) => {
+                if self.session.redo_scenario() {
+                    self.mark_document_dirty();
+                    self.ui_state.status = "Redid Scenario edit".into();
+                }
+            }
+            Some(UndoDomain::Stack) | Some(UndoDomain::BiomePaint) | None => {
+                if let Some(id) = self.session.history.redo(&mut self.session.document.stack) {
+                    self.mark_dirty_from(id);
+                } else {
+                    self.mark_all_layers_dirty();
+                }
+                self.mark_document_dirty();
+                self.request_rebuild();
+            }
         }
-        if self.session.redo_world_rule() {
-            self.mark_all_layers_dirty();
-            self.mark_document_dirty();
-            self.request_rebuild();
-            self.ui_state.status = "Redid World Rule edit".into();
-            return;
-        }
-        if self.session.redo_scenario() {
-            self.mark_document_dirty();
-            self.ui_state.status = "Redid Scenario edit".into();
-            return;
-        }
-        if let Some(id) = self.session.history.redo(&mut self.session.document.stack) {
-            self.mark_dirty_from(id);
-        } else {
-            self.mark_all_layers_dirty();
-        }
-        self.mark_document_dirty();
-        self.request_rebuild();
     }
 }
 

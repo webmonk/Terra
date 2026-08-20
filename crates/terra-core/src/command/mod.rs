@@ -121,9 +121,20 @@ pub enum EditorCommand {
     },
 }
 
+/// Global ordering stamp shared by every undo stack (stack commands, world
+/// rules, scenarios, paint patches). Undo across stacks pops the highest
+/// stamp so Ctrl+Z is chronological regardless of which stack owns the edit.
+pub fn next_edit_seq() -> u64 {
+    use std::sync::atomic::{AtomicU64, Ordering};
+    static EDIT_SEQ: AtomicU64 = AtomicU64::new(1);
+    EDIT_SEQ.fetch_add(1, Ordering::Relaxed)
+}
+
 pub struct CommandHistory {
     undo_stack: Vec<EditorCommand>,
     redo_stack: Vec<EditorCommand>,
+    undo_seq: Vec<u64>,
+    redo_seq: Vec<u64>,
     snapshots: Vec<(String, usize)>,
     last_coalesce_key: Option<(u64, &'static str)>,
     pub limit: usize,
@@ -140,6 +151,8 @@ impl CommandHistory {
         Self {
             undo_stack: Vec::new(),
             redo_stack: Vec::new(),
+            undo_seq: Vec::new(),
+            redo_seq: Vec::new(),
             snapshots: Vec::new(),
             last_coalesce_key: None,
             limit,
@@ -149,10 +162,13 @@ impl CommandHistory {
     pub fn push_executed(&mut self, cmd: EditorCommand) {
         self.last_coalesce_key = None;
         self.undo_stack.push(cmd);
+        self.undo_seq.push(next_edit_seq());
         if self.undo_stack.len() > self.limit {
             self.undo_stack.remove(0);
+            self.undo_seq.remove(0);
         }
         self.redo_stack.clear();
+        self.redo_seq.clear();
     }
 
     /// Push a command that was already applied, replacing the preceding command
@@ -177,16 +193,35 @@ impl CommandHistory {
                     ) => *prior = kind,
                     (prior, replacement) => *prior = replacement,
                 }
+                // The interaction continues: the entry's chronological
+                // position is its latest change.
+                if let Some(seq) = self.undo_seq.last_mut() {
+                    *seq = next_edit_seq();
+                }
                 self.redo_stack.clear();
+                self.redo_seq.clear();
                 return;
             }
         }
         self.undo_stack.push(cmd);
+        self.undo_seq.push(next_edit_seq());
         if self.undo_stack.len() > self.limit {
             self.undo_stack.remove(0);
+            self.undo_seq.remove(0);
         }
         self.redo_stack.clear();
+        self.redo_seq.clear();
         self.last_coalesce_key = coalesce_key;
+    }
+
+    /// Stamp of the newest undoable entry (for cross-stack chronological undo).
+    pub fn top_undo_seq(&self) -> Option<u64> {
+        self.undo_seq.last().copied()
+    }
+
+    /// Stamp of the pending redo entry (for cross-stack chronological redo).
+    pub fn top_redo_seq(&self) -> Option<u64> {
+        self.redo_seq.last().copied()
     }
 
     pub fn mark_snapshot(&mut self, name: impl Into<String>) {
@@ -221,6 +256,9 @@ impl CommandHistory {
     pub fn undo(&mut self, stack: &mut LayerStack) -> Option<LayerId> {
         self.last_coalesce_key = None;
         let cmd = self.undo_stack.pop()?;
+        if let Some(seq) = self.undo_seq.pop() {
+            self.redo_seq.push(seq);
+        }
         let dirty = invert(&cmd, stack);
         self.redo_stack.push(cmd);
         dirty
@@ -229,6 +267,9 @@ impl CommandHistory {
     pub fn redo(&mut self, stack: &mut LayerStack) -> Option<LayerId> {
         self.last_coalesce_key = None;
         let cmd = self.redo_stack.pop()?;
+        if let Some(seq) = self.redo_seq.pop() {
+            self.undo_seq.push(seq);
+        }
         let dirty = apply(&cmd, stack);
         self.undo_stack.push(cmd);
         dirty

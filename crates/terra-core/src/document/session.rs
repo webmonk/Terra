@@ -109,13 +109,23 @@ pub struct EditorSession {
     pub rebuild_feedback: RebuildFeedbackState,
     /// UI hint: next frame should schedule a rebuild.
     pub dirty_eval: bool,
-    world_rule_undo: Vec<WorldRuleCommand>,
-    world_rule_redo: Vec<WorldRuleCommand>,
-    scenario_undo: Vec<SimulationScenarioCommand>,
-    scenario_redo: Vec<SimulationScenarioCommand>,
-    mask_paint_undo: Vec<MaskPaintPatch>,
-    mask_paint_redo: Vec<MaskPaintPatch>,
-    paint_undo: Vec<PaintStrokeUndo>,
+    world_rule_undo: Vec<(WorldRuleCommand, u64)>,
+    world_rule_redo: Vec<(WorldRuleCommand, u64)>,
+    scenario_undo: Vec<(SimulationScenarioCommand, u64)>,
+    scenario_redo: Vec<(SimulationScenarioCommand, u64)>,
+    mask_paint_undo: Vec<(MaskPaintPatch, u64)>,
+    mask_paint_redo: Vec<(MaskPaintPatch, u64)>,
+    paint_undo: Vec<(PaintStrokeUndo, u64)>,
+}
+
+/// Which undo stack owns the chronologically newest entry.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum UndoDomain {
+    Stack,
+    WorldRule,
+    Scenario,
+    MaskPaint,
+    BiomePaint,
 }
 
 impl Default for EditorSession {
@@ -149,56 +159,111 @@ impl EditorSession {
         }
     }
 
+    /// Stack owning the newest undoable edit, by global edit stamp.
+    pub fn newest_undo_domain(&self) -> Option<UndoDomain> {
+        let candidates = [
+            (UndoDomain::Stack, self.history.top_undo_seq()),
+            (
+                UndoDomain::WorldRule,
+                self.world_rule_undo.last().map(|(_, s)| *s),
+            ),
+            (
+                UndoDomain::Scenario,
+                self.scenario_undo.last().map(|(_, s)| *s),
+            ),
+            (
+                UndoDomain::MaskPaint,
+                self.mask_paint_undo.last().map(|(_, s)| *s),
+            ),
+            (
+                UndoDomain::BiomePaint,
+                self.paint_undo.last().map(|(_, s)| *s),
+            ),
+        ];
+        candidates
+            .into_iter()
+            .filter_map(|(d, s)| s.map(|s| (d, s)))
+            .max_by_key(|&(_, s)| s)
+            .map(|(d, _)| d)
+    }
+
+    /// Stack owning the oldest pending redo (the first edit to re-apply).
+    pub fn oldest_redo_domain(&self) -> Option<UndoDomain> {
+        let candidates = [
+            (UndoDomain::Stack, self.history.top_redo_seq()),
+            (
+                UndoDomain::WorldRule,
+                self.world_rule_redo.last().map(|(_, s)| *s),
+            ),
+            (
+                UndoDomain::Scenario,
+                self.scenario_redo.last().map(|(_, s)| *s),
+            ),
+            (
+                UndoDomain::MaskPaint,
+                self.mask_paint_redo.last().map(|(_, s)| *s),
+            ),
+        ];
+        candidates
+            .into_iter()
+            .filter_map(|(d, s)| s.map(|s| (d, s)))
+            .min_by_key(|&(_, s)| s)
+            .map(|(d, _)| d)
+    }
+
     pub fn push_world_rule_command(&mut self, cmd: WorldRuleCommand) {
         cmd.apply(&mut self.document.world_rules);
-        self.world_rule_undo.push(cmd);
+        self.world_rule_undo
+            .push((cmd, crate::command::next_edit_seq()));
         self.world_rule_redo.clear();
     }
 
     pub fn undo_world_rule(&mut self) -> bool {
-        let Some(cmd) = self.world_rule_undo.pop() else {
+        let Some((cmd, seq)) = self.world_rule_undo.pop() else {
             return false;
         };
         cmd.invert(&mut self.document.world_rules);
-        self.world_rule_redo.push(cmd);
+        self.world_rule_redo.push((cmd, seq));
         true
     }
 
     pub fn redo_world_rule(&mut self) -> bool {
-        let Some(cmd) = self.world_rule_redo.pop() else {
+        let Some((cmd, seq)) = self.world_rule_redo.pop() else {
             return false;
         };
         cmd.apply(&mut self.document.world_rules);
-        self.world_rule_undo.push(cmd);
+        self.world_rule_undo.push((cmd, seq));
         true
     }
 
     pub fn push_scenario_command(&mut self, cmd: SimulationScenarioCommand) {
         cmd.apply(&mut self.document.simulation_scenarios);
-        self.scenario_undo.push(cmd);
+        self.scenario_undo
+            .push((cmd, crate::command::next_edit_seq()));
         self.scenario_redo.clear();
     }
 
     pub fn undo_scenario(&mut self) -> bool {
-        let Some(cmd) = self.scenario_undo.pop() else {
+        let Some((cmd, seq)) = self.scenario_undo.pop() else {
             return false;
         };
         cmd.invert(&mut self.document.simulation_scenarios);
-        self.scenario_redo.push(cmd);
+        self.scenario_redo.push((cmd, seq));
         true
     }
 
     pub fn redo_scenario(&mut self) -> bool {
-        let Some(cmd) = self.scenario_redo.pop() else {
+        let Some((cmd, seq)) = self.scenario_redo.pop() else {
             return false;
         };
         cmd.apply(&mut self.document.simulation_scenarios);
-        self.scenario_undo.push(cmd);
+        self.scenario_undo.push((cmd, seq));
         true
     }
 
     pub fn push_mask_paint_patch(&mut self, patch: MaskPaintPatch) {
-        self.mask_paint_undo.push(patch);
+        self.mask_paint_undo
+            .push((patch, crate::command::next_edit_seq()));
         self.mask_paint_redo.clear();
     }
 
@@ -214,19 +279,19 @@ impl EditorSession {
 
     /// Returns the edited mask's id so callers can invalidate selectively.
     pub fn undo_mask_paint(&mut self) -> Option<MaskId> {
-        let patch = self.mask_paint_undo.pop()?;
+        let (patch, seq) = self.mask_paint_undo.pop()?;
         Self::apply_mask_patch(&mut self.document, &patch, true);
         let id = patch.mask_id;
-        self.mask_paint_redo.push(patch);
+        self.mask_paint_redo.push((patch, seq));
         Some(id)
     }
 
     /// Returns the edited mask's id so callers can invalidate selectively.
     pub fn redo_mask_paint(&mut self) -> Option<MaskId> {
-        let patch = self.mask_paint_redo.pop()?;
+        let (patch, seq) = self.mask_paint_redo.pop()?;
         Self::apply_mask_patch(&mut self.document, &patch, false);
         let id = patch.mask_id;
-        self.mask_paint_undo.push(patch);
+        self.mask_paint_undo.push((patch, seq));
         Some(id)
     }
 
@@ -236,11 +301,12 @@ impl EditorSession {
     }
 
     pub fn push_paint_undo(&mut self, stroke: PaintStrokeUndo) {
-        self.paint_undo.push(stroke);
+        self.paint_undo
+            .push((stroke, crate::command::next_edit_seq()));
     }
 
     pub fn undo_paint_stroke(&mut self) -> bool {
-        let Some(stroke) = self.paint_undo.pop() else {
+        let Some((stroke, _seq)) = self.paint_undo.pop() else {
             return false;
         };
         if let Some(layer) = self
@@ -301,6 +367,51 @@ mod tests {
             after
         );
         assert!(session.redo_mask_paint().is_none());
+    }
+
+    #[test]
+    fn undo_order_is_chronological_across_stacks() {
+        use crate::command::EditorCommand;
+        use crate::layer::{FlatParams, Layer, LayerKind};
+
+        let mut session = EditorSession::new();
+        let layer = Layer::new("A", LayerKind::Flat(FlatParams { height: 1.0 }));
+        let id = layer.id();
+        session.document.stack.push(layer);
+
+        // Edit 1: stack command. Edit 2: mask paint.
+        let cmd = EditorCommand::SetOpacity {
+            id,
+            opacity: 0.5,
+            previous: 1.0,
+        };
+        crate::command::apply(&cmd, &mut session.document.stack);
+        session.history.push_executed(cmd);
+        let mask_id = MaskId::new();
+        session.push_mask_paint_patch(MaskPaintPatch {
+            label: "Painted Mask".into(),
+            mask_id,
+            buffer_width: 2,
+            buffer_height: 1,
+            x: 0,
+            y: 0,
+            w: 1,
+            h: 1,
+            before: vec![0.0],
+            after: vec![1.0],
+        });
+
+        // Newest edit is the paint; it must undo first, then the command.
+        assert_eq!(session.newest_undo_domain(), Some(UndoDomain::MaskPaint));
+        assert!(session.undo_mask_paint().is_some());
+        assert_eq!(session.newest_undo_domain(), Some(UndoDomain::Stack));
+
+        // Redo replays oldest-undone first: the stack command was undone
+        // last, so once it is undone too, redo starts with it.
+        session.history.undo(&mut session.document.stack);
+        assert_eq!(session.oldest_redo_domain(), Some(UndoDomain::Stack));
+        session.history.redo(&mut session.document.stack);
+        assert_eq!(session.oldest_redo_domain(), Some(UndoDomain::MaskPaint));
     }
 
     #[test]
