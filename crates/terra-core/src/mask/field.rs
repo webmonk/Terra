@@ -1,11 +1,17 @@
 use crate::heightfield::{Heightfield, HeightfieldMetrics};
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Single-channel mask in \[0, 1\], same tiling as heightfields.
+///
+/// Samples are shared copy-on-write: `clone` is a refcount bump (layer caches
+/// snapshot dozens of these per layer) and the first mutation after a clone
+/// copies the buffer.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MaskField {
     pub metrics: HeightfieldMetrics,
-    data: Vec<f32>,
+    #[serde(with = "crate::heightfield::cow_samples")]
+    data: Arc<Vec<f32>>,
 }
 
 impl MaskField {
@@ -13,7 +19,7 @@ impl MaskField {
         let n = (metrics.width * metrics.height) as usize;
         Self {
             metrics,
-            data: vec![1.0; n],
+            data: Arc::new(vec![1.0; n]),
         }
     }
 
@@ -21,7 +27,7 @@ impl MaskField {
         let n = (metrics.width * metrics.height) as usize;
         Self {
             metrics,
-            data: vec![value.clamp(0.0, 1.0); n],
+            data: Arc::new(vec![value.clamp(0.0, 1.0); n]),
         }
     }
 
@@ -38,7 +44,7 @@ impl MaskField {
         assert_eq!(data.len(), (metrics.width * metrics.height) as usize);
         Self {
             metrics,
-            data: data.to_vec(),
+            data: Arc::new(data.to_vec()),
         }
     }
 
@@ -53,7 +59,7 @@ impl MaskField {
 
     pub fn set(&mut self, i: u32, j: u32, v: f32) {
         let i = self.idx(i, j);
-        self.data[i] = v.clamp(0.0, 1.0);
+        Arc::make_mut(&mut self.data)[i] = v.clamp(0.0, 1.0);
     }
 
     pub fn data(&self) -> &[f32] {
@@ -61,7 +67,7 @@ impl MaskField {
     }
 
     pub fn data_mut(&mut self) -> &mut [f32] {
-        &mut self.data
+        Arc::make_mut(&mut self.data).as_mut_slice()
     }
 
     pub fn from_height_range(hf: &Heightfield, min: f32, max: f32) -> Self {
@@ -80,11 +86,16 @@ impl MaskField {
 
     pub fn combine(&self, other: &Self, op: super::MaskOp) -> Self {
         assert_eq!(self.metrics.width, other.metrics.width);
-        let mut out = self.clone();
-        for (a, b) in out.data.iter_mut().zip(other.data.iter()) {
-            *a = op.apply(*a, *b);
+        let data = self
+            .data
+            .iter()
+            .zip(other.data.iter())
+            .map(|(&a, &b)| op.apply(a, b))
+            .collect();
+        Self {
+            metrics: self.metrics,
+            data: Arc::new(data),
         }
-        out
     }
 
     /// Scale all samples in place with a 4-wide friendly loop.

@@ -1,5 +1,6 @@
 use super::HeightfieldMetrics;
 use serde::{Deserialize, Serialize};
+use std::sync::Arc;
 
 /// Tile coordinates in the grid (not sample indices).
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Serialize, Deserialize)]
@@ -9,6 +10,10 @@ pub struct TileId {
 }
 
 /// One height tile with interior samples plus a ghost halo.
+///
+/// Samples are shared copy-on-write: cloning a tile (and therefore a whole
+/// `Heightfield`) is a refcount bump per tile; the first write after a clone
+/// copies that tile's buffer only.
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct HeightTile {
     pub id: TileId,
@@ -16,7 +21,8 @@ pub struct HeightTile {
     pub interior_height: u32,
     pub halo: u32,
     /// Row-major including halo. Size = stride * stride_z.
-    data: Vec<f32>,
+    #[serde(with = "super::cow_samples")]
+    data: Arc<Vec<f32>>,
 }
 
 impl HeightTile {
@@ -33,7 +39,7 @@ impl HeightTile {
             interior_width,
             interior_height,
             halo,
-            data: vec![0.0; (stride * stride_z) as usize],
+            data: Arc::new(vec![0.0; (stride * stride_z) as usize]),
         }
     }
 
@@ -65,7 +71,7 @@ impl HeightTile {
 
     pub fn set_interior(&mut self, lx: u32, lz: u32, value: f32) {
         let i = self.idx(lx as i32, lz as i32);
-        self.data[i] = value;
+        Arc::make_mut(&mut self.data)[i] = value;
     }
 
     /// Coordinates relative to interior: (0,0) is first interior sample; negatives are halo.
@@ -75,11 +81,11 @@ impl HeightTile {
 
     pub fn set_with_halo(&mut self, gx: i32, gz: i32, value: f32) {
         let i = self.idx(gx, gz);
-        self.data[i] = value;
+        Arc::make_mut(&mut self.data)[i] = value;
     }
 
     pub fn fill(&mut self, value: f32) {
-        self.data.fill(value);
+        Arc::make_mut(&mut self.data).fill(value);
     }
 
     pub fn interior(&self) -> InteriorIter<'_> {
@@ -95,10 +101,11 @@ impl HeightTile {
         let iw = self.interior_width;
         let ih = self.interior_height;
         let stride = self.stride();
+        let data = Arc::make_mut(&mut self.data);
         for lz in 0..ih {
             for lx in 0..iw {
                 let idx = ((lz + halo) * stride + (lx + halo)) as usize;
-                self.data[idx] = f(self.data[idx]);
+                data[idx] = f(data[idx]);
             }
         }
     }
@@ -109,10 +116,11 @@ impl HeightTile {
         let iw = self.interior_width;
         let ih = self.interior_height;
         let stride = self.stride();
+        let data = Arc::make_mut(&mut self.data);
         for lz in 0..ih {
             for lx in 0..iw {
                 let idx = ((lz + halo) * stride + (lx + halo)) as usize;
-                self.data[idx] = f(lx, lz, self.data[idx]);
+                data[idx] = f(lx, lz, data[idx]);
             }
         }
     }

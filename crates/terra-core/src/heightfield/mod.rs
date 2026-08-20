@@ -11,6 +11,21 @@ pub use world_space::{metres_to_texels, texels_to_metres, world_radius_texels};
 use serde::{Deserialize, Serialize};
 use std::sync::Arc;
 
+/// Serde for `Arc<Vec<f32>>` sample buffers, byte-compatible with a plain
+/// `Vec<f32>` field so existing documents and caches round-trip unchanged.
+pub(crate) mod cow_samples {
+    use serde::{Deserialize, Deserializer, Serialize, Serializer};
+    use std::sync::Arc;
+
+    pub fn serialize<S: Serializer>(v: &Arc<Vec<f32>>, s: S) -> Result<S::Ok, S::Error> {
+        v.as_slice().serialize(s)
+    }
+
+    pub fn deserialize<'de, D: Deserializer<'de>>(d: D) -> Result<Arc<Vec<f32>>, D::Error> {
+        Vec::deserialize(d).map(Arc::new)
+    }
+}
+
 /// Default interior tile size (samples along one edge).
 pub const DEFAULT_TILE_SIZE: u32 = 256;
 /// Default ghost/halo width in samples per edge.
@@ -355,6 +370,41 @@ mod tests {
         let hf2 = Heightfield::from_dense(m, &dense);
         assert_eq!(hf2.get(3, 5), 12.5);
         assert_eq!(hf2.get(31, 23), -2.0);
+    }
+
+    #[test]
+    fn clone_is_shared_until_written() {
+        let m = HeightfieldMetrics::new(300, 300, 600.0, 600.0);
+        let mut a = Heightfield::zeros(m);
+        a.set(10, 10, 5.0);
+        let b = a.clone();
+        // Writing one tile of the clone must not affect the original, and
+        // untouched tiles keep sharing storage.
+        let mut c = b.clone();
+        c.set(10, 10, 9.0);
+        assert_eq!(a.get(10, 10), 5.0);
+        assert_eq!(b.get(10, 10), 5.0);
+        assert_eq!(c.get(10, 10), 9.0);
+        // Tile (1,1) was never written in c: same buffer as b's.
+        let bt = b.tile(TileId { tx: 1, tz: 1 }).unwrap();
+        let ct = c.tile(TileId { tx: 1, tz: 1 }).unwrap();
+        assert!(std::ptr::eq(bt.data().as_ptr(), ct.data().as_ptr()));
+        // Tile (0,0) was written: buffers diverged.
+        let bt0 = b.tile(TileId { tx: 0, tz: 0 }).unwrap();
+        let ct0 = c.tile(TileId { tx: 0, tz: 0 }).unwrap();
+        assert!(!std::ptr::eq(bt0.data().as_ptr(), ct0.data().as_ptr()));
+    }
+
+    #[test]
+    fn tile_serde_matches_plain_vec_layout() {
+        let m = HeightfieldMetrics::new(8, 8, 16.0, 16.0);
+        let mut hf = Heightfield::zeros(m);
+        hf.set(2, 3, 7.5);
+        let json = serde_json::to_string(&hf).unwrap();
+        // Sample buffers must serialize as plain arrays (no Arc wrapper).
+        assert!(json.contains("\"data\":["));
+        let back: Heightfield = serde_json::from_str(&json).unwrap();
+        assert_eq!(back.get(2, 3), 7.5);
     }
 
     #[test]
