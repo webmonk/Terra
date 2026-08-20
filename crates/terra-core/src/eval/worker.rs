@@ -306,6 +306,7 @@ mod tests {
             ops: Vec::new(),
             paint: None,
             display_color: crate::mask::default_mask_display_color(),
+            owner: None,
         };
 
         let mut stack = LayerStack::new();

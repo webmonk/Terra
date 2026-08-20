@@ -842,6 +842,24 @@ impl LayerStack {
         self.flatten_layers().iter().map(|l| l.id()).collect()
     }
 
+    /// Every layer and group id in the tree, including inside disabled groups.
+    pub fn all_node_ids(&self) -> Vec<LayerId> {
+        fn walk(nodes: &[StackNode], out: &mut Vec<LayerId>) {
+            for n in nodes {
+                match n {
+                    StackNode::Layer(l) => out.push(l.id()),
+                    StackNode::Group(g) => {
+                        out.push(g.id);
+                        walk(&g.children, out);
+                    }
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.nodes, &mut out);
+        out
+    }
+
     /// Index in flatten order.
     pub fn flatten_index(&self, id: LayerId) -> Option<usize> {
         self.layer_ids().iter().position(|&x| x == id)

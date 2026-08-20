@@ -74,6 +74,11 @@ pub enum PanelAction {
     },
     ApplyPreset(String),
     AddMask(MaskAsset),
+    /// Photoshop-style layer mask: ensure the layer's owned painted mask
+    /// exists (created reveal-all and bound on first use) and arm painting.
+    PaintLayerMask {
+        id: LayerId,
+    },
     UpdateMaskAsset(MaskAsset),
     SelectMask(MaskId),
     BindMaskToLayer {

@@ -235,6 +235,7 @@ mod tests {
             ops: Vec::new(),
             paint: Some(paint),
             display_color: default_mask_display_color(),
+            owner: None,
         }];
         let baked = bake_mask_assets(
             &assets,
@@ -261,6 +262,7 @@ mod tests {
                 ops: Vec::new(),
                 paint: None,
                 display_color: default_mask_display_color(),
+                owner: None,
             },
             MaskAsset {
                 id: output_mask_id,
@@ -269,6 +271,7 @@ mod tests {
                 ops: Vec::new(),
                 paint: None,
                 display_color: default_mask_display_color(),
+                owner: None,
             },
         ];
         let mut aux = HashMap::new();
@@ -297,6 +300,7 @@ mod tests {
             ops: Vec::new(),
             paint: None,
             display_color: default_mask_display_color(),
+            owner: None,
         }];
         let mut aux = HashMap::new();
         aux.insert(

@@ -36,6 +36,52 @@ fn legacy_document_without_lighting_loads_with_default() {
 }
 
 #[test]
+fn layer_paint_mask_lifecycle() {
+    let mut doc = TerrainDocument::new_default();
+    let layer = Layer::new(
+        "Hills",
+        crate::layer::LayerKind::Flat(crate::layer::FlatParams { height: 10.0 }),
+    );
+    let layer_id = doc.add_layer(layer);
+
+    let mask_id = doc
+        .ensure_layer_paint_mask(layer_id)
+        .expect("layer exists in stack");
+    let asset = doc.masks.iter().find(|m| m.id == mask_id).unwrap();
+    assert_eq!(asset.owner, Some(layer_id));
+    assert!(asset.is_painted());
+    // Reveal-all: a fresh layer mask must not mask the layer out.
+    assert!(asset.paint.as_ref().unwrap().samples.iter().all(|&s| s == 1.0));
+    let bound = doc
+        .stack
+        .find(layer_id)
+        .unwrap()
+        .common
+        .masks
+        .entries
+        .iter()
+        .any(|e| e.mask.id == mask_id);
+    assert!(bound, "owned mask must be bound into the layer's distribution");
+
+    // Idempotent: second call reuses the same asset and binding.
+    assert_eq!(doc.ensure_layer_paint_mask(layer_id), Some(mask_id));
+    assert_eq!(
+        doc.masks.iter().filter(|m| m.owner == Some(layer_id)).count(),
+        1
+    );
+
+    // Orphaned owned masks are pruned; shared masks are untouched.
+    let shared_count = doc.masks.iter().filter(|m| m.owner.is_none()).count();
+    doc.stack.remove(layer_id);
+    doc.prune_orphan_owned_masks();
+    assert!(doc.masks.iter().all(|m| m.id != mask_id));
+    assert_eq!(
+        doc.masks.iter().filter(|m| m.owner.is_none()).count(),
+        shared_count
+    );
+}
+
+#[test]
 fn flat_doc_normalizes_into_wc_tree() {
     let mut stack = LayerStack::new();
     stack.push(Layer::new(

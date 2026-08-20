@@ -231,6 +231,7 @@ impl TerrainDocument {
                 p
             }),
             display_color: crate::mask::default_mask_display_color(),
+            owner: None,
         };
         let mask_id = mask.id;
         doc.masks.push(mask);
@@ -422,7 +423,59 @@ impl TerrainDocument {
             )));
         }
         doc.normalize_wc_tree();
+        doc.prune_orphan_owned_masks();
         Ok(doc)
+    }
+
+    /// Per-layer paint mask: return the layer's owned painted mask, creating
+    /// and binding one (filled white — reveal-all) on first use. Works for
+    /// layers and groups; returns `None` when `layer_id` is not in the stack.
+    pub fn ensure_layer_paint_mask(&mut self, layer_id: LayerId) -> Option<MaskId> {
+        let name = self
+            .stack
+            .find(layer_id)
+            .map(|l| l.common.name.clone())
+            .or_else(|| self.stack.find_group(layer_id).map(|g| g.name.clone()))?;
+        let existing = self
+            .masks
+            .iter()
+            .find(|m| m.owner == Some(layer_id) && m.is_painted())
+            .map(|m| m.id);
+        let mask_id = match existing {
+            Some(id) => id,
+            None => {
+                let id = MaskId::new();
+                let resolution = self.preview_resolution.clamp(256, 1024);
+                let mut asset = MaskAsset::new_painted(id, format!("{name} Mask"), resolution);
+                asset.owner = Some(layer_id);
+                if let Some(paint) = asset.paint.as_mut() {
+                    paint.fill();
+                }
+                self.masks.push(asset);
+                id
+            }
+        };
+        let dist = if let Some(l) = self.stack.find_mut(layer_id) {
+            &mut l.common.masks
+        } else if let Some(g) = self.stack.find_group_mut(layer_id) {
+            &mut g.masks
+        } else {
+            return None;
+        };
+        if !dist.entries.iter().any(|e| e.mask.id == mask_id) {
+            dist.push(crate::mask::MaskRef::new(mask_id));
+        }
+        Some(mask_id)
+    }
+
+    /// Drop owned masks whose owner no longer exists in the stack. Run on
+    /// load rather than eagerly on layer delete so in-session undo of a
+    /// deletion still finds the layer's mask intact.
+    pub fn prune_orphan_owned_masks(&mut self) {
+        let ids: std::collections::HashSet<LayerId> =
+            self.stack.all_node_ids().into_iter().collect();
+        self.masks
+            .retain(|m| m.owner.is_none() || m.owner.is_some_and(|o| ids.contains(&o)));
     }
 
     /// Interactive viewport preview — the single terrain stack.
@@ -589,6 +642,7 @@ impl TerrainDocument {
                 ops: Vec::new(),
                 paint: Some(paint),
                 display_color: crate::mask::default_mask_display_color(),
+                owner: None,
             });
             id
         };

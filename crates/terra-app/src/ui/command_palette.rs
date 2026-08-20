@@ -234,6 +234,7 @@ fn add_catalog_layer(id: &str, actions: &mut Vec<PaletteAction>) {
                     ops: Vec::new(),
                     paint: None,
                     display_color: terra_core::mask::display_color_for_mask_id(mask_id),
+                    owner: None,
                 };
                 asset.prepare_for_document();
                 actions.push(PaletteAction::Panel(PanelAction::AddMask(asset)));

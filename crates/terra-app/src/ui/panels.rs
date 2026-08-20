@@ -140,7 +140,7 @@ pub fn draw_legacy_mask_editor_contents(
 
     let selected = ui_state
         .selected_mask
-        .or_else(|| doc.masks.first().map(|asset| asset.id));
+        .or_else(|| doc.masks.iter().find(|a| a.owner.is_none()).map(|a| a.id));
     if let Some(mask_id) = selected {
         ui_state.selected_mask = Some(mask_id);
         if let Some(asset) = doc.masks.iter().find(|asset| asset.id == mask_id) {

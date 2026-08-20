@@ -1720,7 +1720,8 @@ fn emit_biome_layer_rows(doc: &TerrainDocument, depth: u8, out: &mut Vec<LayerRo
 }
 
 fn emit_mask_asset_rows(doc: &TerrainDocument, depth: u8, out: &mut Vec<LayerRow>) {
-    for asset in &doc.masks {
+    // Owned per-layer masks are managed through their layer, not this list.
+    for asset in doc.masks.iter().filter(|a| a.owner.is_none()) {
         let mut row = blank_row(
             LayerId(asset.id.0),
             asset.name.clone(),
@@ -2353,6 +2354,20 @@ fn draw_layer_context_menu(
             ("cache", "Toggle Cache"),
         ]);
     }
+    if (layer.is_some() && !is_base) || is_biome {
+        let has_owned_mask = doc
+            .masks
+            .iter()
+            .any(|m| m.owner == Some(id) && m.is_painted());
+        items.push((
+            "paintmask",
+            if has_owned_mask {
+                "Paint Layer Mask"
+            } else {
+                "Add Layer Mask"
+            },
+        ));
+    }
     if is_mask
         || group.is_some_and(|g| {
             !g.is_biome()
@@ -2440,6 +2455,7 @@ fn draw_layer_context_menu(
                         });
                     }
                 }
+                "paintmask" => actions.push(PanelAction::PaintLayerMask { id }),
                 "seed" => actions.push(PanelAction::RandomizeSeed { id }),
                 "cache" => {
                     if let Some(l) = layer {

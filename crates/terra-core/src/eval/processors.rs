@@ -1,4 +1,4 @@
-use super::{EvalContext, EvalError};
+﻿use super::{EvalContext, EvalError};
 use crate::analyze;
 use crate::authoring;
 use crate::fields::{
@@ -31,7 +31,7 @@ impl ProcessorRegistry {
 
     /// Evaluate a single layer by matching on its [`LayerKind`].
     ///
-    /// This `match` is the real dispatch mechanism — the one place every
+    /// This `match` is the real dispatch mechanism â€” the one place every
     /// built-in kind becomes a height contribution. Adding a kind means adding
     /// an arm here.
     pub fn evaluate(
@@ -783,6 +783,7 @@ fn bake_layer_hardness(
                     ops: Vec::new(),
                     paint: None,
                     display_color: crate::mask::default_mask_display_color(),
+                    owner: None,
                 }],
                 input,
                 input.metrics,
@@ -881,6 +882,7 @@ fn bake_optional_mask(
                     ops: Vec::new(),
                     paint: None,
                     display_color: crate::mask::default_mask_display_color(),
+                    owner: None,
                 }],
                 input,
                 input.metrics,

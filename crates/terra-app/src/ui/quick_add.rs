@@ -742,6 +742,7 @@ fn commit_item(
                     ops: Vec::new(),
                     paint: None,
                     display_color: terra_core::mask::display_color_for_mask_id(id),
+                    owner: None,
                 };
                 asset.prepare_for_document();
                 actions.push(PanelAction::AddMask(asset));

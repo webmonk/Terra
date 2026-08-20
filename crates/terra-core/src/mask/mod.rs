@@ -173,6 +173,11 @@ pub struct MaskAsset {
     /// Viewport overlay colour (RGB 0–1). Visual only — does not affect evaluation.
     #[serde(default = "default_mask_display_color")]
     pub display_color: [f32; 3],
+    /// Owning layer/group for per-layer masks. Owned masks are managed with
+    /// their owner (hidden from the shared browser, pruned when the owner is
+    /// gone) rather than shared project assets.
+    #[serde(default)]
+    pub owner: Option<crate::ids::LayerId>,
 }
 
 impl MaskAsset {
@@ -184,6 +189,7 @@ impl MaskAsset {
             ops: Vec::new(),
             paint: None,
             display_color: display_color_for_mask_id(id),
+            owner: None,
         }
     }
 
@@ -195,6 +201,7 @@ impl MaskAsset {
             ops: Vec::new(),
             paint: Some(PaintBuffer::new(resolution, resolution)),
             display_color: display_color_for_mask_id(id),
+            owner: None,
         }
     }
 

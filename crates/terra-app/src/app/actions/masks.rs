@@ -26,6 +26,18 @@ pub(crate) fn try_apply(
             app.preview_dirty = true;
             app.mask_overlay_dirty = true;
         }
+        PanelAction::PaintLayerMask { id } => {
+            if let Some(mask_id) = app.session.document.ensure_layer_paint_mask(id) {
+                app.session.document.selected = Some(id);
+                app.ui_state.selected_mask = Some(mask_id);
+                app.ui_state.paint_mask = Some(mask_id);
+                app.ui_state.focus_created_mask(true);
+                ctx.mask_assets_mutated = true;
+                ctx.doc_mutated = true;
+                app.preview_dirty = true;
+                app.mask_overlay_dirty = true;
+            }
+        }
         PanelAction::SelectMask(mask_id) => {
             app.ui_state.selected_mask = Some(mask_id);
             let painted = app

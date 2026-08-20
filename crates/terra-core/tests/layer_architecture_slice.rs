@@ -50,6 +50,7 @@ fn alpine_vertical_slice_evaluates() {
         ops: Vec::new(),
         paint: None,
         display_color: terra_core::mask::default_mask_display_color(),
+        owner: None,
     };
     doc.masks.push(mask);
 
@@ -120,6 +121,7 @@ fn isolated_group_mask_limits_result() {
         ops: Vec::new(),
         paint: None,
         display_color: terra_core::mask::default_mask_display_color(),
+        owner: None,
     });
 
     let mut alpine = LayerGroup::isolated("Alpine");
@@ -357,6 +359,7 @@ fn mask_dependency_edges_recorded() {
         ops: Vec::new(),
         paint: None,
         display_color: terra_core::mask::default_mask_display_color(),
+        owner: None,
     });
     let layer = Layer::new(
         "Masked Hills",
