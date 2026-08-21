@@ -23,6 +23,11 @@ pub(crate) struct ApplyCtx {
     /// `mask_assets_mutated` is set with this empty, the batch falls back to
     /// a full rebuild.
     pub mutated_masks: Vec<terra_core::mask::MaskId>,
+    /// Channels the edited layer produced *before* a parameter change, for
+    /// kinds whose contract depends on their parameters. Unioned into the
+    /// changed set so consumers of a channel the layer just stopped writing
+    /// are still invalidated.
+    pub dirty_extra_fields: Vec<terra_core::fields::FieldId>,
     pub continue_loop: bool,
 }
 
@@ -34,6 +39,7 @@ impl ApplyCtx {
             doc_mutated: false,
             mask_assets_mutated: false,
             mutated_masks: Vec::new(),
+            dirty_extra_fields: Vec::new(),
             continue_loop: false,
         }
     }
@@ -194,7 +200,11 @@ impl TerraApp {
                         preview.find(id).map(|layer| &layer.kind),
                         Some(terra_core::layer::LayerKind::SculptBase(_))
                     );
-                self.scheduler.evaluator.mark_dirty_from(&preview, id);
+                self.scheduler.evaluator.mark_dirty_from_fields(
+                    &preview,
+                    id,
+                    &ctx.dirty_extra_fields,
+                );
                 self.track_worker_dirty_from(&preview, id);
                 self.terrain_runtime.advance_output_revision();
                 if let Some(gpu) = self.gpu_engine.as_mut() {

@@ -231,6 +231,22 @@ impl StackEvaluator {
     /// that may read arbitrary channels. A vegetation tweak under a blur no
     /// longer re-runs the blur.
     pub fn mark_dirty_from(&mut self, stack: &LayerStack, id: LayerId) {
+        self.mark_dirty_from_fields(stack, id, &[]);
+    }
+
+    /// Field-aware invalidation seeded with extra changed channels.
+    ///
+    /// A layer kind whose contract depends on its parameters (vegetation's
+    /// root cohesion) can *stop* writing a channel when edited. The edited
+    /// layer's new contract no longer mentions it, so consumers would keep
+    /// caches built on the value it used to write - callers that change
+    /// parameters pass the previous contract here to cover the transition.
+    pub fn mark_dirty_from_fields(
+        &mut self,
+        stack: &LayerStack,
+        id: LayerId,
+        extra_changed: &[crate::fields::FieldId],
+    ) {
         let layers = stack.flatten_layers();
         let Some(start) = layers.iter().position(|l| l.id() == id) else {
             self.mark_all_dirty(stack);
@@ -238,6 +254,13 @@ impl StackEvaluator {
         };
         let mut changed: HashSet<String> = HashSet::new();
         let mut height_changed = false;
+        for field in extra_changed {
+            if *field == crate::fields::FieldId::Height {
+                height_changed = true;
+            } else {
+                changed.insert(field.cache_key());
+            }
+        }
         for (i, layer) in layers.iter().enumerate().skip(start) {
             let affected = i == start
                 || height_changed
@@ -1422,6 +1445,77 @@ mod tests {
         assert!(eval.cache.is_dirty(id_c));
         let suffix = dirty_suffix_ids(&stack, id_b);
         assert!(suffix.contains(&id_b) && suffix.contains(&id_c) && !suffix.contains(&id_a));
+    }
+
+    /// Vegetation's hardness contract is dynamic, so consumers of hardness
+    /// stay cached while root cohesion is off - but turning it *off* must
+    /// still invalidate them, since the layer stops writing a channel it
+    /// previously owned. That transition is covered by seeding the previous
+    /// contract into the changed set.
+    #[test]
+    fn dynamic_vegetation_contract_covers_both_transitions() {
+        use crate::layer::{FbmParams, StreamPowerParams, VegetationParams};
+
+        let veg = |root_cohesion: f32| VegetationParams {
+            root_cohesion,
+            ..VegetationParams::default()
+        };
+        let build = |root_cohesion: f32| {
+            let mut stack = LayerStack::new();
+            let mut fbm = Layer::new("Fbm", LayerKind::Fbm(FbmParams::default()));
+            fbm.common.blend = BlendMode::Add;
+            stack.push(fbm);
+            let v = Layer::new("Veg", LayerKind::Vegetation(veg(root_cohesion)));
+            let vid = v.id();
+            stack.push(v);
+            // Stream power reads hardness but not vegetation, so it is only
+            // invalidated when vegetation actually writes hardness. (Thermal
+            // erosion reads vegetation directly and must always re-run.)
+            let t = Layer::new(
+                "StreamPower",
+                LayerKind::StreamPowerErosion(StreamPowerParams::default()),
+            );
+            let tid = t.id();
+            stack.push(t);
+            (stack, vid, tid)
+        };
+
+        // Cohesion off: a vegetation edit leaves hardness alone, so the
+        // erosion sim above keeps its cache.
+        let (mut stack, vid, tid) = build(0.0);
+        let metrics = HeightfieldMetrics::new(48, 48, 96.0, 96.0);
+        let mut eval = StackEvaluator::new();
+        let mut ctx = EvalContext::new(metrics);
+        eval.rebuild_all(&stack, &mut ctx).unwrap();
+        if let Some(l) = stack.find_mut(vid) {
+            l.kind = LayerKind::Vegetation(VegetationParams {
+                density: 0.9,
+                ..veg(0.0)
+            });
+        }
+        eval.mark_dirty_from(&stack, vid);
+        assert!(
+            !eval.cache.is_dirty(tid),
+            "with root cohesion off, vegetation must not invalidate hardness consumers"
+        );
+
+        // Turning cohesion off after it was on: the layer stops writing
+        // hardness, so consumers must be invalidated via the previous
+        // contract.
+        let (mut stack, vid, tid) = build(0.5);
+        let mut eval = StackEvaluator::new();
+        let mut ctx = EvalContext::new(metrics);
+        eval.rebuild_all(&stack, &mut ctx).unwrap();
+        let previous = stack.find(vid).unwrap().kind.clone();
+        if let Some(l) = stack.find_mut(vid) {
+            l.kind = LayerKind::Vegetation(veg(0.0));
+        }
+        eval.mark_dirty_from_fields(&stack, vid, &previous.produced_fields());
+        assert!(
+            eval.cache.is_dirty(tid),
+            "dropping root cohesion must invalidate consumers of the hardness \
+             the layer used to write"
+        );
     }
 
     #[test]

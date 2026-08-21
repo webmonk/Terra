@@ -357,9 +357,19 @@ impl LayerKind {
                 FieldId::SoilMoisture,
                 FieldId::WindExposure,
             ],
-            // Hardness only when root cohesion is enabled, but contracts are
-            // static: declaring it keeps consumers invalidated either way.
-            LayerKind::Vegetation(_) => vec![FieldId::Vegetation, FieldId::Hardness],
+            // Root cohesion is the only path that writes hardness, and it is
+            // off by default. Declaring hardness unconditionally would
+            // invalidate every hardness consumer (erosion sims) on any
+            // vegetation edit; declaring it dynamically keeps those cached.
+            // Callers that change parameters must union the *previous*
+            // contract too - see `StackEvaluator::mark_dirty_from_fields`.
+            LayerKind::Vegetation(p) => {
+                if p.root_cohesion > 1e-6 {
+                    vec![FieldId::Vegetation, FieldId::Hardness]
+                } else {
+                    vec![FieldId::Vegetation]
+                }
+            }
             LayerKind::OverhangStamp(_) | LayerKind::LocalSdf(_) => {
                 vec![
                     FieldId::Height,

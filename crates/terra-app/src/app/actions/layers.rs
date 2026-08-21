@@ -240,6 +240,10 @@ pub(crate) fn try_apply(
                 path.hash(&mut h);
                 coalesce ^= h.finish();
             }
+            // A kind's produced-field contract can depend on its params, so
+            // union the pre-edit contract for the transition where the layer
+            // stops writing a channel.
+            ctx.dirty_extra_fields = previous.produced_fields();
             let cmd = EditorCommand::SetKind { id, kind, previous };
             apply(&cmd, &mut app.session.document.stack);
             app.session.push_command_coalesced(cmd, Some((coalesce, "kind")));
