@@ -788,6 +788,7 @@ pub fn draw_layers_gui(
                         target: row_data.id,
                         place_before,
                         nest_into,
+                        list_reversed: row_data.list_reversed && !nest_into,
                     });
                     if nest_into {
                         ui.panel_rounded(
@@ -1615,8 +1616,15 @@ pub fn draw_layers_gui(
     }
 
     if ui.input.primary_released {
-        let multi_ids = std::mem::take(&mut state.drag_multi);
+        let mut multi_ids = std::mem::take(&mut state.drag_multi);
         if let (Some(_from), Some(to)) = (state.drag_from.take(), drop_target) {
+            // `multi_ids` is collected in visible row order, but Shape / Mask
+            // / Simulation folders render bottom-to-top and `place_before`
+            // has already been converted to stack space. Put the ids in the
+            // same space so the block keeps its authored order.
+            if to.list_reversed {
+                multi_ids.reverse();
+            }
             if multi_ids.len() > 1 {
                 // Multi-row drag: no-op when the target is inside the dragged
                 // set (the drop indicator is suppressed there already).
@@ -1749,6 +1757,9 @@ struct DropTarget {
     place_before: bool,
     /// Drop onto a container (group / biome section / biome) to nest inside.
     nest_into: bool,
+    /// The target row's folder renders bottom-to-top, so visible order is the
+    /// reverse of stack order (`place_before` is already in stack space).
+    list_reversed: bool,
 }
 
 fn drop_indicator_y(row: Rect, place_before_visual: bool) -> f32 {

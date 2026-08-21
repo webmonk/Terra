@@ -312,6 +312,20 @@ impl Heightfield {
         });
     }
 
+    /// True when every tile still shares its copy-on-write buffer with
+    /// `other` — i.e. neither field has been written since they were clones.
+    /// An exact identity test: equal storage implies equal samples.
+    pub fn shares_storage_with(&self, other: &Self) -> bool {
+        self.metrics.width == other.metrics.width
+            && self.metrics.height == other.metrics.height
+            && self.tiles.len() == other.tiles.len()
+            && self
+                .tiles
+                .iter()
+                .zip(other.tiles.iter())
+                .all(|(a, b)| a.shares_storage(b))
+    }
+
     pub fn min_max(&self) -> (f32, f32) {
         let mut min_v = f32::INFINITY;
         let mut max_v = f32::NEG_INFINITY;

@@ -782,11 +782,17 @@ impl TerraApp {
     /// The selection wins while its tool is armed; otherwise it shows whenever
     /// it exists and the mask overlay does not need the shared tint slot.
     pub(crate) fn should_show_selection_overlay(&self) -> bool {
+        // An empty selection must not hold the shared tint slot: it would
+        // suppress the biome placement tint while drawing nothing. Painting
+        // keeps the (empty) overlay so strokes are visible as they land.
+        let has_coverage = crate::app::actions::masks::selection_has_coverage(self.selection.as_ref());
         if self.selection.is_none() {
             return false;
         }
-        self.ui_state.editor_tool == crate::ui::EditorTool::SelectPaint
-            || !self.should_show_mask_overlay()
+        if self.ui_state.editor_tool == crate::ui::EditorTool::SelectPaint {
+            return true;
+        }
+        has_coverage && !self.should_show_mask_overlay()
     }
 
     /// Upload the transient selection as a warm-amber translucent overlay

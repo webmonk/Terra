@@ -695,6 +695,10 @@ pub(crate) fn write_selection_into_layer_mask(
 ) -> Option<terra_core::mask::MaskId> {
     let selection_paint = app.selection.as_ref().and_then(|asset| asset.paint.clone())?;
     let mask_id = app.session.document.ensure_layer_paint_mask(layer)?;
+    // This overwrites whatever the layer's mask held, so record it as a
+    // paint patch - otherwise applying a selection to a layer that already
+    // had a mask is unrecoverable.
+    let mut patch = None;
     if let Some(paint) = app
         .session
         .document
@@ -703,7 +707,21 @@ pub(crate) fn write_selection_into_layer_mask(
         .find(|m| m.id == mask_id)
         .and_then(|m| m.paint.as_mut())
     {
+        let (before, w, h) = (paint.samples().to_vec(), paint.width, paint.height);
         paint.copy_from_resampled(&selection_paint);
+        if paint.width == w && paint.height == h {
+            patch = terra_core::document::MaskPaintPatch::from_diff(
+                "Mask from Selection",
+                mask_id,
+                w,
+                h,
+                &before,
+                paint.samples(),
+            );
+        }
+    }
+    if let Some(patch) = patch {
+        app.session.push_mask_paint_patch(patch);
     }
     ctx.note_mask_mutation(mask_id);
     ctx.doc_mutated = true;

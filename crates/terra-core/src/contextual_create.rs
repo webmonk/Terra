@@ -675,7 +675,6 @@ fn create_sculpt_layer(
     match owner {
         CreateOwner::Global | CreateOwner::World => {
             session.document.stack.ensure_category_folders();
-            let index = session.document.stack.nodes.len();
             if let Some(folder) = session
                 .document
                 .stack
@@ -685,7 +684,15 @@ fn create_sculpt_layer(
             } else {
                 session.document.add_shape_layer(layer.clone());
             }
-            session.push_command(EditorCommand::AddLayer { layer, index });
+            // AddLayer replays at root; the layer lives under the Shape
+            // category folder, so record the real location.
+            if let Some((parent, index)) = session.document.stack.sibling_location(id) {
+                session.push_command(EditorCommand::InsertNode {
+                    node: StackNode::Layer(layer),
+                    parent,
+                    index,
+                });
+            }
             session.document.selected = Some(id);
         }
         CreateOwner::Biome(_) | CreateOwner::Unspecified => {
@@ -720,11 +727,24 @@ fn create_biome(
     } else {
         session.document.stack.push_group(biome);
     }
-    session.push_command(EditorCommand::AddGroup {
-        name: name.into(),
-        id,
-        index: 0,
-    });
+    // AddGroup replays as a plain root-level group, which would turn this
+    // biome into an empty folder on redo. InsertNode replays the real node
+    // at its real sibling location.
+    if let Some((parent, index)) = session.document.stack.sibling_location(id) {
+        if let Some(node) = session
+            .document
+            .stack
+            .find_group(id)
+            .cloned()
+            .map(StackNode::Group)
+        {
+            session.push_command(EditorCommand::InsertNode {
+                node,
+                parent,
+                index,
+            });
+        }
+    }
     session.document.active_biome = Some(id);
     session.document.selected = Some(id);
     Ok((

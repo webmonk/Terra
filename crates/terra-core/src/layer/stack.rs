@@ -882,6 +882,24 @@ impl LayerStack {
         walk(&self.nodes, mask, false)
     }
 
+    /// Every *layer* id in the tree, including inside disabled groups.
+    /// `layer_ids` skips disabled groups, so it cannot be used to detect
+    /// structural changes - enabling a group would make its existing layers
+    /// look newly created.
+    pub fn all_layer_ids(&self) -> Vec<LayerId> {
+        fn walk(nodes: &[StackNode], out: &mut Vec<LayerId>) {
+            for n in nodes {
+                match n {
+                    StackNode::Layer(l) => out.push(l.id()),
+                    StackNode::Group(g) => walk(&g.children, out),
+                }
+            }
+        }
+        let mut out = Vec::new();
+        walk(&self.nodes, &mut out);
+        out
+    }
+
     /// Every layer and group id in the tree, including inside disabled groups.
     pub fn all_node_ids(&self) -> Vec<LayerId> {
         fn walk(nodes: &[StackNode], out: &mut Vec<LayerId>) {

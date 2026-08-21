@@ -128,6 +128,11 @@ impl HeightTile {
     pub fn data(&self) -> &[f32] {
         &self.data
     }
+
+    /// True when both tiles still share one copy-on-write buffer.
+    pub fn shares_storage(&self, other: &Self) -> bool {
+        Arc::ptr_eq(&self.data, &other.data)
+    }
 }
 
 pub struct InteriorIter<'a> {

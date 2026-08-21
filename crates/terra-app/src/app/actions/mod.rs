@@ -2,7 +2,7 @@
 
 mod biomes;
 mod layers;
-mod masks;
+pub(crate) mod masks;
 mod scenarios;
 mod settings;
 mod tools;
@@ -28,6 +28,9 @@ pub(crate) struct ApplyCtx {
     /// changed set so consumers of a channel the layer just stopped writing
     /// are still invalidated.
     pub dirty_extra_fields: Vec<terra_core::fields::FieldId>,
+    /// Set by a simulation progress scrub, whose checkpoints must survive
+    /// the invalidation it seeds (every other edit drops them).
+    pub dirty_keeps_scrub: bool,
     pub continue_loop: bool,
 }
 
@@ -40,6 +43,7 @@ impl ApplyCtx {
             mask_assets_mutated: false,
             mutated_masks: Vec::new(),
             dirty_extra_fields: Vec::new(),
+            dirty_keeps_scrub: false,
             continue_loop: false,
         }
     }
@@ -75,7 +79,7 @@ impl TerraApp {
         });
         let layer_ids_before: Option<std::collections::HashSet<LayerId>> = (batch_creates_layer
             && masks::selection_has_coverage(self.selection.as_ref()))
-        .then(|| self.session.document.stack.layer_ids().into_iter().collect());
+        .then(|| self.session.document.stack.all_layer_ids().into_iter().collect());
         // Undo is chronological across domains, so a new stack command must
         // branch history globally. Stack commands are pushed straight onto
         // `session.history` from the handlers, so detect the push here and
@@ -144,7 +148,7 @@ impl TerraApp {
         // constraints). No focus stealing - the user is mid-creation.
         if let Some(before) = layer_ids_before {
             let mut applied = false;
-            for id in self.session.document.stack.layer_ids() {
+            for id in self.session.document.stack.all_layer_ids() {
                 if before.contains(&id) {
                     continue;
                 }
@@ -200,11 +204,15 @@ impl TerraApp {
                         preview.find(id).map(|layer| &layer.kind),
                         Some(terra_core::layer::LayerKind::SculptBase(_))
                     );
-                self.scheduler.evaluator.mark_dirty_from_fields(
-                    &preview,
-                    id,
-                    &ctx.dirty_extra_fields,
-                );
+                if ctx.dirty_keeps_scrub {
+                    self.scheduler.evaluator.mark_dirty_from_scrub(&preview, id);
+                } else {
+                    self.scheduler.evaluator.mark_dirty_from_fields(
+                        &preview,
+                        id,
+                        &ctx.dirty_extra_fields,
+                    );
+                }
                 self.track_worker_dirty_from(&preview, id);
                 self.terrain_runtime.advance_output_revision();
                 if let Some(gpu) = self.gpu_engine.as_mut() {

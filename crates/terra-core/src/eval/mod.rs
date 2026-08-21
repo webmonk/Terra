@@ -73,6 +73,13 @@ pub struct EvalContext {
     /// these keys so a clean layer's snapshot can't clobber fresh values
     /// produced below it.
     pub(crate) pass_changed: HashSet<String>,
+    /// Inputs the point-of-use masks in [`Self::masks`] were last baked
+    /// from. Identity is by copy-on-write buffer, so a match proves the
+    /// bake would reproduce exactly what is already cached.
+    pub(crate) mask_bake_memo: Option<MaskBakeMemo>,
+    /// Point-of-use mask bakes actually performed this pass (diagnostics and
+    /// tests; the memo above suppresses the redundant ones).
+    pub mask_bakes: u64,
     /// Shared worker generation; a mismatch cancels at the next layer boundary.
     pub(crate) cancellation_generation: Option<(Arc<AtomicU64>, u64)>,
     pub quality: PreviewQuality,
@@ -92,6 +99,8 @@ impl EvalContext {
             published_outputs: HashMap::new(),
             cancelled: false,
             pass_changed: HashSet::new(),
+            mask_bake_memo: None,
+            mask_bakes: 0,
             quality: PreviewQuality::Full,
             cancellation_generation: None,
             layer_timings: Vec::new(),
@@ -234,6 +243,21 @@ impl StackEvaluator {
         self.mark_dirty_from_fields(stack, id, &[]);
     }
 
+    /// Invalidation seeded by moving a simulation's progress slider.
+    ///
+    /// Identical to [`Self::mark_dirty_from`] except the layer's scrub
+    /// checkpoints survive - replaying them across progress positions is the
+    /// entire point. Every *other* edit drops them, because their key
+    /// deliberately does not cover mask bindings, mask content, or aux read
+    /// through param bindings.
+    pub fn mark_dirty_from_scrub(&mut self, stack: &LayerStack, id: LayerId) {
+        let keep = self.scrub_cache.remove(&id);
+        self.mark_dirty_from_fields(stack, id, &[]);
+        if let Some(entries) = keep {
+            self.scrub_cache.insert(id, entries);
+        }
+    }
+
     /// Field-aware invalidation seeded with extra changed channels.
     ///
     /// A layer kind whose contract depends on its parameters (vegetation's
@@ -252,6 +276,16 @@ impl StackEvaluator {
             self.mark_all_dirty(stack);
             return;
         };
+        // The edited layer is the seed of this invalidation, so anything it
+        // owns that is not keyed by the edit must go. Scrub checkpoints are
+        // keyed by progress bucket plus an input/param fingerprint that
+        // deliberately does not cover mask bindings, mask *content*, or aux
+        // read through param bindings - covering all of that exactly would
+        // cost more than the sim they cache. Dropping them here keeps them
+        // alive for exactly their purpose (moving the progress slider, which
+        // does not seed invalidation at any other layer) and correct for
+        // everything else.
+        self.scrub_cache.remove(&id);
         let mut changed: HashSet<String> = HashSet::new();
         let mut height_changed = false;
         for field in extra_changed {
@@ -974,6 +1008,14 @@ fn node_contains_solo(node: &StackNode) -> bool {
     }
 }
 
+/// Inputs a point-of-use mask bake consumed, held by copy-on-write clone so
+/// the comparison is pointer identity rather than a content hash.
+pub(crate) struct MaskBakeMemo {
+    input: Heightfield,
+    aux: HashMap<String, MaskField>,
+    assets: usize,
+}
+
 fn refresh_point_of_use_masks(ctx: &mut EvalContext, input: &Heightfield) {
     let assets: Vec<_> = ctx
         .mask_assets
@@ -984,6 +1026,39 @@ fn refresh_point_of_use_masks(ctx: &mut EvalContext, input: &Heightfield) {
     if assets.is_empty() {
         return;
     }
+    // These masks are re-baked before *every* layer so placement tracks the
+    // evolving terrain. When nothing they read has changed - same height
+    // buffers, same aux buffers - the bake is guaranteed to reproduce the
+    // cached fields, so skip it. Height-passthrough layers and layers whose
+    // aux writes land elsewhere hit this constantly.
+    // Only the aux channels these sources actually read matter; a sim
+    // writing an unrelated channel must not invalidate slope-derived masks.
+    let read_keys: Vec<String> = assets
+        .iter()
+        .filter_map(|asset| mask_source_aux_key(&asset.source))
+        .collect();
+    // Every layer publishes its named outputs, so the published set grows
+    // constantly; it only invalidates a bake that actually samples one.
+    let reads_published = assets.iter().any(|asset| {
+        matches!(asset.source, crate::mask::MaskSource::LayerOutput { .. })
+    });
+    if let Some(memo) = &ctx.mask_bake_memo {
+        let unchanged = !reads_published
+            && memo.assets == assets.len()
+            && memo.input.shares_storage_with(input)
+            && read_keys.iter().all(|key| {
+                match (memo.aux.get(key), ctx.aux.get(key)) {
+                    (Some(before), Some(now)) => before.shares_storage(now),
+                    // Absent before and now: still identical (both fall back
+                    // to the same default inside the bake).
+                    (None, None) => true,
+                    _ => false,
+                }
+            });
+        if unchanged {
+            return;
+        }
+    }
     let rebaked = crate::mask::bake_mask_assets_resolved(
         &assets,
         input,
@@ -991,7 +1066,42 @@ fn refresh_point_of_use_masks(ctx: &mut EvalContext, input: &Heightfield) {
         &ctx.aux,
         &ctx.published_outputs,
     );
+    ctx.mask_bakes += 1;
     ctx.masks.extend(rebaked);
+    ctx.mask_bake_memo = Some(MaskBakeMemo {
+        input: input.clone(),
+        aux: read_keys
+            .iter()
+            .filter_map(|key| ctx.aux.get(key).map(|f| (key.clone(), f.clone())))
+            .collect(),
+        assets: assets.len(),
+    });
+}
+
+/// Aux channel a mask source samples, if any. Sources derived purely from
+/// the heightfield (slope, curvature, distance) read no aux at all.
+fn mask_source_aux_key(source: &crate::mask::MaskSource) -> Option<String> {
+    use crate::fields::keys;
+    use crate::mask::MaskSource as S;
+    // Note: `MaskSource::None` shadows `Option::None` under a glob import.
+    let key = match source {
+        S::Named(name) => return Some(name.clone()),
+        S::Wetness => keys::WETNESS,
+        S::Sediment => keys::SEDIMENT,
+        S::Erosion => keys::EROSION,
+        S::Deposition => keys::DEPOSITION,
+        S::Hardness => keys::HARDNESS,
+        S::Temperature => keys::TEMPERATURE,
+        S::Rainfall => keys::RAINFALL,
+        S::Humidity => keys::HUMIDITY,
+        S::Snow => keys::SNOW,
+        S::SoilMoisture => keys::SOIL_MOISTURE,
+        S::WindExposure => keys::WIND_EXPOSURE,
+        S::FlowDirection => keys::FLOW_DIRECTION,
+        S::FlowAccumulation { .. } => keys::FLOW_ACCUMULATION,
+        _ => return Option::None,
+    };
+    Some(key.to_string())
 }
 
 fn mask_source_is_point_of_use(source: &crate::mask::MaskSource) -> bool {
@@ -1151,6 +1261,20 @@ fn mix_heightfields(
     opacity: f32,
     mask: &MaskField,
 ) -> Heightfield {
+    // Height-passthrough layers (Materials, Biomes, Vegetation) return their
+    // input unchanged, so the composite is the identity for any weight under
+    // the blends that resolve to `b` — skip the full-field pass and keep the
+    // shared copy-on-write buffers, which lets later stages recognise that
+    // the height entering them did not change.
+    if matches!(
+        blend,
+        crate::layer::BlendMode::Normal
+            | crate::layer::BlendMode::Replace
+            | crate::layer::BlendMode::Interpolate
+    ) && h_layer.shares_storage_with(h_in)
+    {
+        return h_in.clone();
+    }
     let mut out = h_in.clone();
     out.par_map_indexed(|i, j, hin| {
         blend_heights(blend, hin, h_layer.get(i, j), opacity, mask.get(i, j))
@@ -1452,6 +1576,78 @@ mod tests {
     /// still invalidate them, since the layer stops writing a channel it
     /// previously owned. That transition is covered by seeding the previous
     /// contract into the changed set.
+    /// Point-of-use masks are re-baked before every layer so placement
+    /// tracks the evolving terrain, which is pure waste when nothing they
+    /// read changed. Passthrough layers must not force a re-bake, and a
+    /// layer that actually moves height must.
+    #[test]
+    fn point_of_use_mask_bakes_are_skipped_when_inputs_are_unchanged() {
+        use crate::layer::{FlatParams, MaterialsParams, VegetationParams};
+        use crate::mask::{MaskAsset, MaskRef, MaskSource};
+
+        let mask_id = MaskId::new();
+        let metrics = HeightfieldMetrics::new(64, 64, 256.0, 256.0);
+        let mut stack = LayerStack::new();
+        let mut base = Layer::new("Base", LayerKind::Flat(FlatParams { height: 40.0 }));
+        base.common.masks.push(MaskRef::new(mask_id));
+        stack.push(base);
+        // Three consecutive height passthroughs: none of them changes the
+        // height the mask reads.
+        stack.push(Layer::new(
+            "Materials",
+            LayerKind::Materials(MaterialsParams::default()),
+        ));
+        stack.push(Layer::new(
+            "Veg",
+            LayerKind::Vegetation(VegetationParams::default()),
+        ));
+        stack.push(Layer::new(
+            "Veg2",
+            LayerKind::Vegetation(VegetationParams::default()),
+        ));
+
+        let mut eval = StackEvaluator::new();
+        let mut ctx = EvalContext::new(metrics);
+        ctx.mask_assets.push(MaskAsset::new(
+            mask_id,
+            "Slope",
+            MaskSource::Slope {
+                min_deg: 0.0,
+                max_deg: 45.0,
+            },
+        ));
+        eval.rebuild_all(&stack, &mut ctx).unwrap();
+        let passthrough_bakes = ctx.mask_bakes;
+        assert!(
+            passthrough_bakes <= 2,
+            "passthrough layers must reuse the baked masks (got {passthrough_bakes} bakes \
+             across 4 layers)"
+        );
+
+        // A layer that moves height must force a fresh bake.
+        let mut raise = Layer::new("Raise", LayerKind::Flat(FlatParams { height: 90.0 }));
+        raise.common.blend = BlendMode::Add;
+        stack.push(raise);
+        stack.push(Layer::new(
+            "Veg3",
+            LayerKind::Vegetation(VegetationParams::default()),
+        ));
+        let mut ctx = EvalContext::new(metrics);
+        ctx.mask_assets.push(MaskAsset::new(
+            mask_id,
+            "Slope",
+            MaskSource::Slope {
+                min_deg: 0.0,
+                max_deg: 45.0,
+            },
+        ));
+        eval.rebuild_all(&stack, &mut ctx).unwrap();
+        assert!(
+            ctx.mask_bakes > passthrough_bakes,
+            "a height change must invalidate the point-of-use bake"
+        );
+    }
+
     #[test]
     fn dynamic_vegetation_contract_covers_both_transitions() {
         use crate::layer::{FbmParams, StreamPowerParams, VegetationParams};
@@ -1684,7 +1880,7 @@ mod tests {
         assert_eq!(eval.scrub_hits, 0);
 
         // Revisit the same position: replayed from the checkpoint.
-        eval.mark_dirty_from(&stack, thermal_id);
+        eval.mark_dirty_from_scrub(&stack, thermal_id);
         let replay = eval.rebuild_incremental(&stack, &mut ctx).unwrap();
         assert_eq!(eval.scrub_hits, 1);
         for j in (0..48).step_by(9) {
@@ -1695,13 +1891,13 @@ mod tests {
 
         // A new position computes fresh...
         stack.find_mut(thermal_id).unwrap().common.sim_progress = 0.7;
-        eval.mark_dirty_from(&stack, thermal_id);
+        eval.mark_dirty_from_scrub(&stack, thermal_id);
         eval.rebuild_incremental(&stack, &mut ctx).unwrap();
         assert_eq!(eval.scrub_hits, 1);
 
         // ...and scrubbing back replays instantly again.
         stack.find_mut(thermal_id).unwrap().common.sim_progress = 0.5;
-        eval.mark_dirty_from(&stack, thermal_id);
+        eval.mark_dirty_from_scrub(&stack, thermal_id);
         eval.rebuild_incremental(&stack, &mut ctx).unwrap();
         assert_eq!(eval.scrub_hits, 2);
 
@@ -1711,7 +1907,7 @@ mod tests {
                 p.strength *= 1.5;
             }
         }
-        eval.mark_dirty_from(&stack, thermal_id);
+        eval.mark_dirty_from_scrub(&stack, thermal_id);
         eval.rebuild_incremental(&stack, &mut ctx).unwrap();
         assert_eq!(eval.scrub_hits, 2, "changed params must miss the checkpoint");
     }

@@ -439,7 +439,9 @@ pub fn write_height_png(hf: &Heightfield, path: &std::path::Path) -> Result<(), 
     for j in 0..h {
         for i in 0..w {
             let t = ((hf.get(i, j) - min_h) / span).clamp(0.0, 1.0);
-            img16.put_pixel(i, j, image::Luma([(t * 65535.0) as u16]));
+            // Round, matching write_aux_png16: truncation biases every
+            // sample downward and doubles the quantization error.
+            img16.put_pixel(i, j, image::Luma([(t * 65535.0).round() as u16]));
         }
     }
     img16.save(path)?;
@@ -938,7 +940,8 @@ mod tests {
                 let t = png.get_pixel(i, j).0[0] as f32 / 65535.0;
                 let expected = (hf.get(i, j) - min_h) / span;
                 assert!(
-                    (t - expected).abs() <= 1.0 / 65535.0 + 1e-6,
+                    // Rounding (not truncation) keeps this within half an LSB.
+                    (t - expected).abs() <= 0.5 / 65535.0 + 1e-6,
                     "normalized height mismatch at ({i},{j}): {t} vs {expected}"
                 );
             }
