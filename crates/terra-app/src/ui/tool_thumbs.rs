@@ -286,6 +286,10 @@ thumb!(
     "../../../../assets/tools/tool_mask_painted.png"
 );
 thumb!(
+    mask_select,
+    "../../../../assets/tools/tool_mask_select.png"
+);
+thumb!(
     mask_combined,
     "../../../../assets/tools/tool_mask_combined.png"
 );
@@ -600,6 +604,7 @@ pub fn thumb_for_tool(id: &str) -> Option<&'static ToolThumb> {
         "mask.noise" => mask_noise(),
         "mask.distance" => mask_distance(),
         "mask.painted" => mask_painted(),
+        "mask.select" => mask_select(),
         "mask.combined" => mask_combined(),
 
         // Utilities

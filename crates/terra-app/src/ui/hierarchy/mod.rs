@@ -2623,7 +2623,7 @@ fn resolve_biome_swatch_color(
 fn draw_layer_context_menu(
     ui: &mut GuiContext<'_>,
     doc: &TerrainDocument,
-    _ui_state: &UiState,
+    ui_state: &UiState,
     id: LayerId,
     x: f32,
     y: f32,
@@ -2712,6 +2712,9 @@ fn draw_layer_context_menu(
                 "Add Layer Mask".into()
             },
         ));
+        if ui_state.selection_active {
+            items.push(("maskfromsel", "Mask from Selection".into()));
+        }
     }
     if !batch_ids.is_empty() {
         let n = batch_ids.len();
@@ -2827,6 +2830,7 @@ fn draw_layer_context_menu(
                 }),
                 "batch_group" => actions.push(PanelAction::BatchGroup(batch_ids.clone())),
                 "paintmask" => actions.push(PanelAction::PaintLayerMask { id }),
+                "maskfromsel" => actions.push(PanelAction::MaskFromSelection { layer: id }),
                 "seed" => actions.push(PanelAction::RandomizeSeed { id }),
                 "cache" => {
                     if let Some(l) = layer {

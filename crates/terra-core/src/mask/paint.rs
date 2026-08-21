@@ -145,6 +145,39 @@ impl PaintBuffer {
         self.samples.fill(1.0);
     }
 
+    /// Invert coverage in place (`v -> 1 - v`).
+    pub fn invert(&mut self) {
+        for v in &mut self.samples {
+            *v = (1.0 - *v).clamp(0.0, 1.0);
+        }
+    }
+
+    /// Overwrite this buffer's samples with `src` resampled (nearest) to this
+    /// buffer's resolution. Used to convert between paint buffers of different
+    /// resolutions (e.g. a transient selection into an owned layer mask).
+    pub fn copy_from_resampled(&mut self, src: &PaintBuffer) {
+        if self.width == 0
+            || self.height == 0
+            || src.width == 0
+            || src.height == 0
+            || src.samples.len() != (src.width * src.height) as usize
+        {
+            return;
+        }
+        self.samples
+            .resize((self.width * self.height) as usize, 0.0);
+        for j in 0..self.height {
+            let sj = ((j as u64 * src.height as u64) / self.height as u64) as u32;
+            let sj = sj.min(src.height - 1);
+            for i in 0..self.width {
+                let si = ((i as u64 * src.width as u64) / self.width as u64) as u32;
+                let si = si.min(src.width - 1);
+                self.samples[(j * self.width + i) as usize] =
+                    src.samples[(sj * src.width + si) as usize];
+            }
+        }
+    }
+
     pub fn flip_x(&mut self) {
         if self.samples.len() != (self.width * self.height) as usize {
             return;

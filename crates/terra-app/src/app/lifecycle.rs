@@ -461,9 +461,10 @@ impl ApplicationHandler for TerraApp {
         let mut work_pending = export_busy || project_io_busy;
 
         if self.screen == AppScreen::Editor {
-            let mask_painting = self.ui_state.editor_tool == crate::ui::EditorTool::PaintMask
+            let mask_painting = ((self.ui_state.editor_tool == crate::ui::EditorTool::PaintMask
+                && self.ui_state.paint_mask.is_some())
+                || self.ui_state.editor_tool == crate::ui::EditorTool::SelectPaint)
                 && self.mouse_pressed == Some(MouseButton::Left)
-                && self.ui_state.paint_mask.is_some()
                 && !self.modifiers_alt;
             let live_geometry =
                 self.dragging_shape_point.is_some() || self.dragging_layer_point.is_some();

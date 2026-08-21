@@ -680,6 +680,13 @@ fn apply_sculpt_tool(
         }
         actions.push(PanelAction::SetEditorTool(tool));
         return;
+    } else if tool == EditorTool::SelectPaint {
+        // Transient selection paint: disarm mask paint so the amber selection
+        // tint owns the shared overlay slot while brushing.
+        ui_state.paint_mask = None;
+        ui_state.viewport_overlays.brush_preview = true;
+        actions.push(PanelAction::SetEditorTool(tool));
+        return;
     } else if tool == EditorTool::PaintMask {
         let is_painted = |id: MaskId| {
             doc.masks

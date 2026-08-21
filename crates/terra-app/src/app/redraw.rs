@@ -35,18 +35,32 @@ impl TerraApp {
         if self.screen != AppScreen::Home {
             self.refresh_layer_thumbnails();
         }
-        if self.should_show_mask_overlay() {
-            let target = self.ui_state.paint_mask.or(self.ui_state.selected_mask);
-            if self.mask_overlay_dirty || self.last_mask_overlay_id != target {
-                self.sync_mask_overlay_to_renderer();
-                self.last_mask_overlay_id = target;
+        if self.should_show_selection_overlay() {
+            if self.selection_overlay_dirty || !self.last_selection_overlay {
+                self.sync_selection_overlay_to_renderer();
+                self.last_selection_overlay = true;
+                // The shared tint slot now holds the selection - force a
+                // re-upload of whichever overlay takes over on leave.
+                self.last_mask_overlay_id = None;
             }
         } else {
-            if self.last_mask_overlay_id.take().is_some() {
+            if std::mem::take(&mut self.last_selection_overlay) {
                 self.placement_tint_dirty = true;
+                self.mask_overlay_dirty = true;
             }
-            if self.placement_tint_dirty {
-                self.sync_placement_tint_to_renderer();
+            if self.should_show_mask_overlay() {
+                let target = self.ui_state.paint_mask.or(self.ui_state.selected_mask);
+                if self.mask_overlay_dirty || self.last_mask_overlay_id != target {
+                    self.sync_mask_overlay_to_renderer();
+                    self.last_mask_overlay_id = target;
+                }
+            } else {
+                if self.last_mask_overlay_id.take().is_some() {
+                    self.placement_tint_dirty = true;
+                }
+                if self.placement_tint_dirty {
+                    self.sync_placement_tint_to_renderer();
+                }
             }
         }
 

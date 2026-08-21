@@ -164,6 +164,9 @@ pub struct UiState {
     pub paint_mask: Option<MaskId>,
     /// Paint / erase / smooth mode for the active reusable mask.
     pub mask_paint_tool: terra_core::mask::MaskPaintTool,
+    /// True while the app owns a transient viewport selection (session-only;
+    /// mirrors `TerraApp::selection` so UI chrome can show selection actions).
+    pub selection_active: bool,
     /// When true (Shift held), layer click opens context menu.
     pub shift_context: bool,
     /// Quick Add popup open.
@@ -1033,6 +1036,8 @@ pub enum EditorTool {
     Smooth,
     /// Mask paint (upper layers).
     PaintMask,
+    /// Photoshop-style transient selection paint (session-only quick mask).
+    SelectPaint,
     /// Paint biome splat weights (WC Biome Layers).
     PaintBiome,
     /// Click terrain to append Path control points on the selected Path layer.
@@ -1145,7 +1150,11 @@ impl EditorTool {
 
     /// Raise / Lower / Smooth / Paint Mask / Paint Biome - own left-drag paint and wheel size.
     pub fn is_brush(self) -> bool {
-        self.is_sculpt() || matches!(self, EditorTool::PaintMask | EditorTool::PaintBiome)
+        self.is_sculpt()
+            || matches!(
+                self,
+                EditorTool::PaintMask | EditorTool::SelectPaint | EditorTool::PaintBiome
+            )
     }
 
     pub fn is_view(self) -> bool {

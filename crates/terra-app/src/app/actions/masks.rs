@@ -449,6 +449,132 @@ pub(crate) fn try_apply(
             }
             let _ = applied;
         }
+        PanelAction::PaintSelectionStamp {
+            u,
+            v,
+            radius,
+            strength,
+            hardness,
+            tool,
+        } => {
+            // Session-only quick mask: create the hidden asset lazily on the
+            // first stamp. Never marks the document dirty (not serialized).
+            let resolution = app.selection_resolution();
+            let asset = app.selection.get_or_insert_with(|| {
+                let mut asset = terra_core::mask::MaskAsset::new_painted(
+                    terra_core::mask::MaskId::new(),
+                    "Selection",
+                    resolution,
+                );
+                asset.display_color = TerraApp::SELECTION_TINT;
+                asset
+            });
+            if let Some(paint) = asset.paint.as_mut() {
+                paint.edit_circle(u, v, radius, strength, hardness, tool);
+            }
+            app.ui_state.selection_active = true;
+            app.selection_overlay_dirty = true;
+        }
+        PanelAction::SelectionClear => {
+            if app.selection.take().is_some() {
+                app.ui_state.status = "Selection cleared".into();
+            }
+            app.ui_state.selection_active = false;
+            app.selection_overlay_dirty = true;
+            app.placement_tint_dirty = true;
+            app.mask_overlay_dirty = true;
+        }
+        PanelAction::SelectionAll => {
+            let resolution = app.selection_resolution();
+            let asset = app.selection.get_or_insert_with(|| {
+                let mut asset = terra_core::mask::MaskAsset::new_painted(
+                    terra_core::mask::MaskId::new(),
+                    "Selection",
+                    resolution,
+                );
+                asset.display_color = TerraApp::SELECTION_TINT;
+                asset
+            });
+            if let Some(paint) = asset.paint.as_mut() {
+                paint.fill();
+            }
+            app.ui_state.selection_active = true;
+            app.selection_overlay_dirty = true;
+            app.ui_state.status = "Selected all".into();
+        }
+        PanelAction::SelectionInvert => {
+            // Inverting an empty selection selects everything (Photoshop rule).
+            let resolution = app.selection_resolution();
+            let asset = app.selection.get_or_insert_with(|| {
+                let mut asset = terra_core::mask::MaskAsset::new_painted(
+                    terra_core::mask::MaskId::new(),
+                    "Selection",
+                    resolution,
+                );
+                asset.display_color = TerraApp::SELECTION_TINT;
+                asset
+            });
+            if let Some(paint) = asset.paint.as_mut() {
+                paint.invert();
+            }
+            app.ui_state.selection_active = true;
+            app.selection_overlay_dirty = true;
+            app.ui_state.status = "Selection inverted".into();
+        }
+        PanelAction::SelectionSaveAsMask => {
+            let Some(selection) = app.selection.as_ref() else {
+                app.ui_state.status = "No selection to save".into();
+                return Ok(());
+            };
+            let n = app
+                .session
+                .document
+                .masks
+                .iter()
+                .filter(|m| m.name.starts_with("Selection Mask"))
+                .count()
+                + 1;
+            let mut asset = selection.clone();
+            asset.id = terra_core::mask::MaskId::new();
+            asset.name = format!("Selection Mask {n}");
+            asset.owner = None;
+            asset.source = terra_core::mask::MaskSource::Painted { mask_id: asset.id };
+            app.ui_state.status = format!("Saved selection as \"{}\"", asset.name);
+            // Route through the AddMask flow so the asset lands in the mask
+            // list, gets selected, and arms painting.
+            return try_apply(app, PanelAction::AddMask(asset), ctx);
+        }
+        PanelAction::MaskFromSelection { layer } => {
+            let Some(selection_paint) = app
+                .selection
+                .as_ref()
+                .and_then(|asset| asset.paint.clone())
+            else {
+                app.ui_state.status = "No selection to convert".into();
+                return Ok(());
+            };
+            if let Some(mask_id) = app.session.document.ensure_layer_paint_mask(layer) {
+                if let Some(paint) = app
+                    .session
+                    .document
+                    .masks
+                    .iter_mut()
+                    .find(|m| m.id == mask_id)
+                    .and_then(|m| m.paint.as_mut())
+                {
+                    paint.copy_from_resampled(&selection_paint);
+                }
+                app.session.document.selected = Some(layer);
+                app.ui_state.selected_mask = Some(mask_id);
+                app.ui_state.paint_mask = Some(mask_id);
+                app.ui_state.focus_created_mask(true);
+                ctx.note_mask_mutation(mask_id);
+                ctx.doc_mutated = true;
+                app.preview_dirty = true;
+                app.mask_overlay_dirty = true;
+                app.ui_state.status = "Layer mask created from selection".into();
+            }
+        }
         other => return Err(other),
     };
     let _ = result;

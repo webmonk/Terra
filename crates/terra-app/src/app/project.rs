@@ -376,6 +376,13 @@ impl TerraApp {
         self.ui_state.dirty_tile_ids.clear();
         self.pending_tile_uploads.clear();
 
+        // Transient selection is session/document-scoped - never carry it
+        // across project open/new/close.
+        self.selection = None;
+        self.ui_state.selection_active = false;
+        self.selection_overlay_dirty = false;
+        self.last_selection_overlay = false;
+
         let metrics = self.session.document.metrics;
         self.terrain_runtime
             .reconfigure(terra_core::PyramidConfig::new(

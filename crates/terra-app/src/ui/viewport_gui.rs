@@ -231,7 +231,10 @@ pub fn draw_viewport_overlays(
     }
 
     // Top-right chip column (below gizmo / progressive) - avoids gizmo overlap.
-    let chip_top = layout.chip_top;
+    let mut chip_top = layout.chip_top;
+    if ui_state.editor_tool == EditorTool::SelectPaint || ui_state.selection_active {
+        chip_top = draw_selection_chip_row(ui, ui_state, vp, chip_top, &mut actions) + GAP;
+    }
     if ui_state.preview_mode == Preview2dMode::Biome {
         if let Some((w, h, rgba)) = ui_state.preview_rgba.as_ref() {
             if *w > 1 && *h > 1 {
@@ -240,6 +243,74 @@ pub fn draw_viewport_overlays(
         }
     }
     actions
+}
+
+/// Compact Selection chip row (transient quick-mask actions). Returns max_y.
+fn draw_selection_chip_row(
+    ui: &mut GuiContext<'_>,
+    ui_state: &UiState,
+    vp: Rect,
+    top_y: f32,
+    actions: &mut Vec<crate::ui::actions::PanelAction>,
+) -> f32 {
+    use crate::ui::actions::PanelAction;
+    let font_scale = FONT_SCALE * TYPE_LABEL;
+    let pad = 8.0;
+    let gap = 4.0;
+    let btn_h = 20.0;
+    let label = "SELECTION";
+    let label_w = DrawList::text_width(label, FONT_SCALE * TYPE_CAPTION) + 8.0;
+    let buttons: [(&str, u64); 4] = [("All", 0), ("Invert", 1), ("Clear", 2), ("Save Mask", 3)];
+    let btn_ws: Vec<f32> = buttons
+        .iter()
+        .map(|(l, _)| (DrawList::text_width(l, font_scale) + 16.0).max(40.0))
+        .collect();
+    let panel_w = pad * 2.0
+        + label_w
+        + btn_ws.iter().sum::<f32>()
+        + gap * buttons.len() as f32;
+    let panel_h = btn_h + 10.0;
+    let panel = Rect::from_pos_size(
+        vp.max_x - PAD - panel_w,
+        top_y.max(vp.min_y + PAD),
+        panel_w,
+        panel_h,
+    );
+    ui.begin_overlay();
+    ui.panel_rounded(panel, style::OVERLAY_CHIP_BG, style::RADIUS_SM);
+    if ui.pointer_in(panel) {
+        ui.state.set_hot(Id::new("vp_selection_row"));
+    }
+    ui.label_at(
+        panel.min_x + pad,
+        panel.min_y + (panel_h - 10.0) * 0.5 - 1.0,
+        label,
+        style::TEXT_DIM,
+        FONT_SCALE * TYPE_CAPTION,
+    );
+    let mut x = panel.min_x + pad + label_w;
+    let has_selection = ui_state.selection_active;
+    for ((btn_label, idx), w) in buttons.iter().zip(btn_ws.iter()) {
+        let rect = Rect::from_pos_size(x, panel.min_y + 5.0, *w, btn_h);
+        if toolbar_button(
+            ui,
+            Id::new("vp_selection_btn").with(*idx),
+            rect,
+            btn_label,
+            false,
+        ) {
+            match idx {
+                0 => actions.push(PanelAction::SelectionAll),
+                1 => actions.push(PanelAction::SelectionInvert),
+                2 if has_selection => actions.push(PanelAction::SelectionClear),
+                3 if has_selection => actions.push(PanelAction::SelectionSaveAsMask),
+                _ => {}
+            }
+        }
+        x += w + gap;
+    }
+    ui.end_overlay();
+    panel.max_y
 }
 
 fn draw_biome_map_overlay(

@@ -68,6 +68,10 @@ impl TerraApp {
         if self.ui_state.editor_tool == crate::ui::EditorTool::PaintBiome {
             return self.session.document.active_biome.is_some();
         }
+        if self.ui_state.editor_tool == crate::ui::EditorTool::SelectPaint {
+            // Selection buffer is created lazily on the first stamp.
+            return true;
+        }
         self.ui_state.editor_tool == crate::ui::EditorTool::PaintMask
             && self.ui_state.paint_mask.is_some()
     }
@@ -218,6 +222,51 @@ impl TerraApp {
             self.apply_actions(actions);
             self.last_paint_uv = Some((u, v));
             self.force_draft = true;
+            return;
+        }
+
+        // Transient selection paint - routes like mask paint but targets the
+        // app-owned session selection buffer (never the document).
+        if self.ui_state.editor_tool == crate::ui::EditorTool::SelectPaint {
+            let radius = self.ui_state.sculpt_radius.max(0.02);
+            let hardness = self.ui_state.brush_falloff;
+            let tool = if self.modifiers_shift || self.ui_state.invert_brush {
+                terra_core::mask::MaskPaintTool::Erase
+            } else {
+                terra_core::mask::MaskPaintTool::Paint
+            };
+            let strength = (0.18 * self.ui_state.brush_flow).clamp(0.002, 0.18);
+            let mut actions = Vec::new();
+            if let Some((pu, pv)) = self.last_paint_uv {
+                let du = u - pu;
+                let dv = v - pv;
+                let dist = (du * du + dv * dv).sqrt();
+                let spacing = (radius * self.ui_state.brush_spacing.clamp(0.05, 1.0)).max(0.002);
+                if dist > spacing {
+                    let steps = ((dist / spacing).ceil() as u32).clamp(1, 32);
+                    for i in 1..steps {
+                        let t = i as f32 / steps as f32;
+                        actions.push(PanelAction::PaintSelectionStamp {
+                            u: pu + du * t,
+                            v: pv + dv * t,
+                            radius,
+                            strength,
+                            hardness,
+                            tool,
+                        });
+                    }
+                }
+            }
+            actions.push(PanelAction::PaintSelectionStamp {
+                u,
+                v,
+                radius,
+                strength,
+                hardness,
+                tool,
+            });
+            self.apply_actions(actions);
+            self.last_paint_uv = Some((u, v));
             return;
         }
 
@@ -528,6 +577,7 @@ impl TerraApp {
             Lower => [1.0, 0.45, 0.2, 0.95],
             Smooth => [1.0, 0.9, 0.35, 0.95],
             PaintMask => [0.95, 0.95, 1.0, 0.9],
+            SelectPaint => [1.0, 0.72, 0.2, 0.9],
             Ridge => [0.8, 0.55, 1.0, 0.95],
             Valley => [0.25, 0.85, 0.85, 0.95],
             Roughness => [0.8, 0.8, 0.35, 0.95],
@@ -604,6 +654,7 @@ impl TerraApp {
             || self.ui_state.editor_tool.is_place_point()
             || (self.ui_state.editor_tool == crate::ui::EditorTool::PaintMask
                 && self.ui_state.paint_mask.is_some())
+            || self.ui_state.editor_tool == crate::ui::EditorTool::SelectPaint
             || self.ui_state.editor_tool == crate::ui::EditorTool::PaintBiome
     }
 
@@ -718,5 +769,46 @@ impl TerraApp {
         r.upload_placement_tint(1, 1, &[0, 0, 0, 0]);
         r.set_biome_tint_strength(0.0);
         self.mask_overlay_dirty = false;
+    }
+
+    /// Viewport tint colour for the transient selection (warm amber).
+    pub(crate) const SELECTION_TINT: [f32; 3] = [1.0, 0.72, 0.2];
+
+    /// Paint-buffer resolution for a fresh selection - same derivation as
+    /// `TerrainDocument::ensure_layer_paint_mask`.
+    pub(crate) fn selection_resolution(&self) -> u32 {
+        self.session.document.preview_resolution.clamp(256, 1024)
+    }
+
+    /// True when the transient selection should tint the 3D terrain.
+    /// The selection wins while its tool is armed; otherwise it shows whenever
+    /// it exists and the mask overlay does not need the shared tint slot.
+    pub(crate) fn should_show_selection_overlay(&self) -> bool {
+        if self.selection.is_none() {
+            return false;
+        }
+        self.ui_state.editor_tool == crate::ui::EditorTool::SelectPaint
+            || !self.should_show_mask_overlay()
+    }
+
+    /// Upload the transient selection as a warm-amber translucent overlay
+    /// (shares the placement-tint GPU slot, like the mask overlay).
+    pub(crate) fn sync_selection_overlay_to_renderer(&mut self) {
+        let Some(r) = self.renderer.as_mut() else {
+            return;
+        };
+        let paint = self.selection.as_ref().and_then(|asset| asset.paint.as_ref());
+        if let Some(paint) = paint {
+            if paint.width > 0 && paint.height > 0 && !paint.samples.is_empty() {
+                let rgba = paint.bake_overlay_rgba(Self::SELECTION_TINT);
+                r.upload_placement_tint(paint.width, paint.height, &rgba);
+                r.set_biome_tint_strength(0.68);
+                self.selection_overlay_dirty = false;
+                return;
+            }
+        }
+        r.upload_placement_tint(1, 1, &[0, 0, 0, 0]);
+        r.set_biome_tint_strength(0.0);
+        self.selection_overlay_dirty = false;
     }
 }

@@ -258,6 +258,13 @@ pub struct TerraApp {
     /// Terrain rebuild deferred until Apply / editor close / explicit apply.
     /// Paint buffer snapshot at the start of a mask paint stroke (for undo).
     mask_paint_stroke_before: Option<(terra_core::mask::MaskId, Vec<f32>, u32, u32)>,
+    /// Transient viewport selection (Photoshop-style quick mask). Session-only:
+    /// never serialized into the document; converts to/from mask assets.
+    pub(crate) selection: Option<terra_core::mask::MaskAsset>,
+    /// Re-upload the selection tint overlay to the 3D viewport.
+    selection_overlay_dirty: bool,
+    /// Selection tint was uploaded last frame (detect leave to restore tint/overlay).
+    last_selection_overlay: bool,
 }
 
 impl Default for TerraApp {
@@ -365,6 +372,9 @@ impl Default for TerraApp {
             last_lighting_customized: false,
             last_mask_overlay_id: None,
             mask_paint_stroke_before: None,
+            selection: None,
+            selection_overlay_dirty: false,
+            last_selection_overlay: false,
         }
     }
 }

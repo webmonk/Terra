@@ -112,6 +112,28 @@ pub enum PanelAction {
         mask_id: MaskId,
         action: MaskEditAction,
     },
+    /// Stamp onto the transient viewport selection (session-only quick mask;
+    /// never serialized into the document).
+    PaintSelectionStamp {
+        u: f32,
+        v: f32,
+        radius: f32,
+        strength: f32,
+        hardness: f32,
+        tool: MaskPaintTool,
+    },
+    /// Drop the transient selection entirely.
+    SelectionClear,
+    /// Invert the transient selection coverage.
+    SelectionInvert,
+    /// Select everything (fill the selection with 1.0).
+    SelectionAll,
+    /// Clone the transient selection into a persistent painted mask asset.
+    SelectionSaveAsMask,
+    /// Overwrite the layer's owned paint mask with the current selection.
+    MaskFromSelection {
+        layer: LayerId,
+    },
     /// Stamp onto the sculptable Base height buffer.
     PaintSculptStamp {
         layer: LayerId,

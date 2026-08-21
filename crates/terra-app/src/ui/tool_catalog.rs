@@ -1156,6 +1156,15 @@ pub fn all_tools() -> Vec<ToolDef> {
         },
         "Hand-painted mask - creates the asset and arms paint mode.",
     ));
+    tools.push(sculpt(
+        "mask.select",
+        "Select",
+        Icon::CircleDot,
+        WorkspaceMode::Masks,
+        EditorTool::SelectPaint,
+        "Paint a transient selection (quick mask); convert it to masks from the viewport Selection chips.",
+        None,
+    ));
     tools.push(add_mask(
         "mask.combined",
         "Combined Mask",
