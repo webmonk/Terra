@@ -840,6 +840,15 @@ pub fn draw_inspector_gui(
                     if checkbox(ui, "Clip to layer below", &mut clip) {
                         actions.push(PanelAction::SetClipToBelow { id, clip });
                     }
+                    if matches!(
+                        layer.kind.category(),
+                        terra_core::layer::OperationCategory::Simulation
+                    ) {
+                        let mut progress = layer.common.sim_progress;
+                        if slider_f32(ui, "Sim progress", &mut progress, 0.0, 1.0) {
+                            actions.push(PanelAction::SetSimProgress { id, progress });
+                        }
+                    }
                     let mut cached = layer.common.cached;
                     if radio_toggle(ui, "Cache Layer", &mut cached) {
                         actions.push(PanelAction::SetCached { id, cached });

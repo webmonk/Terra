@@ -62,6 +62,11 @@ pub struct LayerCommon {
     /// sibling below it (Photoshop-style clipping mask).
     #[serde(default)]
     pub clip_to_below: bool,
+    /// Simulation progress scrub in \[0, 1\]: scales the sim's iteration
+    /// budget so its evolution can be scrubbed like a timeline. 1.0 = run
+    /// to completion (the only value meaningful for non-simulation layers).
+    #[serde(default = "default_sim_progress")]
+    pub sim_progress: f32,
     /// Optional colour tag index (0 = none, 1-7 = palette).
     #[serde(default)]
     pub color_tag: u8,
@@ -88,6 +93,10 @@ pub struct LayerCommon {
     pub develop_category: Option<crate::operation_placement::DevelopCategory>,
 }
 
+fn default_sim_progress() -> f32 {
+    1.0
+}
+
 impl LayerCommon {
     pub fn new(name: impl Into<String>) -> Self {
         Self {
@@ -100,6 +109,7 @@ impl LayerCommon {
             locked: false,
             solo: false,
             clip_to_below: false,
+            sim_progress: 1.0,
             color_tag: 0,
             cached: false,
             cache_policy: None,

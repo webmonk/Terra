@@ -620,6 +620,26 @@ impl StackEvaluator {
 
         let scaled_layer = layer_with_world_scale(layer, ctx.level_steps.world_scale);
         let mut bound_layer = apply_param_bindings(ctx, &scaled_layer);
+        // Simulation timeline scrub: scale the iteration budget through
+        // param reflection so any sim exposing an `iterations` knob can be
+        // scrubbed like a timeline (the document keeps the full budget).
+        if layer.common.sim_progress < 0.999
+            && matches!(
+                layer.kind.category(),
+                crate::layer::OperationCategory::Simulation
+            )
+        {
+            if let Some(iters) =
+                crate::layer::param_reflect::get_param_f32(&bound_layer.kind, "iterations")
+            {
+                let scaled = (iters * layer.common.sim_progress.max(0.0)).round().max(1.0);
+                let _ = crate::layer::param_reflect::set_param_f32(
+                    &mut bound_layer.kind,
+                    "iterations",
+                    scaled,
+                );
+            }
+        }
         // Scoped layers (mask or partial opacity): snapshot aux before the
         // processor so its channel writes composite under the same weight as
         // height. Copy-on-write storage makes the snapshot a refcount bump.
@@ -1308,6 +1328,49 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn sim_progress_scrubs_iteration_budget() {
+        use crate::layer::{FbmParams, ThermalErosionParams};
+
+        let build = |progress: f32| {
+            let mut stack = LayerStack::new();
+            let mut fbm = Layer::new("Fbm", LayerKind::Fbm(FbmParams::default()));
+            fbm.common.blend = BlendMode::Add;
+            stack.push(fbm);
+            let mut thermal = Layer::new(
+                "Thermal",
+                LayerKind::ThermalErosion(ThermalErosionParams::default()),
+            );
+            thermal.common.sim_progress = progress;
+            stack.push(thermal);
+            let metrics = HeightfieldMetrics::new(48, 48, 96.0, 96.0);
+            let mut eval = StackEvaluator::new();
+            let mut ctx = EvalContext::new(metrics);
+            eval.rebuild_all(&stack, &mut ctx).unwrap()
+        };
+
+        let full = build(1.0);
+        let full_again = build(1.0);
+        let early = build(0.1);
+        // Full progress is the untouched default behavior and deterministic.
+        for j in (0..48).step_by(9) {
+            for i in (0..48).step_by(9) {
+                assert_eq!(full.get(i, j), full_again.get(i, j));
+            }
+        }
+        // Scrubbed-back sim must differ from the completed one.
+        let mut diff = 0.0f32;
+        for j in 0..48 {
+            for i in 0..48 {
+                diff = diff.max((full.get(i, j) - early.get(i, j)).abs());
+            }
+        }
+        assert!(
+            diff > 1e-3,
+            "scrubbing a thermal sim to 10% must change its output (diff {diff})"
+        );
     }
 
     #[test]

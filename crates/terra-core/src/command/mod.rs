@@ -61,6 +61,12 @@ pub enum EditorCommand {
         solo: bool,
         previous: bool,
     },
+    /// Simulation progress scrub (see `LayerCommon::sim_progress`).
+    SetSimProgress {
+        id: LayerId,
+        progress: f32,
+        previous: f32,
+    },
     SetClipToBelow {
         id: LayerId,
         clip: bool,
@@ -196,6 +202,10 @@ impl CommandHistory {
                         EditorCommand::SetKind { kind: prior, .. },
                         EditorCommand::SetKind { kind, .. },
                     ) => *prior = kind,
+                    (
+                        EditorCommand::SetSimProgress { progress: prior, .. },
+                        EditorCommand::SetSimProgress { progress, .. },
+                    ) => *prior = progress,
                     (prior, replacement) => *prior = replacement,
                 }
                 // The interaction continues: the entry's chronological
@@ -335,6 +345,9 @@ impl EditorCommand {
                 "Unsoloed Layer"
             }
             .into(),
+            Self::SetSimProgress { progress, .. } => {
+                format!("Scrubbed Simulation to {:.0}%", progress * 100.0)
+            }
             Self::SetClipToBelow { clip, .. } => if *clip {
                 "Clipped to Layer Below"
             } else {
@@ -432,6 +445,12 @@ pub fn apply(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
         EditorCommand::SetSolo { id, solo, .. } => {
             if let Some(l) = stack.find_mut(*id) {
                 l.common.solo = *solo;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetSimProgress { id, progress, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.sim_progress = progress.clamp(0.0, 1.0);
             }
             Some(*id)
         }
@@ -602,6 +621,12 @@ fn invert(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
         EditorCommand::SetSolo { id, previous, .. } => {
             if let Some(l) = stack.find_mut(*id) {
                 l.common.solo = *previous;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetSimProgress { id, previous, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.sim_progress = previous.clamp(0.0, 1.0);
             }
             Some(*id)
         }

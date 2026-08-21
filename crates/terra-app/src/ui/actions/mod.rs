@@ -68,6 +68,11 @@ pub enum PanelAction {
         id: LayerId,
         kind: LayerKind,
     },
+    /// Simulation timeline scrub: scales the sim layer's iteration budget.
+    SetSimProgress {
+        id: LayerId,
+        progress: f32,
+    },
     Rename {
         id: LayerId,
         name: String,
@@ -512,5 +517,24 @@ pub enum PanelAction {
     /// Open a file dialog to pick a mesh (.obj) or height image for Stamp3d.
     BrowseMeshPath {
         layer: LayerId,
+    },
+    /// Dilate the transient selection by a fixed radius (2 texels per click).
+    SelectionGrow,
+    /// Erode the transient selection by a fixed radius (2 texels per click).
+    SelectionShrink,
+    /// Soften transient selection edges (box blur, 3-texel radius).
+    SelectionFeather,
+    /// Max-combine a slope band (degrees, baked from the current heightfield)
+    /// into the transient selection.
+    SelectionFromSlope {
+        min_deg: f32,
+        max_deg: f32,
+    },
+    /// Max-combine a height band (metres) into the transient selection.
+    /// A non-finite `min_m` means "auto": select above the terrain's median
+    /// height (median computed from a strided heightfield sample).
+    SelectionFromHeight {
+        min_m: f32,
+        max_m: f32,
     },
 }

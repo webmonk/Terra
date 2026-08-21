@@ -186,6 +186,25 @@ pub(crate) fn try_apply(
                 .push_coalesced(cmd, Some((coalesce_layer_id(id), "opacity")));
             ctx.dirty_from = Some(id);
         }
+        PanelAction::SetSimProgress { id, progress } => {
+            let previous = app
+                .session
+                .document
+                .stack
+                .find(id)
+                .map(|l| l.common.sim_progress)
+                .unwrap_or(1.0);
+            let cmd = EditorCommand::SetSimProgress {
+                id,
+                progress,
+                previous,
+            };
+            apply(&cmd, &mut app.session.document.stack);
+            app.session
+                .history
+                .push_coalesced(cmd, Some((coalesce_layer_id(id), "simprog")));
+            ctx.dirty_from = Some(id);
+        }
         PanelAction::SetBlend { id, blend } => {
             let previous = app
                 .session
