@@ -26,6 +26,9 @@ use terra_gui::{icon_button, Color, DrawList, GuiContext, Icon, Id, Rect};
 
 const LIST_INSET: f32 = 10.0;
 const INDENT_STEP: f32 = 14.0;
+/// Extra indent for clipped layers (Photoshop clipping masks) so they hang
+/// under their base layer, with a down-left corner arrow in the gap.
+const CLIP_INDENT: f32 = 14.0;
 const LEAD_COL: f32 = 20.0;
 /// Grip column drawn before the collapse chevron on biomes / groups.
 const GRIP_COL: f32 = 16.0;
@@ -164,6 +167,11 @@ pub struct LayersGuiState {
     pub thumbnails: ThumbnailCache,
     /// In-flight opacity scrub on a layer row (Photoshop-style label drag).
     pub opacity_drag: Option<OpacityDrag>,
+    /// Additional multi-selected layer rows (Ctrl / Shift click). The primary
+    /// selection stays on `doc.selected`; never contains Base/SculptBase.
+    pub multi_selection: std::collections::HashSet<LayerId>,
+    /// Anchor for Shift-click range selection (last clicked layer row).
+    pub last_clicked: Option<LayerId>,
 }
 
 /// Per-drag bookkeeping for the row opacity scrubber.
@@ -189,6 +197,8 @@ impl Default for LayersGuiState {
             known_collapse_ids: Vec::new(),
             thumbnails: ThumbnailCache::default(),
             opacity_drag: None,
+            multi_selection: std::collections::HashSet::new(),
+            last_clicked: None,
         }
     }
 }
@@ -615,6 +625,15 @@ pub fn draw_layers_gui(
                 Rect::from_pos_size(row.min_x, row.min_y + 4.0, 3.0, row.height() - 8.0),
                 style::ACCENT,
             );
+        } else if state.multi_selection.contains(&row_data.id)
+            && matches!(row_data.role, TreeRole::Layer | TreeRole::Foundation)
+        {
+            // Multi-selected (non-primary): dimmer treatment + accent edge.
+            ui.panel_rounded(row, style::ROW_HOVER, style::RADIUS_SM);
+            ui.panel(
+                Rect::from_pos_size(row.min_x, row.min_y + 4.0, 2.0, row.height() - 8.0),
+                style::ACCENT,
+            );
         } else if hovered && !is_plain_header {
             ui.panel_rounded(row, style::ROW_HOVER, style::RADIUS_SM);
         }
@@ -780,6 +799,21 @@ pub fn draw_layers_gui(
 
         // Type icon / thumbnail.
         {
+            if row_data.clipped && row_data.role == TreeRole::Layer {
+                // Clipped layer (Photoshop clipping mask): extra indent with a
+                // down-left corner arrow (two thin rects forming an L) so the
+                // layer visually hangs under its base.
+                let mid_y = row.min_y + row_h * 0.5;
+                ui.panel(
+                    Rect::from_pos_size(cursor_x + 3.0, mid_y - 7.0, 2.0, 7.0),
+                    style::TEXT_DIM,
+                );
+                ui.panel(
+                    Rect::from_pos_size(cursor_x + 3.0, mid_y - 2.0, 8.0, 2.0),
+                    style::TEXT_DIM,
+                );
+                cursor_x += CLIP_INDENT;
+            }
             let show_thumbs = state.presentation.show_thumbnails;
             let icon_size = if is_section || is_plain_header {
                 SEC_ICON_SZ + 2.0
@@ -1292,11 +1326,16 @@ pub fn draw_layers_gui(
             && ui.input.primary_released
             && ui.state.is_active(name_id)
             && hit_hov;
+        // Multi-selection modifiers apply to layer rows only (v1); Base /
+        // SculptBase rows never join the multi-selection.
+        let is_multi_role = matches!(row_data.role, TreeRole::Layer | TreeRole::Foundation);
+        let multi_ctrl = ui.input.ctrl_down && is_multi_role && !row_data.is_base;
+        let multi_shift = ui.input.shift_down && is_multi_role && !row_data.is_base;
         if name_clicked {
             if row_name_toggles_collapse(row_data.role) {
                 toggle_row_collapse(state, row_data.role, row_data.id);
                 state.add_menu_open = false;
-            } else if can_rename && selected {
+            } else if can_rename && selected && !multi_ctrl && !multi_shift {
                 // Second click on the selected name -> inline rename.
                 begin_hierarchy_rename(ui, state, row_data.id, &row_data.name);
                 state.add_menu_open = false;
@@ -1304,6 +1343,10 @@ pub fn draw_layers_gui(
             } else {
                 if state.rename_id.is_some() {
                     commit_hierarchy_rename(ui, state, &mut actions);
+                }
+                if !multi_ctrl && !multi_shift {
+                    // Plain click: collapse back to a single selection.
+                    state.multi_selection.clear();
                 }
                 match row_data.role {
                     TreeRole::SectionLabel => {}
@@ -1329,8 +1372,55 @@ pub fn draw_layers_gui(
                         actions.push(PanelAction::SetActiveBiome(row_data.id));
                     }
                     _ => {
+                        if multi_ctrl {
+                            // Ctrl+click: toggle this row in the multi-selection.
+                            if !state.multi_selection.remove(&row_data.id) {
+                                if state.multi_selection.is_empty() {
+                                    // Seed with the current primary selection so
+                                    // the first Ctrl+click yields a pair.
+                                    if let Some(sel) = doc.selected {
+                                        if sel != row_data.id
+                                            && doc
+                                                .stack
+                                                .find(sel)
+                                                .is_some_and(|l| !l.kind.is_sculpt_base())
+                                        {
+                                            state.multi_selection.insert(sel);
+                                        }
+                                    }
+                                }
+                                state.multi_selection.insert(row_data.id);
+                            }
+                        } else if multi_shift {
+                            // Shift+click: contiguous range of visible layer
+                            // rows between the last click and this row.
+                            let anchor = state.last_clicked.and_then(|a| {
+                                rows.iter().position(|r| {
+                                    r.id == a
+                                        && matches!(
+                                            r.role,
+                                            TreeRole::Layer | TreeRole::Foundation
+                                        )
+                                })
+                            });
+                            let here = rows
+                                .iter()
+                                .position(|r| r.id == row_data.id && r.role == row_data.role);
+                            state.multi_selection.clear();
+                            if let (Some(a), Some(b)) = (anchor, here) {
+                                let (lo, hi) = if a <= b { (a, b) } else { (b, a) };
+                                for r in &rows[lo..=hi] {
+                                    if r.role == TreeRole::Layer && !r.is_base {
+                                        state.multi_selection.insert(r.id);
+                                    }
+                                }
+                            }
+                        }
                         actions.push(PanelAction::Select(row_data.id));
                     }
+                }
+                if is_multi_role {
+                    state.last_clicked = Some(row_data.id);
                 }
                 state.add_menu_open = false;
                 state.context_menu = None;
@@ -1763,6 +1853,7 @@ fn blank_row(
         workspace_badge: String::new(),
         select_as: None,
         list_reversed: false,
+        clipped: false,
     }
 }
 
@@ -2334,6 +2425,7 @@ fn layer_row(layer: &terra_core::layer::Layer, idx: usize, depth: u8) -> LayerRo
         workspace_badge: String::new(),
         select_as: None,
         list_reversed: false,
+        clipped: layer.common.clip_to_below && !layer.kind.is_sculpt_base(),
     }
 }
 
@@ -2404,6 +2496,7 @@ fn group_row(
         workspace_badge: String::new(),
         select_as: None,
         list_reversed: false,
+        clipped: false,
     }
 }
 
@@ -2506,6 +2599,8 @@ struct LayerRow {
     select_as: Option<LayerId>,
     /// Folder children render reverse of document order (Shape / Mask / Sims).
     list_reversed: bool,
+    /// Photoshop-style clipping: layer clips to the layer below it.
+    clipped: bool,
 }
 
 fn resolve_biome_swatch_color(
@@ -2566,26 +2661,43 @@ fn draw_layer_context_menu(
         })
         .unwrap_or_default();
 
-    let mut items: Vec<(&str, &str)> = Vec::new();
+    // Batch operations apply when the right-clicked row is part of a
+    // multi-selection with more than one member.
+    let batch_ids: Vec<LayerId> =
+        if state.multi_selection.len() > 1 && state.multi_selection.contains(&id) {
+            state.multi_selection.iter().copied().collect()
+        } else {
+            Vec::new()
+        };
+    let clip_now = layer.map(|l| l.common.clip_to_below).unwrap_or(false);
+
+    let mut items: Vec<(&str, String)> = Vec::new();
     if can_rename {
-        items.push(("rename", "Rename"));
+        items.push(("rename", "Rename".into()));
     }
     if layer.is_some() || is_biome {
-        items.extend_from_slice(&[
+        for (k, l) in [
             ("dup", "Duplicate"),
             ("del", "Delete"),
             ("group", "New Group"),
             ("ungroup", "Move to Root"),
             ("enable", "Enable / Disable"),
-        ]);
+        ] {
+            items.push((k, l.into()));
+        }
     }
     if layer.is_some() {
-        items.extend_from_slice(&[
+        for (k, l) in [
             ("solo", "Solo"),
             ("lock", "Lock"),
             ("seed", "Randomize Seed"),
             ("cache", "Toggle Cache"),
-        ]);
+        ] {
+            items.push((k, l.into()));
+        }
+    }
+    if layer.is_some() && !is_base {
+        items.push(("clip", "Clip to Layer Below".into()));
     }
     if (layer.is_some() && !is_base) || is_biome {
         let has_owned_mask = doc
@@ -2595,11 +2707,17 @@ fn draw_layer_context_menu(
         items.push((
             "paintmask",
             if has_owned_mask {
-                "Paint Layer Mask"
+                "Paint Layer Mask".into()
             } else {
-                "Add Layer Mask"
+                "Add Layer Mask".into()
             },
         ));
+    }
+    if !batch_ids.is_empty() {
+        let n = batch_ids.len();
+        items.push(("batch_del", format!("Delete {n} Layers")));
+        items.push(("batch_enable", format!("Enable / Disable {n} Layers")));
+        items.push(("batch_group", format!("Group {n} Layers")));
     }
     if is_mask
         || group.is_some_and(|g| {
@@ -2612,10 +2730,10 @@ fn draw_layer_context_menu(
         })
     {
         if !items.iter().any(|(k, _)| *k == "del") {
-            items.push(("del", "Delete"));
+            items.push(("del", "Delete".into()));
         }
     }
-    items.push(("close", "Close"));
+    items.push(("close", "Close".into()));
 
     let w = 200.0;
     let h = items.len() as f32 * 24.0 + 8.0;
@@ -2640,7 +2758,7 @@ fn draw_layer_context_menu(
         ui.label_at(
             row.min_x + 8.0,
             row.min_y + 4.0,
-            label,
+            label.as_str(),
             if disabled {
                 style::TEXT_DISABLED
             } else {
@@ -2648,6 +2766,16 @@ fn draw_layer_context_menu(
             },
             FONT_SCALE * TYPE_BODY,
         );
+        if *key == "clip" && clip_now {
+            // Checkmark on the right when clipping is active.
+            ui.icon_at(
+                row.max_x - 18.0,
+                row.min_y + 4.0,
+                Icon::Check,
+                style::ACCENT,
+                14.0,
+            );
+        }
         if hovered && ui.input.primary_released {
             match *key {
                 "rename" => {
@@ -2688,6 +2816,16 @@ fn draw_layer_context_menu(
                         });
                     }
                 }
+                "clip" => actions.push(PanelAction::SetClipToBelow {
+                    id,
+                    clip: !clip_now,
+                }),
+                "batch_del" => actions.push(PanelAction::BatchRemove(batch_ids.clone())),
+                "batch_enable" => actions.push(PanelAction::BatchSetEnabled {
+                    ids: batch_ids.clone(),
+                    enabled: !layer.map(|l| l.common.enabled).unwrap_or(true),
+                }),
+                "batch_group" => actions.push(PanelAction::BatchGroup(batch_ids.clone())),
                 "paintmask" => actions.push(PanelAction::PaintLayerMask { id }),
                 "seed" => actions.push(PanelAction::RandomizeSeed { id }),
                 "cache" => {

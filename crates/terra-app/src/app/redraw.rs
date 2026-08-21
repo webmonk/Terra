@@ -428,6 +428,8 @@ impl TerraApp {
                     backspace_pressed,
                     escape_pressed,
                     enter_pressed,
+                    ctrl_down: self.modifiers_ctrl,
+                    shift_down: self.modifiers_shift,
                     ..Default::default()
                 },
                 &mut self.gui_state,

@@ -263,6 +263,15 @@ pub enum PanelAction {
         id: LayerId,
         clip: bool,
     },
+    /// Remove every listed layer (multi-selection batch delete).
+    BatchRemove(Vec<LayerId>),
+    /// Enable / disable every listed layer (multi-selection batch toggle).
+    BatchSetEnabled {
+        ids: Vec<LayerId>,
+        enabled: bool,
+    },
+    /// Move the listed layers into a freshly created group.
+    BatchGroup(Vec<LayerId>),
     SetColorTag {
         id: LayerId,
         tag: u8,

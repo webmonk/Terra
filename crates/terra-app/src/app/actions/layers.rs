@@ -542,6 +542,126 @@ pub(crate) fn try_apply(
             app.session.history.push_executed(cmd);
             ctx.dirty_from = Some(id);
         }
+        PanelAction::BatchRemove(ids) => {
+            // Mirrors the single RemoveSelected path per id. Undo granularity:
+            // one history entry per removed layer (undo steps back one by one).
+            let mut removed_any = false;
+            for id in ids {
+                if app
+                    .session
+                    .document
+                    .stack
+                    .find(id)
+                    .is_some_and(|l| l.kind.is_sculpt_base())
+                {
+                    continue;
+                }
+                let loc = app.session.document.stack.sibling_location(id);
+                if let Some(node) = app.session.document.stack.remove(id) {
+                    let (parent, index) = loc.unwrap_or((None, 0));
+                    app.session.history.push_executed(EditorCommand::RemoveLayer {
+                        id,
+                        node,
+                        index,
+                        parent,
+                    });
+                    removed_any = true;
+                }
+            }
+            app.layers_gui.multi_selection.clear();
+            app.layers_gui.last_clicked = None;
+            if removed_any {
+                app.session.document.selected =
+                    app.session.document.stack.layer_ids().last().copied();
+                app.mark_all_layers_dirty();
+                app.request_rebuild();
+                ctx.doc_mutated = true;
+            }
+        }
+        PanelAction::BatchSetEnabled { ids, enabled } => {
+            let mut changed = false;
+            for id in ids {
+                let previous = app
+                    .session
+                    .document
+                    .stack
+                    .find(id)
+                    .map(|l| l.common.enabled)
+                    .or_else(|| app.session.document.stack.find_group(id).map(|g| g.enabled));
+                let Some(previous) = previous else { continue };
+                let cmd = EditorCommand::SetEnabled {
+                    id,
+                    enabled,
+                    previous,
+                };
+                apply(&cmd, &mut app.session.document.stack);
+                app.session.history.push_executed(cmd);
+                changed = true;
+            }
+            app.layers_gui.multi_selection.clear();
+            if changed {
+                app.mark_all_layers_dirty();
+                app.request_rebuild();
+                ctx.doc_mutated = true;
+            }
+        }
+        PanelAction::BatchGroup(ids) => {
+            // New root-level group, then move each layer into it in document
+            // (stack) order so their relative order is preserved.
+            let order = app.session.document.stack.layer_ids();
+            let mut ids: Vec<terra_core::layer::LayerId> = ids
+                .into_iter()
+                .filter(|id| {
+                    app.session
+                        .document
+                        .stack
+                        .find(*id)
+                        .is_some_and(|l| !l.kind.is_sculpt_base())
+                })
+                .collect();
+            ids.sort_by_key(|id| order.iter().position(|o| o == id).unwrap_or(usize::MAX));
+            ids.dedup();
+            if ids.len() > 1 {
+                let group_id = terra_core::layer::LayerId::new();
+                let index = app.session.document.stack.nodes.len();
+                let cmd = EditorCommand::AddGroup {
+                    name: "Group".into(),
+                    id: group_id,
+                    index,
+                };
+                apply(&cmd, &mut app.session.document.stack);
+                app.session.history.push_executed(cmd);
+                for (i, id) in ids.iter().copied().enumerate() {
+                    let from = app.session.document.stack.sibling_location(id);
+                    if app
+                        .session
+                        .document
+                        .stack
+                        .move_node_to(id, Some(group_id), i)
+                    {
+                        if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
+                            (from, app.session.document.stack.sibling_location(id))
+                        {
+                            app.session
+                                .history
+                                .push_executed(EditorCommand::MoveNode {
+                                    id,
+                                    from_parent,
+                                    from_index,
+                                    to_parent,
+                                    to_index,
+                                });
+                        }
+                    }
+                }
+                app.session.document.selected = Some(group_id);
+                app.mark_all_layers_dirty();
+                app.request_rebuild();
+                ctx.doc_mutated = true;
+            }
+            app.layers_gui.multi_selection.clear();
+            app.layers_gui.last_clicked = None;
+        }
         PanelAction::SetColorTag { id, tag } => {
             let previous = app
                 .session

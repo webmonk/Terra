@@ -45,6 +45,10 @@ pub struct GuiInput {
     pub escape_pressed: bool,
     /// Enter / Return pressed since the previous frame.
     pub enter_pressed: bool,
+    /// Ctrl (Cmd on macOS reported separately by the host) held this frame.
+    pub ctrl_down: bool,
+    /// Shift held this frame.
+    pub shift_down: bool,
 }
 
 impl Default for GuiInput {
@@ -62,6 +66,8 @@ impl Default for GuiInput {
             backspace_pressed: false,
             escape_pressed: false,
             enter_pressed: false,
+            ctrl_down: false,
+            shift_down: false,
         }
     }
 }
