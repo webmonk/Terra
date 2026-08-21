@@ -68,6 +68,11 @@ pub struct EvalContext {
     /// Stable outputs published by layers already evaluated below the current layer.
     pub published_outputs: HashMap<crate::layer::OutputId, MaskField>,
     pub cancelled: bool,
+    /// Aux keys actually rewritten by layers computed in the current pass,
+    /// detected by copy-on-write storage identity. Cache-hit restores skip
+    /// these keys so a clean layer's snapshot can't clobber fresh values
+    /// produced below it.
+    pub(crate) pass_changed: HashSet<String>,
     /// Shared worker generation; a mismatch cancels at the next layer boundary.
     pub(crate) cancellation_generation: Option<(Arc<AtomicU64>, u64)>,
     pub quality: PreviewQuality,
@@ -86,6 +91,7 @@ impl EvalContext {
             aux: HashMap::new(),
             published_outputs: HashMap::new(),
             cancelled: false,
+            pass_changed: HashSet::new(),
             quality: PreviewQuality::Full,
             cancellation_generation: None,
             layer_timings: Vec::new(),
@@ -159,16 +165,42 @@ impl StackEvaluator {
         }
     }
 
+    /// Field-aware suffix invalidation: dirty the edited layer, then only
+    /// the layers above it that the edit can actually reach - an affected
+    /// height entering them, an overlap between their field contract
+    /// (reads or writes) and the channels changed below, or a mask/binding
+    /// that may read arbitrary channels. A vegetation tweak under a blur no
+    /// longer re-runs the blur.
     pub fn mark_dirty_from(&mut self, stack: &LayerStack, id: LayerId) {
-        let ids = stack.layer_ids();
-        if let Some(start) = ids.iter().position(|&x| x == id) {
-            for &dep in &ids[start..] {
-                self.cache.mark_dirty(dep);
+        let layers = stack.flatten_layers();
+        let Some(start) = layers.iter().position(|l| l.id() == id) else {
+            self.mark_all_dirty(stack);
+            return;
+        };
+        let mut changed: HashSet<String> = HashSet::new();
+        let mut height_changed = false;
+        for (i, layer) in layers.iter().enumerate().skip(start) {
+            let affected = i == start
+                || height_changed
+                || layer_contract_touches(layer, &changed)
+                || (!changed.is_empty()
+                    && (!layer.common.masks.is_empty()
+                        || !layer.common.param_bindings.is_empty()));
+            if !affected {
+                continue;
             }
-        } else {
-            // Unknown id: dirty everything
-            for &dep in &ids {
-                self.cache.mark_dirty(dep);
+            self.cache.mark_dirty(layer.id());
+            for field in layer
+                .kind
+                .modified_fields()
+                .into_iter()
+                .chain(layer.kind.produced_fields())
+            {
+                if field == crate::fields::FieldId::Height {
+                    height_changed = true;
+                } else {
+                    changed.insert(field.cache_key());
+                }
             }
         }
     }
@@ -231,6 +263,7 @@ impl StackEvaluator {
     ) -> Result<Heightfield, EvalError> {
         profiling::scope!("rebuild_all");
         self.cache.clear();
+        ctx.pass_changed.clear();
         let seed = Heightfield::zeros(ctx.metrics);
         self.evaluate_nodes(&stack.nodes, ctx, &seed)
     }
@@ -245,6 +278,7 @@ impl StackEvaluator {
         ctx: &mut EvalContext,
     ) -> Result<Heightfield, EvalError> {
         profiling::scope!("rebuild_incremental");
+        ctx.pass_changed.clear();
         if stack.requires_tree_evaluation() {
             let seed = Heightfield::zeros(ctx.metrics);
             return self.evaluate_nodes(&stack.nodes, ctx, &seed);
@@ -555,10 +589,21 @@ impl StackEvaluator {
         // export, and cold evaluation instead of depending on a previous frame.
         refresh_point_of_use_masks(ctx, input);
 
-        // Any clean cached checkpoint reuses height + aux without re-invoking the processor.
+        // Any clean cached checkpoint reuses height + aux without re-invoking
+        // the processor. Keys rewritten by layers computed earlier this pass
+        // are NOT restored - the snapshot predates those writes, and this
+        // clean layer was judged unaffected by them.
         if !self.cache.is_dirty(layer.id()) {
             if let Some(cached) = self.cache.get_or_load(layer.id(), ctx.metrics) {
-                ctx.aux_maps.extend_hashmap(&cached.aux);
+                if ctx.pass_changed.is_empty() {
+                    ctx.aux_maps.extend_hashmap(&cached.aux);
+                } else {
+                    for (key, field) in &cached.aux {
+                        if !ctx.pass_changed.contains(key) {
+                            ctx.aux_maps.insert(key.clone(), field.clone());
+                        }
+                    }
+                }
                 if cached.strata.is_some() {
                     ctx.aux_maps.strata = cached.strata.clone();
                 }
@@ -582,6 +627,10 @@ impl StackEvaluator {
             || layer.common.opacity < 0.999
             || layer.common.clip_to_below;
         let aux_before = scoped.then(|| ctx.aux_maps.clone());
+        // CoW identity snapshot: after the processor runs, any key whose
+        // buffer pointer changed was rewritten this pass (refcount bumps
+        // only - no data copies).
+        let pass_before = ctx.aux_maps.to_hashmap();
         let generated = self.registry.evaluate(ctx, input, &bound_layer)?;
         // Avoid unused-mut warning if future passes mutate further.
         let _ = &mut bound_layer;
@@ -600,6 +649,14 @@ impl StackEvaluator {
         }
         if let Some(before) = aux_before {
             scope_aux_writes(ctx, &before, &mask, layer.common.opacity);
+        }
+        for (key, field) in ctx.aux_maps.to_hashmap() {
+            if pass_before
+                .get(&key)
+                .map_or(true, |b| !b.shares_storage(&field))
+            {
+                ctx.pass_changed.insert(key);
+            }
         }
         let out = mix_heightfields(
             input,
@@ -922,6 +979,7 @@ fn merge_aux_masked(
     use crate::layer::blend_weights;
     let child_map = child.to_hashmap();
     for (key, child_field) in child_map {
+        ctx.pass_changed.insert(key.clone());
         let mut out = ctx
             .aux_maps
             .get(&key)
@@ -1072,6 +1130,23 @@ fn scope_aux_writes(
     }
 }
 
+/// True when the layer's static field contract (reads or writes) overlaps
+/// any changed non-height channel. Height is handled separately - every
+/// layer transforms the height entering it.
+fn layer_contract_touches(layer: &Layer, changed: &HashSet<String>) -> bool {
+    if changed.is_empty() {
+        return false;
+    }
+    layer
+        .kind
+        .required_fields()
+        .into_iter()
+        .chain(layer.kind.optional_fields())
+        .chain(layer.kind.modified_fields())
+        .chain(layer.kind.produced_fields())
+        .any(|f| f != crate::fields::FieldId::Height && changed.contains(&f.cache_key()))
+}
+
 /// Helper used by tests to count processor invocations.
 pub fn dirty_suffix_ids(stack: &LayerStack, from: LayerId) -> HashSet<LayerId> {
     let ids = stack.layer_ids();
@@ -1135,6 +1210,82 @@ mod tests {
         assert!(eval.cache.is_dirty(id_c));
         let suffix = dirty_suffix_ids(&stack, id_b);
         assert!(suffix.contains(&id_b) && suffix.contains(&id_c) && !suffix.contains(&id_a));
+    }
+
+    #[test]
+    fn aux_only_edit_skips_unaffected_layers_above() {
+        use crate::layer::{BlurParams, FbmParams, VegetationParams};
+
+        let mut stack = LayerStack::new();
+        let mut fbm = Layer::new("Fbm", LayerKind::Fbm(FbmParams::default()));
+        fbm.common.blend = BlendMode::Add;
+        stack.push(fbm);
+        let veg = Layer::new("Veg", LayerKind::Vegetation(VegetationParams::default()));
+        let veg_id = veg.id();
+        stack.push(veg);
+        let blur = Layer::new("Blur", LayerKind::Blur(BlurParams::default()));
+        let blur_id = blur.id();
+        stack.push(blur);
+
+        let metrics = HeightfieldMetrics::new(48, 48, 96.0, 96.0);
+        let mut eval = StackEvaluator::new();
+        let mut ctx = EvalContext::new(metrics);
+        let first = eval.rebuild_all(&stack, &mut ctx).unwrap();
+
+        // Vegetation edit: density change. Blur neither reads nor writes
+        // vegetation and sees an unchanged height, so it must stay clean.
+        if let Some(l) = stack.find_mut(veg_id) {
+            l.kind = LayerKind::Vegetation(VegetationParams {
+                density: 0.9,
+                ..VegetationParams::default()
+            });
+        }
+        eval.mark_dirty_from(&stack, veg_id);
+        assert!(eval.cache.is_dirty(veg_id));
+        assert!(
+            !eval.cache.is_dirty(blur_id),
+            "height-passthrough edit must not dirty an unrelated layer above"
+        );
+
+        ctx.layer_timings.clear();
+        let second = eval.rebuild_incremental(&stack, &mut ctx).unwrap();
+        let status_of = |id: LayerId| {
+            ctx.layer_timings
+                .iter()
+                .find(|t| t.layer == id)
+                .map(|t| t.status)
+        };
+        assert_eq!(status_of(veg_id), Some(LayerEvalStatus::Computed));
+        assert_eq!(
+            status_of(blur_id),
+            Some(LayerEvalStatus::CacheHit),
+            "blur must reuse its cache across a vegetation-only edit"
+        );
+        // Vegetation doesn't touch height: output identical.
+        for j in (0..48).step_by(11) {
+            for i in (0..48).step_by(11) {
+                assert_eq!(first.get(i, j), second.get(i, j));
+            }
+        }
+
+        // Clobber protection: the blur cache hit must not restore stale
+        // vegetation over the freshly computed channel. Compare against a
+        // cold evaluation of the edited stack.
+        let mut ref_eval = StackEvaluator::new();
+        let mut ref_ctx = EvalContext::new(metrics);
+        ref_eval.rebuild_all(&stack, &mut ref_ctx).unwrap();
+        let (fresh, incremental) = (
+            ref_ctx.aux_maps.get("vegetation").expect("veg aux"),
+            ctx.aux_maps.get("vegetation").expect("veg aux"),
+        );
+        for j in (0..48).step_by(7) {
+            for i in (0..48).step_by(7) {
+                assert!(
+                    (fresh.get(i, j) - incremental.get(i, j)).abs() < 1e-5,
+                    "stale vegetation restored at ({i},{j})"
+                );
+            }
+        }
     }
 
     #[test]
