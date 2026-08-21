@@ -307,7 +307,6 @@ impl TerraApp {
         path: Option<PathBuf>,
         dirty: bool,
     ) {
-        use terra_core::command::CommandHistory;
         document.normalize_wc_tree();
 
         // Cancel any in-flight eval for the previous document before swapping state.
@@ -322,7 +321,7 @@ impl TerraApp {
         let ocean = Some(document.blueprint.sea_level).filter(|v| v.is_finite());
         let mut session = EditorSession::new();
         session.document = document;
-        session.history = CommandHistory::default();
+        session.reset_history();
         session.dirty_eval = true;
         self.session = session;
 
@@ -409,7 +408,6 @@ impl TerraApp {
     }
 
     pub(crate) fn close_project(&mut self) {
-        use terra_core::command::CommandHistory;
         // Cancel in-flight eval work for the closed document.
         self.eval_token = self.eval_token.wrapping_add(1);
         self.eval_worker.set_token(self.eval_token);
@@ -417,7 +415,7 @@ impl TerraApp {
         self.worker_refine_pending = false;
         self.force_draft = false;
         self.session = EditorSession::new();
-        self.session.history = CommandHistory::default();
+        self.session.reset_history();
         self.project_path = None;
         self.document_dirty = false;
         self.reset_runtime_for_document((1000.0, 1000.0), None);
@@ -574,7 +572,7 @@ impl TerraApp {
                         .cloned()
                         .map(terra_core::layer::StackNode::Layer)
                     {
-                        self.session.history.push_executed(
+                        self.session.push_command(
                             terra_core::command::EditorCommand::InsertNode {
                                 node,
                                 parent,
@@ -758,7 +756,7 @@ impl TerraApp {
                 }
             }
             Some(UndoDomain::Stack) | None => {
-                if let Some(id) = self.session.history.undo(&mut self.session.document.stack) {
+                if let Some(id) = self.session.undo_stack_command() {
                     self.mark_dirty_from(id);
                 } else {
                     self.mark_all_layers_dirty();
@@ -797,7 +795,7 @@ impl TerraApp {
                 }
             }
             Some(UndoDomain::Stack) | Some(UndoDomain::BiomePaint) | None => {
-                if let Some(id) = self.session.history.redo(&mut self.session.document.stack) {
+                if let Some(id) = self.session.redo_stack_command() {
                     self.mark_dirty_from(id);
                 } else {
                     self.mark_all_layers_dirty();

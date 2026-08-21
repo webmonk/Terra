@@ -231,9 +231,7 @@ impl TerrainDocument {
             ops: Vec::new(),
             paint: Some({
                 let mut p = PaintBuffer::new(256, 256);
-                for s in &mut p.samples {
-                    *s = 1.0;
-                }
+                p.fill();
                 p
             }),
             display_color: crate::mask::default_mask_display_color(),
@@ -643,11 +641,7 @@ impl TerrainDocument {
         let res = self.preview_resolution.clamp(64, 1024);
         let paint = if self.sparse_paint.has_channel(key) {
             let samples = self.sparse_paint.bake_uv(key, res, res, world_x, world_z);
-            crate::mask::PaintBuffer {
-                width: res,
-                height: res,
-                samples,
-            }
+            crate::mask::PaintBuffer::from_samples(res, res, samples)
         } else {
             let Some(splat) = self.selected_placement_layer() else {
                 return;

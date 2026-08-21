@@ -685,9 +685,7 @@ fn create_sculpt_layer(
             } else {
                 session.document.add_shape_layer(layer.clone());
             }
-            session
-                .history
-                .push_executed(EditorCommand::AddLayer { layer, index });
+            session.push_command(EditorCommand::AddLayer { layer, index });
             session.document.selected = Some(id);
         }
         CreateOwner::Biome(_) | CreateOwner::Unspecified => {
@@ -722,7 +720,7 @@ fn create_biome(
     } else {
         session.document.stack.push_group(biome);
     }
-    session.history.push_executed(EditorCommand::AddGroup {
+    session.push_command(EditorCommand::AddGroup {
         name: name.into(),
         id,
         index: 0,
@@ -755,7 +753,7 @@ fn create_biome_placement(
     session.document.selected_biome_layer = Some(id);
     session.document.active_biome = Some(biome_id);
     session.document.selected = Some(biome_id);
-    session.history.push_executed(EditorCommand::Annotate {
+    session.push_command(EditorCommand::Annotate {
         label: format!("Added biome placement {name}"),
     });
     Ok((
@@ -812,9 +810,7 @@ fn create_develop(
             biome.children.push(StackNode::Layer(layer.clone()));
         }
     }
-    session
-        .history
-        .push_executed(EditorCommand::AddLayer { layer, index: 0 });
+    session.push_command(EditorCommand::AddLayer { layer, index: 0 });
     session.document.selected = Some(id);
     session.document.active_biome = Some(biome_id);
     Ok((
@@ -882,7 +878,7 @@ pub fn execute_create_shape(
     }
     let id = shape.id;
     session.document.shapes.push(shape);
-    session.history.push_executed(EditorCommand::Annotate {
+    session.push_command(EditorCommand::Annotate {
         label: "Added shape".into(),
     });
     CreatedEntity::Shape(id)

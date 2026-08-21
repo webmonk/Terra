@@ -378,7 +378,35 @@ impl StackEvaluator {
         while first_dirty > 0 && layers[first_dirty].common.clip_to_below {
             first_dirty -= 1;
         }
+        // The skipped prefix still owns state the suffix reads: named
+        // outputs its layers published, and the aux entering `first_dirty`.
+        // Replaying that from the cache costs a few map inserts and no
+        // processor work; without it, masks bound to a prefix layer's output
+        // resolve to nothing and point-of-use mask bakes see the previous
+        // pass's top-of-stack aux instead of the aux at this point.
+        if first_dirty > 0 {
+            if let Some(cached) = self
+                .cache
+                .get_or_load(layers[first_dirty - 1].id(), ctx.metrics)
+            {
+                let (aux, strata) = (cached.aux.clone(), cached.strata.clone());
+                ctx.aux_maps.extend_hashmap(&aux);
+                if strata.is_some() {
+                    ctx.aux_maps.strata = strata;
+                }
+                ctx.sync_aux_hashmap();
+            }
+        }
         for layer in &layers[..first_dirty] {
+            if !layer.common.outputs.is_empty() {
+                if let Some(height) = self
+                    .cache
+                    .get_or_load(layer.id(), ctx.metrics)
+                    .map(|c| c.height.clone())
+                {
+                    publish_layer_outputs(ctx, layer, &height);
+                }
+            }
             record_reused_layer(ctx, layer);
         }
 
@@ -433,7 +461,12 @@ impl StackEvaluator {
         for node in nodes {
             ctx.check_cancelled()?;
             if soloing && !node_contains_solo(node) {
-                clip_base = None;
+                // Only a node that could have supplied the base invalidates
+                // it: a skipped *clipped* layer never contributed one, so
+                // clearing here would unclip its soloed clipped siblings.
+                if !matches!(node, StackNode::Layer(l) if l.common.clip_to_below) {
+                    clip_base = None;
+                }
                 continue;
             }
             match node {

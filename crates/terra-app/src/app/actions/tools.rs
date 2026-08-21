@@ -32,7 +32,7 @@ pub(crate) fn try_apply(
                 previous_masks,
             };
             apply(&cmd, &mut app.session.document.stack);
-            app.session.history.push_executed(cmd);
+            app.session.push_command(cmd);
             app.mark_dirty_from_stage(id);
             ctx.dirty_from = Some(id);
             ctx.doc_mutated = true;
@@ -80,9 +80,7 @@ pub(crate) fn try_apply(
                 previous_masks,
             };
             apply(&cmd, &mut app.session.document.stack);
-            app.session
-                .history
-                .push_coalesced(cmd, Some((coalesce_layer_id(id), "apply_where")));
+            app.session.push_command_coalesced(cmd, Some((coalesce_layer_id(id), "apply_where")));
             app.mark_dirty_from_stage(id);
             ctx.dirty_from = Some(id);
             ctx.doc_mutated = true;
@@ -124,7 +122,7 @@ pub(crate) fn try_apply(
                         previous,
                     };
                     apply(&cmd, &mut app.session.document.stack);
-                    app.session.history.push_executed(cmd);
+                    app.session.push_command(cmd);
                     ctx.dirty_from = Some(layer);
                     ctx.doc_mutated = true;
                     app.ui_state.status = "Heightmap path updated".into();
@@ -167,7 +165,7 @@ pub(crate) fn try_apply(
                         previous,
                     };
                     apply(&cmd, &mut app.session.document.stack);
-                    app.session.history.push_executed(cmd);
+                    app.session.push_command(cmd);
                     ctx.dirty_from = Some(layer);
                     ctx.doc_mutated = true;
                     app.ui_state.status = "Mesh path updated".into();

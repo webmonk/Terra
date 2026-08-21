@@ -36,7 +36,14 @@ impl MaskPaintTool {
 pub struct PaintBuffer {
     pub width: u32,
     pub height: u32,
-    pub samples: Vec<f32>,
+    /// Private so every mutation goes through [`PaintBuffer::samples_mut`]
+    /// and bumps [`PaintBuffer::revision`]. UI caches key off that revision;
+    /// a content hash cannot be sampled cheaply without risking a miss.
+    samples: Vec<f32>,
+    /// Bumped on every mutation. Not persisted: it identifies a buffer's
+    /// state within one session, which is all a cache key needs.
+    #[serde(skip)]
+    revision: u64,
 }
 
 impl PaintBuffer {
@@ -45,11 +52,13 @@ impl PaintBuffer {
             width,
             height,
             samples: vec![0.0; (width * height) as usize],
+            revision: 0,
         }
     }
 
     /// Backwards-compatible paint/erase stamp.
     pub fn stamp_circle(&mut self, u: f32, v: f32, radius_uv: f32, strength: f32, erase: bool) {
+        self.touch();
         self.edit_circle(
             u,
             v,
@@ -76,6 +85,7 @@ impl PaintBuffer {
         hardness: f32,
         tool: MaskPaintTool,
     ) {
+        self.touch();
         if matches!(tool, MaskPaintTool::FloodFill) {
             // Flood fill is a one-shot op via `flood_fill`, not a circular stamp.
             self.flood_fill(u, v, strength.clamp(0.0, 1.0), 0.08);
@@ -96,7 +106,7 @@ impl PaintBuffer {
         let max_j = ((v + radius) * self.height as f32)
             .ceil()
             .min(self.height as f32 - 1.0) as u32;
-        let before = (tool == MaskPaintTool::Smooth).then(|| self.samples.clone());
+        let before = (tool == MaskPaintTool::Smooth).then(|| self.samples.to_vec());
         let hardness = hardness.clamp(0.0, 1.0);
         for j in min_j..=max_j {
             for i in min_i..=max_i {
@@ -137,16 +147,48 @@ impl PaintBuffer {
         }
     }
 
+    /// Build from an existing row-major sample buffer (baked paint data).
+    pub fn from_samples(width: u32, height: u32, samples: Vec<f32>) -> Self {
+        Self {
+            width,
+            height,
+            samples,
+            revision: 0,
+        }
+    }
+
+    /// Read-only sample access (row-major).
+    pub fn samples(&self) -> &[f32] {
+        &self.samples
+    }
+
+    /// Mutable sample access; bumps [`Self::revision`].
+    pub fn samples_mut(&mut self) -> &mut [f32] {
+        self.revision = self.revision.wrapping_add(1);
+        &mut self.samples
+    }
+
+    /// Monotonic per-session mutation counter for UI cache keys.
+    pub fn revision(&self) -> u64 {
+        self.revision
+    }
+
+    /// Record that samples changed (every `&mut self` operation calls this).
+    fn touch(&mut self) {
+        self.revision = self.revision.wrapping_add(1);
+    }
+
     pub fn clear(&mut self) {
-        self.samples.fill(0.0);
+        self.samples_mut().fill(0.0);
     }
 
     pub fn fill(&mut self) {
-        self.samples.fill(1.0);
+        self.samples_mut().fill(1.0);
     }
 
     /// Invert coverage in place (`v -> 1 - v`).
     pub fn invert(&mut self) {
+        self.touch();
         for v in &mut self.samples {
             *v = (1.0 - *v).clamp(0.0, 1.0);
         }
@@ -156,6 +198,7 @@ impl PaintBuffer {
     /// buffer's resolution. Used to convert between paint buffers of different
     /// resolutions (e.g. a transient selection into an owned layer mask).
     pub fn copy_from_resampled(&mut self, src: &PaintBuffer) {
+        self.touch();
         if self.width == 0
             || self.height == 0
             || src.width == 0
@@ -179,6 +222,7 @@ impl PaintBuffer {
     }
 
     pub fn flip_x(&mut self) {
+        self.touch();
         if self.samples.len() != (self.width * self.height) as usize {
             return;
         }
@@ -189,6 +233,7 @@ impl PaintBuffer {
     }
 
     pub fn flip_y(&mut self) {
+        self.touch();
         if self.samples.len() != (self.width * self.height) as usize {
             return;
         }
@@ -202,10 +247,12 @@ impl PaintBuffer {
     }
 
     pub fn rotate_left(&mut self) {
+        self.touch();
         self.rotate_quarter(false);
     }
 
     pub fn rotate_right(&mut self) {
+        self.touch();
         self.rotate_quarter(true);
     }
 
@@ -261,6 +308,7 @@ impl PaintBuffer {
 
     /// 4-connected flood fill from UV seed. Fills cells within `tolerance` of the seed value.
     pub fn flood_fill(&mut self, u: f32, v: f32, value: f32, tolerance: f32) {
+        self.touch();
         if self.width == 0
             || self.height == 0
             || self.samples.len() != (self.width * self.height) as usize
@@ -309,12 +357,14 @@ impl PaintBuffer {
     /// separable two-pass max filter (square structuring element, Chebyshev
     /// distance) - mirrors the separable box-blur pattern in `mask::ops`.
     pub fn dilate(&mut self, radius: u32) {
+        self.touch();
         self.morph(radius, true);
     }
 
     /// Morphological erosion: shrink coverage by `radius` texels using a
     /// separable two-pass min filter (square structuring element).
     pub fn erode(&mut self, radius: u32) {
+        self.touch();
         self.morph(radius, false);
     }
 
@@ -361,6 +411,7 @@ impl PaintBuffer {
     /// Separable box blur over the samples (normalized shrinking window at
     /// edges) - the `PaintBuffer` flavour of `mask::ops` `blur_inplace`.
     pub fn blur(&mut self, radius: u32) {
+        self.touch();
         if radius == 0
             || self.width == 0
             || self.height == 0
@@ -407,6 +458,7 @@ impl PaintBuffer {
 
     /// Fill a closed polygon given normalized UV vertices (scanline).
     pub fn fill_polygon(&mut self, points: &[(f32, f32)], value: f32) {
+        self.touch();
         if points.len() < 3
             || self.width == 0
             || self.height == 0
@@ -593,11 +645,7 @@ mod paint_buffer_tests {
 
     #[test]
     fn mask_actions_flip_and_rotate_rectangular_buffers() {
-        let mut buf = PaintBuffer {
-            width: 3,
-            height: 2,
-            samples: vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0],
-        };
+        let mut buf = PaintBuffer::from_samples(3, 2, vec![1.0, 2.0, 3.0, 4.0, 5.0, 6.0]);
         buf.flip_x();
         assert_eq!(buf.samples, vec![3.0, 2.0, 1.0, 6.0, 5.0, 4.0]);
         buf.flip_y();

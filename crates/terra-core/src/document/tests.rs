@@ -127,7 +127,7 @@ fn layer_paint_mask_lifecycle() {
     assert_eq!(asset.owner, Some(layer_id));
     assert!(asset.is_painted());
     // Reveal-all: a fresh layer mask must not mask the layer out.
-    assert!(asset.paint.as_ref().unwrap().samples.iter().all(|&s| s == 1.0));
+    assert!(asset.paint.as_ref().unwrap().samples().iter().all(|&s| s == 1.0));
     let bound = doc
         .stack
         .find(layer_id)

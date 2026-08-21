@@ -73,8 +73,13 @@ impl ThumbnailCache {
             .retain(|k, _| !k.starts_with("layer:") || keys.contains(k));
     }
 
-    /// Grayscale chip for a painted mask, re-rendered when its content
-    /// fingerprint changes (strided sample hash — cheap per frame).
+    /// Grayscale chip for a painted mask, re-rendered whenever the buffer
+    /// reports a mutation.
+    ///
+    /// This keys on the buffer's revision counter rather than a sampled
+    /// content hash: any affordable stride can land on a multiple of the
+    /// mask width and degenerate to reading a single column, so a whole
+    /// brush stroke could leave the hash unchanged and the chip stale.
     pub fn mask_chip(
         &mut self,
         mask_id: terra_core::mask::MaskId,
@@ -96,18 +101,17 @@ impl ThumbnailCache {
 
 pub const MASK_CHIP_RES: u32 = 32;
 
+/// Cache key for a painted mask: its dimensions plus the buffer's own
+/// mutation counter, which every `PaintBuffer` mutator bumps.
 fn paint_fingerprint(paint: &terra_core::mask::PaintBuffer) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325u64;
-    let mut mix = |v: u64| {
+    for v in [
+        paint.width as u64,
+        paint.height as u64,
+        paint.revision(),
+    ] {
         hash ^= v;
         hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
-    };
-    mix(paint.width as u64);
-    mix(paint.height as u64);
-    mix(paint.samples.len() as u64);
-    let stride = (paint.samples.len() / 512).max(1);
-    for &s in paint.samples.iter().step_by(stride) {
-        mix(s.to_bits() as u64);
     }
     hash
 }
@@ -119,7 +123,7 @@ fn render_mask_chip(paint: &terra_core::mask::PaintBuffer, res: u32) -> Thumbnai
         for tx in 0..res {
             let i = (tx as u64 * (w as u64 - 1) / (res as u64 - 1).max(1)) as u32;
             let j = (ty as u64 * (h as u64 - 1) / (res as u64 - 1).max(1)) as u32;
-            let v = paint.samples[(j.min(h - 1) * w + i.min(w - 1)) as usize];
+            let v = paint.samples()[(j.min(h - 1) * w + i.min(w - 1)) as usize];
             let g = (v.clamp(0.0, 1.0) * 255.0) as u8;
             rgba.extend_from_slice(&[g, g, g, 255]);
         }
@@ -269,6 +273,30 @@ mod tests {
         assert!(!cache.needs_refresh(id, 1));
         assert!(cache.needs_refresh(id, 2));
         assert_ne!(cache.request_or_get(id).rgba, placeholder);
+    }
+
+    /// A stroke wholly between sampled columns must still refresh the chip.
+    /// The previous strided content hash could read a single column (any
+    /// stride that is a multiple of the mask width), so a full stroke left
+    /// the chip stale; the buffer revision cannot miss.
+    #[test]
+    fn mask_chip_refreshes_for_a_stroke_between_sampled_columns() {
+        use terra_core::mask::{MaskId, MaskPaintTool, PaintBuffer};
+        // 512 wide: the old stride (len / 512) was exactly the width.
+        for res in [256u32, 512, 1024] {
+            let mut cache = ThumbnailCache::default();
+            let id = MaskId::new();
+            let mut paint = PaintBuffer::new(res, res);
+            paint.fill();
+            let before = cache.mask_chip(id, &paint).rgba.clone();
+            // Erase a disc away from column 0 and the strided columns.
+            paint.edit_circle(0.37, 0.37, 0.08, 1.0, 1.0, MaskPaintTool::Erase);
+            assert_ne!(
+                cache.mask_chip(id, &paint).rgba,
+                before,
+                "chip must refresh after a stroke at {res}x{res}"
+            );
+        }
     }
 
     #[test]

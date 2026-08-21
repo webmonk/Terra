@@ -70,6 +70,15 @@ impl TerraApp {
         let layer_ids_before: Option<std::collections::HashSet<LayerId>> = (batch_creates_layer
             && masks::selection_has_coverage(self.selection.as_ref()))
         .then(|| self.session.document.stack.layer_ids().into_iter().collect());
+        // Undo is chronological across domains, so a new stack command must
+        // branch history globally. Stack commands are pushed straight onto
+        // `session.history` from the handlers, so detect the push here and
+        // abandon every domain's pending redo (the session's own push
+        // methods do this for the stacks they own).
+        let history_before = (
+            self.session.history().ui_fingerprint(),
+            self.session.history().top_undo_seq(),
+        );
         for action in actions {
             ctx.continue_loop = false;
             let action = match layers::try_apply(self, action, &mut ctx) {
@@ -151,6 +160,13 @@ impl TerraApp {
             if applied {
                 self.ui_state.status = "New layer masked by selection".to_string();
             }
+        }
+        let history_after = (
+            self.session.history().ui_fingerprint(),
+            self.session.history().top_undo_seq(),
+        );
+        if history_after != history_before {
+            self.session.clear_all_redo();
         }
         let dirty_from = ctx.dirty_from;
         let sculpt_dirty_rect = ctx.sculpt_dirty_rect;

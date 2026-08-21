@@ -299,11 +299,11 @@ impl ApplicationHandler for TerraApp {
                                 },
                             );
                             if let Some(cmd) = gesture {
-                                self.session.history.push_executed(cmd);
+                                self.session.push_command(cmd);
                             } else {
                                 // Sculpt paths without stroke IR (e.g. base
                                 // buffer painting) stay annotation-only.
-                                self.session.history.push_executed(EditorCommand::Annotate {
+                                self.session.push_command(EditorCommand::Annotate {
                                     label: "Shape stroke (draft \u{2192} full on refine)".into(),
                                 });
                             }

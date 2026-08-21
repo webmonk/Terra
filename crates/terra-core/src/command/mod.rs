@@ -229,6 +229,13 @@ impl CommandHistory {
         self.last_coalesce_key = coalesce_key;
     }
 
+    /// Drop pending redos. Used when an edit in *another* undo domain
+    /// branches history: every domain's redo must be abandoned together.
+    pub fn clear_redo(&mut self) {
+        self.redo_stack.clear();
+        self.redo_seq.clear();
+    }
+
     /// Stamp of the newest undoable entry (for cross-stack chronological undo).
     pub fn top_undo_seq(&self) -> Option<u64> {
         self.undo_seq.last().copied()

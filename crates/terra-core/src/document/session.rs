@@ -104,7 +104,10 @@ pub struct PaintStrokeUndo {
 
 pub struct EditorSession {
     pub document: TerrainDocument,
-    pub history: CommandHistory,
+    /// Private so every push goes through [`EditorSession::push_command`]
+    /// and branches history in all domains; read it via
+    /// [`EditorSession::history`].
+    history: CommandHistory,
     pub outdated_sim_layers: Vec<LayerId>,
     pub rebuild_feedback: RebuildFeedbackState,
     /// UI hint: next frame should schedule a rebuild.
@@ -293,7 +296,61 @@ impl EditorSession {
         ((hash >> 32) as usize, (hash & 0xffff_ffff) as usize)
     }
 
+    /// Abandon pending redos in every domain.
+    ///
+    /// Undo is chronological across stacks, so history branches globally: a
+    /// new edit anywhere invalidates redos everywhere, otherwise redo could
+    /// resurrect an abandoned edit from a branch the artist left - and place
+    /// it *below* the new edit in the timeline, since its stamp is older.
+    pub fn clear_all_redo(&mut self) {
+        self.history.clear_redo();
+        self.world_rule_redo.clear();
+        self.scenario_redo.clear();
+        self.mask_paint_redo.clear();
+    }
+
+    /// Record an executed stack command, branching history.
+    ///
+    /// Prefer this over pushing onto [`Self::history`] directly: undo is
+    /// chronological across domains, so a new stack edit must discard every
+    /// domain's pending redo, not just its own.
+    /// Read-only access for UI (labels, fingerprints, can_undo/can_redo).
+    pub fn history(&self) -> &CommandHistory {
+        &self.history
+    }
+
+    /// Discard all history (project switch).
+    pub fn reset_history(&mut self) {
+        self.history = CommandHistory::default();
+    }
+
+    /// Undo the newest stack command, returning the layer to re-evaluate from.
+    pub fn undo_stack_command(&mut self) -> Option<LayerId> {
+        self.history.undo(&mut self.document.stack)
+    }
+
+    /// Redo the oldest pending stack command.
+    pub fn redo_stack_command(&mut self) -> Option<LayerId> {
+        self.history.redo(&mut self.document.stack)
+    }
+
+    pub fn push_command(&mut self, cmd: crate::command::EditorCommand) {
+        self.clear_all_redo();
+        self.history.push_executed(cmd);
+    }
+
+    /// Coalescing variant of [`Self::push_command`] for continuous drags.
+    pub fn push_command_coalesced(
+        &mut self,
+        cmd: crate::command::EditorCommand,
+        coalesce_key: Option<(u64, &'static str)>,
+    ) {
+        self.clear_all_redo();
+        self.history.push_coalesced(cmd, coalesce_key);
+    }
+
     pub fn push_world_rule_command(&mut self, cmd: WorldRuleCommand) {
+        self.clear_all_redo();
         cmd.apply(&mut self.document.world_rules);
         self.world_rule_undo
             .push((cmd, crate::command::next_edit_seq()));
@@ -319,6 +376,7 @@ impl EditorSession {
     }
 
     pub fn push_scenario_command(&mut self, cmd: SimulationScenarioCommand) {
+        self.clear_all_redo();
         cmd.apply(&mut self.document.simulation_scenarios);
         self.scenario_undo
             .push((cmd, crate::command::next_edit_seq()));
@@ -344,6 +402,7 @@ impl EditorSession {
     }
 
     pub fn push_mask_paint_patch(&mut self, patch: MaskPaintPatch) {
+        self.clear_all_redo();
         self.mask_paint_undo
             .push((patch, crate::command::next_edit_seq()));
         self.mask_paint_redo.clear();
@@ -353,7 +412,7 @@ impl EditorSession {
         if let Some(asset) = document.masks.iter_mut().find(|m| m.id == patch.mask_id) {
             if let Some(paint) = asset.paint.as_mut() {
                 if paint.width == patch.buffer_width && paint.height == patch.buffer_height {
-                    patch.write_into(&mut paint.samples, before);
+                    patch.write_into(paint.samples_mut(), before);
                 }
             }
         }
@@ -383,6 +442,7 @@ impl EditorSession {
     }
 
     pub fn push_paint_undo(&mut self, stroke: PaintStrokeUndo) {
+        self.clear_all_redo();
         self.paint_undo
             .push((stroke, crate::command::next_edit_seq()));
     }
@@ -422,12 +482,12 @@ mod tests {
         let mut session = EditorSession::new();
         let mask_id = MaskId::new();
         let mut asset = MaskAsset::new_painted(mask_id, "Paint", 8);
-        let before: Vec<f32> = asset.paint.as_ref().unwrap().samples.clone();
+        let before: Vec<f32> = asset.paint.as_ref().unwrap().samples().to_vec();
         // Stroke: set a 2×2 region.
         for (x, y) in [(2u32, 3u32), (3, 3), (2, 4), (3, 4)] {
-            asset.paint.as_mut().unwrap().samples[(y * 8 + x) as usize] = 0.75;
+            asset.paint.as_mut().unwrap().samples_mut()[(y * 8 + x) as usize] = 0.75;
         }
-        let after = asset.paint.as_ref().unwrap().samples.clone();
+        let after = asset.paint.as_ref().unwrap().samples().to_vec();
         session.document.masks.push(asset);
 
         let patch = MaskPaintPatch::from_diff("Painted Mask", mask_id, 8, 8, &before, &after)
@@ -438,14 +498,14 @@ mod tests {
 
         assert_eq!(session.undo_mask_paint(), Some(mask_id));
         assert_eq!(
-            session.document.masks[0].paint.as_ref().unwrap().samples,
+            session.document.masks[0].paint.as_ref().unwrap().samples(),
             before
         );
         assert_eq!(session.mask_paint_stack_depths(), (0, 1));
 
         assert_eq!(session.redo_mask_paint(), Some(mask_id));
         assert_eq!(
-            session.document.masks[0].paint.as_ref().unwrap().samples,
+            session.document.masks[0].paint.as_ref().unwrap().samples(),
             after
         );
         assert!(session.redo_mask_paint().is_none());

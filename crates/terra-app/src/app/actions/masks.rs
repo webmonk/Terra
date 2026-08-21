@@ -75,16 +75,16 @@ pub(crate) fn try_apply(
                     && existing
                         .paint
                         .as_ref()
-                        .map(|p| (p.width, p.height, p.samples.len()))
+                        .map(|p| (p.width, p.height, p.samples().len()))
                         == asset
                             .paint
                             .as_ref()
-                            .map(|p| (p.width, p.height, p.samples.len()))
+                            .map(|p| (p.width, p.height, p.samples().len()))
                     && existing
                         .paint
                         .as_ref()
                         .zip(asset.paint.as_ref())
-                        .map(|(a, b)| a.samples == b.samples)
+                        .map(|(a, b)| a.samples() == b.samples())
                         .unwrap_or(true);
                 let mutated_id = existing.id;
                 *existing = asset;
@@ -218,7 +218,7 @@ pub(crate) fn try_apply(
                 if let Some(asset) = app.session.document.masks.iter().find(|a| a.id == mask_id) {
                     if let Some(paint) = asset.paint.as_ref() {
                         app.mask_paint_stroke_before =
-                            Some((mask_id, paint.samples.clone(), paint.width, paint.height));
+                            Some((mask_id, paint.samples().to_vec(), paint.width, paint.height));
                     } else {
                         app.mask_paint_stroke_before = Some((mask_id, Vec::new(), 512, 512));
                     }
@@ -252,7 +252,7 @@ pub(crate) fn try_apply(
                 let paint = asset
                     .paint
                     .get_or_insert_with(|| terra_core::mask::PaintBuffer::new(512, 512));
-                let (before, w, h) = (paint.samples.clone(), paint.width, paint.height);
+                let (before, w, h) = (paint.samples().to_vec(), paint.width, paint.height);
                 match action {
                     MaskEditAction::Clear => paint.clear(),
                     MaskEditAction::Fill => paint.fill(),
@@ -268,7 +268,7 @@ pub(crate) fn try_apply(
                         w,
                         h,
                         &before,
-                        &paint.samples,
+                        paint.samples(),
                     ) {
                         app.session.push_mask_paint_patch(patch);
                     }
@@ -677,7 +677,7 @@ pub(crate) fn selection_has_coverage(selection: Option<&terra_core::mask::MaskAs
         .and_then(|asset| asset.paint.as_ref())
         .is_some_and(|paint| {
             paint
-                .samples
+                .samples()
                 .iter()
                 .any(|&sample| sample > SELECTION_COVERAGE_EPSILON)
         })
@@ -745,7 +745,7 @@ fn bake_band_max(
 ) {
     if paint.width == 0
         || paint.height == 0
-        || paint.samples.len() != (paint.width * paint.height) as usize
+        || paint.samples().len() != (paint.width * paint.height) as usize
     {
         return;
     }
@@ -758,7 +758,8 @@ fn bake_band_max(
             let s = value_at(u, v);
             let band = ((s - min) / soft).clamp(0.0, 1.0) * ((max - s) / soft).clamp(0.0, 1.0);
             let idx = (j * paint.width + i) as usize;
-            paint.samples[idx] = paint.samples[idx].max(band);
+            let samples = paint.samples_mut();
+            samples[idx] = samples[idx].max(band);
         }
     }
 }
@@ -787,7 +788,7 @@ mod tests {
     fn epsilon_samples_do_not_count_as_coverage() {
         let mut asset = painted_selection(16);
         if let Some(paint) = asset.paint.as_mut() {
-            for s in paint.samples.iter_mut() {
+            for s in paint.samples_mut().iter_mut() {
                 *s = SELECTION_COVERAGE_EPSILON;
             }
         }
@@ -798,7 +799,7 @@ mod tests {
     fn single_painted_sample_counts_as_coverage() {
         let mut asset = painted_selection(16);
         if let Some(paint) = asset.paint.as_mut() {
-            paint.samples[5] = 0.5;
+            paint.samples_mut()[5] = 0.5;
         }
         assert!(selection_has_coverage(Some(&asset)));
     }

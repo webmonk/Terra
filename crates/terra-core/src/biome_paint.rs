@@ -273,7 +273,7 @@ impl BiomeLayer {
             .channels
             .iter()
             .find(|c| c.biome_id == biome_id)
-            .map(|c| c.paint.samples.clone());
+            .map(|c| c.paint.samples().to_vec());
         let Some(filled) = filled else {
             return;
         };
@@ -281,10 +281,10 @@ impl BiomeLayer {
             if other.biome_id == biome_id {
                 continue;
             }
-            if other.paint.samples.len() != filled.len() {
+            if other.paint.samples().len() != filled.len() {
                 continue;
             }
-            for (dst, &src) in other.paint.samples.iter_mut().zip(filled.iter()) {
+            for (dst, &src) in other.paint.samples_mut().iter_mut().zip(filled.iter()) {
                 if src > 0.5 {
                     *dst = (*dst * 0.15).clamp(0.0, 1.0);
                 }
@@ -330,16 +330,16 @@ impl BiomeLayer {
                 let mut sum = 0.0_f32;
                 for ch in &self.channels {
                     if ch.paint.width == w && ch.paint.height == h {
-                        sum += ch.paint.samples.get(idx).copied().unwrap_or(0.0);
+                        sum += ch.paint.samples().get(idx).copied().unwrap_or(0.0);
                     }
                 }
                 if sum > 1e-6 {
                     for ch in &mut self.channels {
                         if ch.paint.width == w
                             && ch.paint.height == h
-                            && idx < ch.paint.samples.len()
+                            && idx < ch.paint.samples().len()
                         {
-                            ch.paint.samples[idx] /= sum;
+                            ch.paint.samples_mut()[idx] /= sum;
                         }
                     }
                 }
@@ -437,7 +437,7 @@ fn sample_paint(paint: &PaintBuffer, u: f32, v: f32) -> f32 {
     let x = (u.clamp(0.0, 1.0) * (w - 1) as f32).round() as u32;
     let y = (v.clamp(0.0, 1.0) * (h - 1) as f32).round() as u32;
     let idx = (y * w + x) as usize;
-    paint.samples.get(idx).copied().unwrap_or(0.0)
+    paint.samples().get(idx).copied().unwrap_or(0.0)
 }
 
 fn smooth_paint_circle(paint: &mut PaintBuffer, u: f32, v: f32, radius: f32, strength: f32) {
@@ -453,7 +453,7 @@ fn smooth_paint_circle(paint: &mut PaintBuffer, u: f32, v: f32, radius: f32, str
     let max_j = ((v + radius) * paint.height as f32)
         .ceil()
         .min(paint.height as f32 - 1.0) as u32;
-    let src = paint.samples.clone();
+    let src = paint.samples().to_vec();
     for j in min_j..=max_j {
         for i in min_i..=max_i {
             let x = (i as f32 + 0.5) / paint.width as f32;
@@ -478,9 +478,9 @@ fn smooth_paint_circle(paint: &mut PaintBuffer, u: f32, v: f32, radius: f32, str
             if n > 0.0 {
                 let avg = sum / n;
                 let idx = (j * paint.width + i) as usize;
-                let cur = paint.samples[idx];
+                let cur = paint.samples()[idx];
                 let amt = (1.0 - d * d) * strength;
-                paint.samples[idx] = cur * (1.0 - amt) + avg * amt;
+                paint.samples_mut()[idx] = cur * (1.0 - amt) + avg * amt;
             }
         }
     }

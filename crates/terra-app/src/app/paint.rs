@@ -670,7 +670,7 @@ impl TerraApp {
             .find(|a| a.id == mask_id)
             .and_then(|a| a.paint.as_ref())
             .filter(|p| p.width == w && p.height == h)
-            .map(|p| p.samples.clone())
+            .map(|p| p.samples().to_vec())
         else {
             return;
         };
@@ -730,7 +730,7 @@ impl TerraApp {
         };
         let color = asset.display_color;
         if let Some(paint) = asset.paint.as_ref() {
-            if paint.width > 0 && paint.height > 0 && !paint.samples.is_empty() {
+            if paint.width > 0 && paint.height > 0 && !paint.samples().is_empty() {
                 let rgba = paint.bake_overlay_rgba(color);
                 r.upload_placement_tint(paint.width, paint.height, &rgba);
                 r.set_biome_tint_strength(0.68);
@@ -800,7 +800,7 @@ impl TerraApp {
             .as_ref()
             .and_then(|asset| asset.paint.as_ref());
         if let Some(paint) = paint {
-            if paint.width > 0 && paint.height > 0 && !paint.samples.is_empty() {
+            if paint.width > 0 && paint.height > 0 && !paint.samples().is_empty() {
                 let rgba = paint.bake_overlay_rgba(Self::SELECTION_TINT);
                 r.upload_placement_tint(paint.width, paint.height, &rgba);
                 r.set_biome_tint_strength(0.68);

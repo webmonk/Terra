@@ -105,7 +105,7 @@ pub(crate) fn try_apply(
                         index,
                         parent,
                     };
-                    app.session.history.push_executed(cmd);
+                    app.session.push_command(cmd);
                     app.session.document.selected =
                         app.session.document.stack.layer_ids().last().copied();
                     app.mark_all_layers_dirty();
@@ -130,7 +130,7 @@ pub(crate) fn try_apply(
                 }
                 if let Some(new_id) = app.session.document.stack.duplicate(id) {
                     let cmd = EditorCommand::Duplicate { source: id, new_id };
-                    app.session.history.push_executed(cmd);
+                    app.session.push_command(cmd);
                     app.session.document.selected = Some(new_id);
                     ctx.dirty_from = Some(new_id);
                     ctx.doc_mutated = true;
@@ -140,7 +140,7 @@ pub(crate) fn try_apply(
         PanelAction::Reorder { from, to } => {
             let cmd = EditorCommand::Reorder { from, to };
             apply(&cmd, &mut app.session.document.stack);
-            app.session.history.push_executed(cmd);
+            app.session.push_command(cmd);
             app.mark_all_layers_dirty();
             app.request_rebuild();
             ctx.doc_mutated = true;
@@ -163,7 +163,7 @@ pub(crate) fn try_apply(
                 previous,
             };
             apply(&cmd, &mut app.session.document.stack);
-            app.session.history.push_executed(cmd);
+            app.session.push_command(cmd);
             ctx.doc_mutated = true;
             app.mark_all_layers_dirty();
             app.request_rebuild();
@@ -183,9 +183,7 @@ pub(crate) fn try_apply(
                 previous,
             };
             apply(&cmd, &mut app.session.document.stack);
-            app.session
-                .history
-                .push_coalesced(cmd, Some((coalesce_layer_id(id), "opacity")));
+            app.session.push_command_coalesced(cmd, Some((coalesce_layer_id(id), "opacity")));
             ctx.dirty_from = Some(id);
         }
         PanelAction::SetSimProgress { id, progress } => {
@@ -202,9 +200,7 @@ pub(crate) fn try_apply(
                 previous,
             };
             apply(&cmd, &mut app.session.document.stack);
-            app.session
-                .history
-                .push_coalesced(cmd, Some((coalesce_layer_id(id), "simprog")));
+            app.session.push_command_coalesced(cmd, Some((coalesce_layer_id(id), "simprog")));
             ctx.dirty_from = Some(id);
         }
         PanelAction::SetBlend { id, blend } => {
@@ -222,7 +218,7 @@ pub(crate) fn try_apply(
                 previous,
             };
             apply(&cmd, &mut app.session.document.stack);
-            app.session.history.push_executed(cmd);
+            app.session.push_command(cmd);
             ctx.dirty_from = Some(id);
         }
         PanelAction::SetKind { id, kind } => {
@@ -246,9 +242,7 @@ pub(crate) fn try_apply(
             }
             let cmd = EditorCommand::SetKind { id, kind, previous };
             apply(&cmd, &mut app.session.document.stack);
-            app.session
-                .history
-                .push_coalesced(cmd, Some((coalesce, "kind")));
+            app.session.push_command_coalesced(cmd, Some((coalesce, "kind")));
             ctx.dirty_from = Some(id);
         }
         PanelAction::Rename { id, name } => {
@@ -275,7 +269,7 @@ pub(crate) fn try_apply(
                 }
                 let cmd = EditorCommand::Rename { id, name, previous };
                 apply(&cmd, &mut app.session.document.stack);
-                app.session.history.push_executed(cmd);
+                app.session.push_command(cmd);
                 ctx.doc_mutated = true;
             } else if let Some(group) = app.session.document.stack.find_group(id) {
                 // Fixed structure: Filters / Materials / Objects / category folders.
@@ -298,7 +292,7 @@ pub(crate) fn try_apply(
                 }
                 let cmd = EditorCommand::Rename { id, name, previous };
                 apply(&cmd, &mut app.session.document.stack);
-                app.session.history.push_executed(cmd);
+                app.session.push_command(cmd);
                 ctx.doc_mutated = true;
             } else if let Some(mask) = app
                 .session
@@ -392,7 +386,7 @@ pub(crate) fn try_apply(
                 if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
                     (from, app.session.document.stack.sibling_location(id))
                 {
-                    app.session.history.push_executed(EditorCommand::MoveNode {
+                    app.session.push_command(EditorCommand::MoveNode {
                         id,
                         from_parent,
                         from_index,
@@ -492,7 +486,7 @@ pub(crate) fn try_apply(
                     previous_masks,
                 };
                 // Already applied on layer; record for undo.
-                app.session.history.push_executed(cmd);
+                app.session.push_command(cmd);
                 app.inspector_gui.details.layer_masks = true;
                 app.ui_state.inspector_advanced = true;
                 app.session.document.selected = Some(id);
@@ -532,7 +526,7 @@ pub(crate) fn try_apply(
                 previous,
             };
             apply(&cmd, &mut app.session.document.stack);
-            app.session.history.push_executed(cmd);
+            app.session.push_command(cmd);
             ctx.doc_mutated = true;
         }
         PanelAction::SetSolo { id, solo } => {
@@ -545,7 +539,7 @@ pub(crate) fn try_apply(
                 .unwrap_or(false);
             let cmd = EditorCommand::SetSolo { id, solo, previous };
             apply(&cmd, &mut app.session.document.stack);
-            app.session.history.push_executed(cmd);
+            app.session.push_command(cmd);
             ctx.dirty_from = Some(id);
         }
         PanelAction::SetClipToBelow { id, clip } => {
@@ -558,7 +552,7 @@ pub(crate) fn try_apply(
                 .unwrap_or(false);
             let cmd = EditorCommand::SetClipToBelow { id, clip, previous };
             apply(&cmd, &mut app.session.document.stack);
-            app.session.history.push_executed(cmd);
+            app.session.push_command(cmd);
             ctx.dirty_from = Some(id);
         }
         PanelAction::BatchRemove(ids) => {
@@ -578,9 +572,7 @@ pub(crate) fn try_apply(
                 let loc = app.session.document.stack.sibling_location(id);
                 if let Some(node) = app.session.document.stack.remove(id) {
                     let (parent, index) = loc.unwrap_or((None, 0));
-                    app.session
-                        .history
-                        .push_executed(EditorCommand::RemoveLayer {
+                    app.session.push_command(EditorCommand::RemoveLayer {
                             id,
                             node,
                             index,
@@ -616,7 +608,7 @@ pub(crate) fn try_apply(
                     previous,
                 };
                 apply(&cmd, &mut app.session.document.stack);
-                app.session.history.push_executed(cmd);
+                app.session.push_command(cmd);
                 changed = true;
             }
             app.layers_gui.multi_selection.clear();
@@ -651,7 +643,7 @@ pub(crate) fn try_apply(
                     index,
                 };
                 apply(&cmd, &mut app.session.document.stack);
-                app.session.history.push_executed(cmd);
+                app.session.push_command(cmd);
                 for (i, id) in ids.iter().copied().enumerate() {
                     let from = app.session.document.stack.sibling_location(id);
                     if app
@@ -663,7 +655,7 @@ pub(crate) fn try_apply(
                         if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
                             (from, app.session.document.stack.sibling_location(id))
                         {
-                            app.session.history.push_executed(EditorCommand::MoveNode {
+                            app.session.push_command(EditorCommand::MoveNode {
                                 id,
                                 from_parent,
                                 from_index,
@@ -691,7 +683,7 @@ pub(crate) fn try_apply(
                 .unwrap_or(0);
             let cmd = EditorCommand::SetColorTag { id, tag, previous };
             apply(&cmd, &mut app.session.document.stack);
-            app.session.history.push_executed(cmd);
+            app.session.push_command(cmd);
             ctx.doc_mutated = true;
         }
         PanelAction::SetCached { id, cached } => {
@@ -708,7 +700,7 @@ pub(crate) fn try_apply(
                 previous,
             };
             apply(&cmd, &mut app.session.document.stack);
-            app.session.history.push_executed(cmd);
+            app.session.push_command(cmd);
             ctx.dirty_from = Some(id);
         }
         PanelAction::AddGroup { name } => {
@@ -716,7 +708,7 @@ pub(crate) fn try_apply(
             let index = app.session.document.stack.nodes.len();
             let cmd = EditorCommand::AddGroup { name, id, index };
             apply(&cmd, &mut app.session.document.stack);
-            app.session.history.push_executed(cmd);
+            app.session.push_command(cmd);
             app.session.document.selected = Some(id);
             ctx.doc_mutated = true;
         }
@@ -762,7 +754,7 @@ pub(crate) fn try_apply(
                 if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
                     (from, app.session.document.stack.sibling_location(child))
                 {
-                    app.session.history.push_executed(EditorCommand::MoveNode {
+                    app.session.push_command(EditorCommand::MoveNode {
                         id: child,
                         from_parent,
                         from_index,
@@ -783,7 +775,7 @@ pub(crate) fn try_apply(
                     if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
                         (from, app.session.document.stack.sibling_location(id))
                     {
-                        app.session.history.push_executed(EditorCommand::MoveNode {
+                        app.session.push_command(EditorCommand::MoveNode {
                             id,
                             from_parent,
                             from_index,
@@ -1089,7 +1081,7 @@ pub(crate) fn try_apply(
                 if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
                     (from, app.session.document.stack.sibling_location(moving))
                 {
-                    app.session.history.push_executed(EditorCommand::MoveNode {
+                    app.session.push_command(EditorCommand::MoveNode {
                         id: moving,
                         from_parent,
                         from_index,
@@ -1150,7 +1142,7 @@ pub(crate) fn try_apply(
                     if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
                         (from, app.session.document.stack.sibling_location(id))
                     {
-                        app.session.history.push_executed(EditorCommand::MoveNode {
+                        app.session.push_command(EditorCommand::MoveNode {
                             id,
                             from_parent,
                             from_index,
