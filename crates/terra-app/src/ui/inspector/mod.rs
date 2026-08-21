@@ -836,6 +836,10 @@ pub fn draw_inspector_gui(
                     if radio_toggle(ui, "Solo", &mut solo) {
                         actions.push(PanelAction::SetSolo { id, solo });
                     }
+                    let mut clip = layer.common.clip_to_below;
+                    if checkbox(ui, "Clip to layer below", &mut clip) {
+                        actions.push(PanelAction::SetClipToBelow { id, clip });
+                    }
                     let mut cached = layer.common.cached;
                     if radio_toggle(ui, "Cache Layer", &mut cached) {
                         actions.push(PanelAction::SetCached { id, cached });

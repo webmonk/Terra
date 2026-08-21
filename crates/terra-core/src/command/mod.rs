@@ -61,6 +61,11 @@ pub enum EditorCommand {
         solo: bool,
         previous: bool,
     },
+    SetClipToBelow {
+        id: LayerId,
+        clip: bool,
+        previous: bool,
+    },
     SetColorTag {
         id: LayerId,
         tag: u8,
@@ -274,6 +279,22 @@ impl CommandHistory {
         self.undo_stack.push(cmd);
         dirty
     }
+
+    /// Undo entries as (global edit stamp, artist-facing label), oldest first.
+    pub fn undo_entries(&self) -> impl Iterator<Item = (u64, String)> + '_ {
+        self.undo_seq
+            .iter()
+            .copied()
+            .zip(self.undo_stack.iter().map(EditorCommand::describe))
+    }
+
+    /// Pending redo entries as (global edit stamp, artist-facing label).
+    pub fn redo_entries(&self) -> impl Iterator<Item = (u64, String)> + '_ {
+        self.redo_seq
+            .iter()
+            .copied()
+            .zip(self.redo_stack.iter().map(EditorCommand::describe))
+    }
 }
 
 impl EditorCommand {
@@ -312,6 +333,12 @@ impl EditorCommand {
                 "Soloed Layer"
             } else {
                 "Unsoloed Layer"
+            }
+            .into(),
+            Self::SetClipToBelow { clip, .. } => if *clip {
+                "Clipped to Layer Below"
+            } else {
+                "Released Clip"
             }
             .into(),
             Self::SetColorTag { .. } => "Changed Color Tag".into(),
@@ -405,6 +432,12 @@ pub fn apply(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
         EditorCommand::SetSolo { id, solo, .. } => {
             if let Some(l) = stack.find_mut(*id) {
                 l.common.solo = *solo;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetClipToBelow { id, clip, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.clip_to_below = *clip;
             }
             Some(*id)
         }
@@ -569,6 +602,12 @@ fn invert(cmd: &EditorCommand, stack: &mut LayerStack) -> Option<LayerId> {
         EditorCommand::SetSolo { id, previous, .. } => {
             if let Some(l) = stack.find_mut(*id) {
                 l.common.solo = *previous;
+            }
+            Some(*id)
+        }
+        EditorCommand::SetClipToBelow { id, previous, .. } => {
+            if let Some(l) = stack.find_mut(*id) {
+                l.common.clip_to_below = *previous;
             }
             Some(*id)
         }

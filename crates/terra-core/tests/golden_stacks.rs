@@ -237,6 +237,85 @@ fn masked_sim_aux_is_scoped_by_mask() {
     }
 }
 
+/// Clipping-mask semantics: a `clip_to_below` layer only applies where the
+/// nearest non-clipped layer below it applied (its baked mask), and behaves
+/// exactly like an unclipped layer where that mask is ~1.
+#[test]
+fn clipped_layer_is_limited_to_base_layer_mask() {
+    let mask_id = MaskId::new();
+    let build = |with_b: bool, clip_b: bool| {
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new("Base", LayerKind::Flat(FlatParams { height: 20.0 })));
+        let mut a = Layer::new(
+            "A",
+            LayerKind::NoisePerlin(NoiseParams {
+                amplitude: 80.0,
+                ..NoiseParams::default()
+            }),
+        );
+        a.common.blend = BlendMode::Add;
+        a.common.masks.push(MaskRef::new(mask_id));
+        stack.push(a);
+        if with_b {
+            let mut b = Layer::new("B", LayerKind::Flat(FlatParams { height: 100.0 }));
+            b.common.blend = BlendMode::Add;
+            b.common.clip_to_below = clip_b;
+            stack.push(b);
+        }
+        stack
+    };
+    let eval_with_mask = |stack: &LayerStack| {
+        let mut ctx = EvalContext::new(metrics());
+        ctx.mask_assets.push(MaskAsset::new(
+            mask_id,
+            "LowAreas",
+            MaskSource::Height { min: 0.0, max: 40.0 },
+        ));
+        eval(stack, &mut ctx)
+    };
+
+    let without_b = eval_with_mask(&build(false, false));
+    let clipped = eval_with_mask(&build(true, true));
+    let unclipped = eval_with_mask(&build(true, false));
+
+    // Bake A's mask the same way the evaluator does: against A's input, the
+    // flat 20m base, which the Height{0..40} source maps to weight 0.5.
+    // Delta from B must therefore be 100 * 0.5 everywhere.
+    let mut differs = false;
+    for j in 0..RES {
+        for i in 0..RES {
+            let delta = clipped.get(i, j) - without_b.get(i, j);
+            assert!(
+                (delta - 50.0).abs() < 1e-3,
+                "clipped B must scale by A's mask at ({i},{j}): delta {delta}"
+            );
+            let un_delta = unclipped.get(i, j) - without_b.get(i, j);
+            assert!(
+                (un_delta - 100.0).abs() < 1e-3,
+                "unclipped B must add fully at ({i},{j}): delta {un_delta}"
+            );
+            if (clipped.get(i, j) - unclipped.get(i, j)).abs() > 1.0 {
+                differs = true;
+            }
+        }
+    }
+    assert!(differs, "clipping must change the composite");
+}
+
+/// A clipped layer with no non-clipped sibling below evaluates unclipped.
+#[test]
+fn clipped_layer_without_base_evaluates_unclipped() {
+    let mut stack = LayerStack::new();
+    let mut b = Layer::new("B", LayerKind::Flat(FlatParams { height: 100.0 }));
+    b.common.blend = BlendMode::Add;
+    b.common.clip_to_below = true;
+    stack.push(b);
+
+    let mut ctx = EvalContext::new(metrics());
+    let out = eval(&stack, &mut ctx);
+    assert!((out.get(24, 24) - 100.0).abs() < 1e-3);
+}
+
 // Recorded on commit b689717 (pre field-set compositing) at 96x96 / 1024m.
 const GOLDEN_GENERATORS: Fingerprint = [48.39215, -26.913963, 123.085945, 43.081482, 90.68248];
 const GOLDEN_MASKED: Fingerprint = [21.942556, -8.342754, 50.38075, 18.786388, 47.80087];

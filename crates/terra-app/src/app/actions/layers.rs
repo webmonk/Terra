@@ -529,6 +529,19 @@ pub(crate) fn try_apply(
             app.session.history.push_executed(cmd);
             ctx.dirty_from = Some(id);
         }
+        PanelAction::SetClipToBelow { id, clip } => {
+            let previous = app
+                .session
+                .document
+                .stack
+                .find(id)
+                .map(|l| l.common.clip_to_below)
+                .unwrap_or(false);
+            let cmd = EditorCommand::SetClipToBelow { id, clip, previous };
+            apply(&cmd, &mut app.session.document.stack);
+            app.session.history.push_executed(cmd);
+            ctx.dirty_from = Some(id);
+        }
         PanelAction::SetColorTag { id, tag } => {
             let previous = app
                 .session

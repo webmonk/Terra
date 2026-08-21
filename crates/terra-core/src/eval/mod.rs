@@ -278,7 +278,12 @@ impl StackEvaluator {
             }
         }
 
-        let first_dirty = first_dirty.unwrap_or(0);
+        let mut first_dirty = first_dirty.unwrap_or(0);
+        // A dirty clipped layer needs its base's mask; walk back to the
+        // nearest non-clipped layer so the base re-emits it (cache hit).
+        while first_dirty > 0 && layers[first_dirty].common.clip_to_below {
+            first_dirty -= 1;
+        }
         for layer in &layers[..first_dirty] {
             record_reused_layer(ctx, layer);
         }
@@ -293,9 +298,23 @@ impl StackEvaluator {
                 .unwrap_or_else(|| Heightfield::zeros(ctx.metrics))
         };
 
+        let track_bases = layers[first_dirty..]
+            .iter()
+            .any(|l| l.common.clip_to_below);
+        let mut clip_base: Option<MaskField> = None;
         for layer in &layers[first_dirty..] {
             ctx.check_cancelled()?;
-            current = self.evaluate_layer(ctx, &current, layer)?;
+            let base = if layer.common.clip_to_below {
+                clip_base.as_ref()
+            } else {
+                None
+            };
+            let want_mask = track_bases && !layer.common.clip_to_below;
+            let (out, mask) = self.evaluate_layer(ctx, &current, layer, base, want_mask)?;
+            current = out;
+            if !layer.common.clip_to_below {
+                clip_base = mask;
+            }
             self.store_cached(layer.id(), &current, ctx, layer.common.cached);
         }
 
@@ -311,14 +330,31 @@ impl StackEvaluator {
     ) -> Result<Heightfield, EvalError> {
         let mut current = input.clone();
         let soloing = nodes.iter().any(node_contains_solo);
+        let track_bases = nodes
+            .iter()
+            .any(|n| matches!(n, StackNode::Layer(l) if l.common.clip_to_below));
+        // Baked mask of the nearest evaluated non-clipped sibling layer:
+        // clipped layers restrict their effect to where it applied.
+        let mut clip_base: Option<MaskField> = None;
         for node in nodes {
             ctx.check_cancelled()?;
             if soloing && !node_contains_solo(node) {
+                clip_base = None;
                 continue;
             }
             match node {
                 StackNode::Layer(layer) => {
-                    current = self.evaluate_layer(ctx, &current, layer)?;
+                    let base = if layer.common.clip_to_below {
+                        clip_base.as_ref()
+                    } else {
+                        None
+                    };
+                    let want_mask = track_bases && !layer.common.clip_to_below;
+                    let (out, mask) = self.evaluate_layer(ctx, &current, layer, base, want_mask)?;
+                    current = out;
+                    if !layer.common.clip_to_below {
+                        clip_base = mask;
+                    }
                     self.store_cached(layer.id(), &current, ctx, layer.common.cached);
                 }
                 StackNode::Group(group) if !group.enabled => {}
@@ -407,6 +443,11 @@ impl StackEvaluator {
                     }
                 }
             }
+            // Groups reset the clip base: clipped layers only chain to a
+            // sibling layer, never across a group boundary.
+            if matches!(node, StackNode::Group(_)) {
+                clip_base = None;
+            }
         }
         Ok(current)
     }
@@ -424,9 +465,27 @@ impl StackEvaluator {
         mut current: Heightfield,
     ) -> Result<Heightfield, EvalError> {
         let layers = stack.flatten_layers();
+        let track_bases = layers
+            .iter()
+            .skip(start_index)
+            .any(|l| l.common.clip_to_below);
+        // Suffix evaluation only sees bases inside the suffix: a clipped
+        // layer at the very start evaluates unclipped (callers restart from
+        // the base when its mask matters).
+        let mut clip_base: Option<MaskField> = None;
         for layer in layers.into_iter().skip(start_index) {
             ctx.check_cancelled()?;
-            current = self.evaluate_layer(ctx, &current, layer)?;
+            let base = if layer.common.clip_to_below {
+                clip_base.as_ref()
+            } else {
+                None
+            };
+            let want_mask = track_bases && !layer.common.clip_to_below;
+            let (out, mask) = self.evaluate_layer(ctx, &current, layer, base, want_mask)?;
+            current = out;
+            if !layer.common.clip_to_below {
+                clip_base = mask;
+            }
             self.store_cached(layer.id(), &current, ctx, layer.common.cached);
         }
         Ok(current)
@@ -471,16 +530,24 @@ impl StackEvaluator {
         }
     }
 
+    /// Evaluate one layer. `clip_base` is the baked mask of the nearest
+    /// non-clipped sibling below (clipping-mask semantics); the returned mask
+    /// is the layer's own effective mask, produced only when `want_mask` so
+    /// cache hits stay free when no sibling clips.
     fn evaluate_layer(
         &mut self,
         ctx: &mut EvalContext,
         input: &Heightfield,
         layer: &Layer,
-    ) -> Result<Heightfield, EvalError> {
+        clip_base: Option<&MaskField>,
+        want_mask: bool,
+    ) -> Result<(Heightfield, Option<MaskField>), EvalError> {
         let timing_started = Instant::now();
         if !layer.common.enabled {
             record_layer_timing(ctx, layer, timing_started, LayerEvalStatus::Disabled);
-            return Ok(input.clone());
+            // A disabled base applied nowhere, so clipped layers above see zero.
+            let mask = want_mask.then(|| MaskField::zeros(ctx.metrics));
+            return Ok((input.clone(), mask));
         }
 
         // Terrain-aware and runtime masks are evaluated against the exact field
@@ -498,7 +565,11 @@ impl StackEvaluator {
                 ctx.sync_aux_hashmap();
                 publish_layer_outputs(ctx, layer, &cached.height);
                 record_layer_timing(ctx, layer, timing_started, LayerEvalStatus::CacheHit);
-                return Ok(cached.height.clone());
+                // Point-of-use masks were refreshed against this exact input,
+                // so rebaking here reproduces the mask the hit was built with.
+                let mask =
+                    want_mask.then(|| effective_layer_mask(ctx, &layer.common.masks, input));
+                return Ok((cached.height.clone(), mask));
             }
         }
 
@@ -507,12 +578,26 @@ impl StackEvaluator {
         // Scoped layers (mask or partial opacity): snapshot aux before the
         // processor so its channel writes composite under the same weight as
         // height. Copy-on-write storage makes the snapshot a refcount bump.
-        let scoped = !layer.common.masks.is_empty() || layer.common.opacity < 0.999;
+        let scoped = !layer.common.masks.is_empty()
+            || layer.common.opacity < 0.999
+            || layer.common.clip_to_below;
         let aux_before = scoped.then(|| ctx.aux_maps.clone());
         let generated = self.registry.evaluate(ctx, input, &bound_layer)?;
         // Avoid unused-mut warning if future passes mutate further.
         let _ = &mut bound_layer;
-        let mask = effective_layer_mask(ctx, &layer.common.masks, input);
+        let mut mask = effective_layer_mask(ctx, &layer.common.masks, input);
+        if layer.common.clip_to_below {
+            if let Some(base) = clip_base {
+                if base.metrics.width == mask.metrics.width
+                    && base.metrics.height == mask.metrics.height
+                {
+                    let base_data = base.data();
+                    for (v, b) in mask.data_mut().iter_mut().zip(base_data) {
+                        *v *= *b;
+                    }
+                }
+            }
+        }
         if let Some(before) = aux_before {
             scope_aux_writes(ctx, &before, &mask, layer.common.opacity);
         }
@@ -525,7 +610,7 @@ impl StackEvaluator {
         );
         publish_layer_outputs(ctx, layer, &out);
         record_layer_timing(ctx, layer, timing_started, LayerEvalStatus::Computed);
-        Ok(out)
+        Ok((out, want_mask.then_some(mask)))
     }
 
     fn try_reuse_group_cache(

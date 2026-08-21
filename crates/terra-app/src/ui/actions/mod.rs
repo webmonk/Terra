@@ -259,6 +259,10 @@ pub enum PanelAction {
         id: LayerId,
         solo: bool,
     },
+    SetClipToBelow {
+        id: LayerId,
+        clip: bool,
+    },
     SetColorTag {
         id: LayerId,
         tag: u8,

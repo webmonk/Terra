@@ -58,6 +58,10 @@ pub struct LayerCommon {
     /// Solo this layer for preview (others dimmed / skipped in UI).
     #[serde(default)]
     pub solo: bool,
+    /// Clip this layer's effect to the mask of the nearest non-clipped
+    /// sibling below it (Photoshop-style clipping mask).
+    #[serde(default)]
+    pub clip_to_below: bool,
     /// Optional colour tag index (0 = none, 1-7 = palette).
     #[serde(default)]
     pub color_tag: u8,
@@ -95,6 +99,7 @@ impl LayerCommon {
             masks: Distribution::new(),
             locked: false,
             solo: false,
+            clip_to_below: false,
             color_tag: 0,
             cached: false,
             cache_policy: None,
@@ -180,6 +185,21 @@ mod tests {
         let b = a.duplicate();
         assert_ne!(a.id(), b.id());
         assert!(b.common.name.contains("Copy"));
+    }
+
+    #[test]
+    fn legacy_layer_common_defaults_clip_to_below_false() {
+        let mut json = serde_json::to_value(&LayerCommon::new("Legacy")).unwrap();
+        json.as_object_mut().unwrap().remove("clip_to_below");
+        let common: LayerCommon = serde_json::from_value(json).unwrap();
+        assert!(!common.clip_to_below);
+    }
+
+    #[test]
+    fn duplicate_carries_clip_to_below() {
+        let mut a = Layer::new("Base", LayerKind::Flat(FlatParams::default()));
+        a.common.clip_to_below = true;
+        assert!(a.duplicate().common.clip_to_below);
     }
 
     #[test]
