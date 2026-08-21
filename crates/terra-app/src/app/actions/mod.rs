@@ -50,6 +50,26 @@ impl ApplyCtx {
 impl TerraApp {
     pub(crate) fn apply_actions(&mut self, actions: Vec<PanelAction>) {
         let mut ctx = ApplyCtx::new();
+        // Photoshop-style "new layer inherits the selection as its mask":
+        // when a user-facing layer-creation action arrives while a selection
+        // with coverage is active, snapshot the stack's layer ids so we can
+        // diff after dispatch. Coverage is checked once per batch (cheap,
+        // early-exit scan). Undo/redo and sculpt-session layer creation
+        // never flow through apply_actions, so they are structurally exempt.
+        let batch_creates_layer = actions.iter().any(|a| {
+            matches!(
+                a,
+                PanelAction::AddLayer(_)
+                    | PanelAction::AddLayerToCategory { .. }
+                    | PanelAction::AddLayerInto { .. }
+                    | PanelAction::AddDevelopOperation { .. }
+                    | PanelAction::AddSuggestedLayer { .. }
+                    | PanelAction::ContextualCreate { .. }
+            )
+        });
+        let layer_ids_before: Option<std::collections::HashSet<LayerId>> = (batch_creates_layer
+            && masks::selection_has_coverage(self.selection.as_ref()))
+        .then(|| self.session.document.stack.layer_ids().into_iter().collect());
         for action in actions {
             ctx.continue_loop = false;
             let action = match layers::try_apply(self, action, &mut ctx) {
@@ -99,6 +119,37 @@ impl TerraApp {
                 Err(_a) => {
                     log::warn!("Unhandled PanelAction in apply_actions");
                 }
+            }
+        }
+        // Post-dispatch hook: every layer id that newly appeared this batch
+        // inherits the active selection as its owned mask. Runs before the
+        // dirty-flag processing below so note_mask_mutation feeds targeted
+        // invalidation. Skips groups (find() only matches real layers) and
+        // internal/auto kinds (sculpt strokes / base, compiled shape
+        // constraints). No focus stealing - the user is mid-creation.
+        if let Some(before) = layer_ids_before {
+            let mut applied = false;
+            for id in self.session.document.stack.layer_ids() {
+                if before.contains(&id) {
+                    continue;
+                }
+                let eligible = self.session.document.stack.find(id).is_some_and(|l| {
+                    !matches!(
+                        l.kind,
+                        terra_core::layer::LayerKind::SculptStrokes(_)
+                            | terra_core::layer::LayerKind::SculptBase(_)
+                            | terra_core::layer::LayerKind::TerrainConstraints(_)
+                    )
+                });
+                if !eligible {
+                    continue;
+                }
+                if masks::write_selection_into_layer_mask(self, id, &mut ctx).is_some() {
+                    applied = true;
+                }
+            }
+            if applied {
+                self.ui_state.status = "New layer masked by selection".to_string();
             }
         }
         let dirty_from = ctx.dirty_from;

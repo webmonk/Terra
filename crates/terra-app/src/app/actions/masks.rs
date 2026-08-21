@@ -547,31 +547,15 @@ pub(crate) fn try_apply(
             return try_apply(app, PanelAction::AddMask(asset), ctx);
         }
         PanelAction::MaskFromSelection { layer } => {
-            let Some(selection_paint) =
-                app.selection.as_ref().and_then(|asset| asset.paint.clone())
-            else {
+            if app.selection.as_ref().and_then(|a| a.paint.as_ref()).is_none() {
                 app.ui_state.status = "No selection to convert".into();
                 return Ok(());
-            };
-            if let Some(mask_id) = app.session.document.ensure_layer_paint_mask(layer) {
-                if let Some(paint) = app
-                    .session
-                    .document
-                    .masks
-                    .iter_mut()
-                    .find(|m| m.id == mask_id)
-                    .and_then(|m| m.paint.as_mut())
-                {
-                    paint.copy_from_resampled(&selection_paint);
-                }
+            }
+            if let Some(mask_id) = write_selection_into_layer_mask(app, layer, ctx) {
                 app.session.document.selected = Some(layer);
                 app.ui_state.selected_mask = Some(mask_id);
                 app.ui_state.paint_mask = Some(mask_id);
                 app.ui_state.focus_created_mask(true);
-                ctx.note_mask_mutation(mask_id);
-                ctx.doc_mutated = true;
-                app.preview_dirty = true;
-                app.mask_overlay_dirty = true;
                 app.ui_state.status = "Layer mask created from selection".into();
             }
         }
@@ -682,6 +666,52 @@ pub(crate) fn try_apply(
     Ok(())
 }
 
+/// Samples at or below this are treated as unselected when deciding whether
+/// the transient selection has any coverage worth inheriting.
+pub(crate) const SELECTION_COVERAGE_EPSILON: f32 = 0.003;
+
+/// True when the transient selection exists and covers anything (any painted
+/// sample above [`SELECTION_COVERAGE_EPSILON`]).
+pub(crate) fn selection_has_coverage(selection: Option<&terra_core::mask::MaskAsset>) -> bool {
+    selection
+        .and_then(|asset| asset.paint.as_ref())
+        .is_some_and(|paint| {
+            paint
+                .samples
+                .iter()
+                .any(|&sample| sample > SELECTION_COVERAGE_EPSILON)
+        })
+}
+
+/// Write the transient selection into `layer`'s owned paint mask (creating
+/// and binding it on first use) and record the mutation. Shared by the
+/// explicit `MaskFromSelection` action and the "new layer inherits the
+/// selection" post-action hook in `apply_actions`. Deliberately does NOT
+/// touch focus / paint-arming - callers decide that.
+pub(crate) fn write_selection_into_layer_mask(
+    app: &mut TerraApp,
+    layer: terra_core::layer::LayerId,
+    ctx: &mut ApplyCtx,
+) -> Option<terra_core::mask::MaskId> {
+    let selection_paint = app.selection.as_ref().and_then(|asset| asset.paint.clone())?;
+    let mask_id = app.session.document.ensure_layer_paint_mask(layer)?;
+    if let Some(paint) = app
+        .session
+        .document
+        .masks
+        .iter_mut()
+        .find(|m| m.id == mask_id)
+        .and_then(|m| m.paint.as_mut())
+    {
+        paint.copy_from_resampled(&selection_paint);
+    }
+    ctx.note_mask_mutation(mask_id);
+    ctx.doc_mutated = true;
+    app.preview_dirty = true;
+    app.mask_overlay_dirty = true;
+    Some(mask_id)
+}
+
 /// Dilate / erode step per Grow / Shrink click (texels).
 const SELECTION_MORPH_RADIUS: u32 = 2;
 /// Box-blur radius for Feather (texels).
@@ -730,5 +760,46 @@ fn bake_band_max(
             let idx = (j * paint.width + i) as usize;
             paint.samples[idx] = paint.samples[idx].max(band);
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use terra_core::mask::{MaskAsset, MaskId};
+
+    fn painted_selection(resolution: u32) -> MaskAsset {
+        MaskAsset::new_painted(MaskId::new(), "Selection", resolution)
+    }
+
+    #[test]
+    fn no_selection_has_no_coverage() {
+        assert!(!selection_has_coverage(None));
+    }
+
+    #[test]
+    fn empty_selection_has_no_coverage() {
+        let asset = painted_selection(16);
+        assert!(!selection_has_coverage(Some(&asset)));
+    }
+
+    #[test]
+    fn epsilon_samples_do_not_count_as_coverage() {
+        let mut asset = painted_selection(16);
+        if let Some(paint) = asset.paint.as_mut() {
+            for s in paint.samples.iter_mut() {
+                *s = SELECTION_COVERAGE_EPSILON;
+            }
+        }
+        assert!(!selection_has_coverage(Some(&asset)));
+    }
+
+    #[test]
+    fn single_painted_sample_counts_as_coverage() {
+        let mut asset = painted_selection(16);
+        if let Some(paint) = asset.paint.as_mut() {
+            paint.samples[5] = 0.5;
+        }
+        assert!(selection_has_coverage(Some(&asset)));
     }
 }
