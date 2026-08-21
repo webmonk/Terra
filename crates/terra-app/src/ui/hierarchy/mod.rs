@@ -35,6 +35,12 @@ const SEC_ICON_SZ: f32 = 14.0;
 const CTRL_SZ: f32 = 20.0;
 const CTRL_SLOT: f32 = 22.0;
 const OPACITY_COL: f32 = 34.0;
+/// Compact blend-mode badge on the selected row (cycles the mode on click).
+const BLEND_BADGE_W: f32 = 44.0;
+/// Skip the blend badge on narrow rows so controls never crowd the name.
+const BLEND_BADGE_MIN_ROW_W: f32 = 260.0;
+/// Opacity scrub sensitivity: 1% per ~2px of horizontal drag.
+const OPACITY_SCRUB_PER_PX: f32 = 0.005;
 const CAT_ROW_H: f32 = 26.0;
 /// Single-line section / folder / mask-stack chrome (icon + label + controls).
 const SEC_ROW_H: f32 = 28.0;
@@ -75,6 +81,12 @@ pub(crate) const BLEND_LABELS: [&str; 12] = [
     "Overlay",
     "Smooth Max",
     "Smooth Min",
+];
+
+/// Short badge labels for the layer-row blend badge (same order as
+/// [`BLEND_MODES`] / [`BLEND_LABELS`]; full names stay in the inspector combo).
+const BLEND_SHORT_LABELS: [&str; 12] = [
+    "Norm", "Repl", "Add", "Sub", "Mult", "Min", "Max", "Lerp", "HBlnd", "Over", "SMax", "SMin",
 ];
 
 pub(crate) fn blend_mode_index(mode: BlendMode) -> usize {
@@ -150,6 +162,18 @@ pub struct LayersGuiState {
     pub presentation: LayerPresentationState,
     known_collapse_ids: Vec<LayerId>,
     pub thumbnails: ThumbnailCache,
+    /// In-flight opacity scrub on a layer row (Photoshop-style label drag).
+    pub opacity_drag: Option<OpacityDrag>,
+}
+
+/// Per-drag bookkeeping for the row opacity scrubber.
+#[derive(Debug, Clone, Copy)]
+pub struct OpacityDrag {
+    pub id: LayerId,
+    /// Pointer x at drag start (logical px).
+    pub start_x: f32,
+    /// Layer opacity at drag start.
+    pub start_opacity: f32,
 }
 
 impl Default for LayersGuiState {
@@ -164,6 +188,7 @@ impl Default for LayersGuiState {
             presentation: LayerPresentationState::default(),
             known_collapse_ids: Vec::new(),
             thumbnails: ThumbnailCache::default(),
+            opacity_drag: None,
         }
     }
 }
@@ -782,6 +807,23 @@ pub fn draw_layers_gui(
             } else if matches!(row_data.role, TreeRole::Layer | TreeRole::Foundation) {
                 ui.panel_rounded(icon_r, style::SURFACE, style::RADIUS_SM);
             }
+            // Reduced opacity at a glance: thin accent bar along the bottom of
+            // the thumbnail whose width fraction equals the layer opacity.
+            if matches!(row_data.role, TreeRole::Layer | TreeRole::Foundation)
+                && row_data.opacity < 0.999
+            {
+                let frac = row_data.opacity.clamp(0.0, 1.0);
+                ui.panel(
+                    Rect::from_pos_size(icon_r.min_x, icon_r.max_y - 2.0, icon_size, 2.0),
+                    Color::rgba(0.05, 0.06, 0.08, 0.55),
+                );
+                if frac > 0.0 {
+                    ui.panel(
+                        Rect::from_pos_size(icon_r.min_x, icon_r.max_y - 2.0, icon_size * frac, 2.0),
+                        style::ACCENT,
+                    );
+                }
+            }
             if matches!(
                 row_data.role,
                 TreeRole::Layer | TreeRole::Foundation | TreeRole::Group | TreeRole::Biome
@@ -870,6 +912,9 @@ pub fn draw_layers_gui(
         // Right-side controls.
         let mut rx = row.max_x - LIST_INSET;
         let show_secondary = selected || hovered;
+        // Right-click on the blend badge cycles the mode; the row context menu
+        // must not open from that same press.
+        let mut blend_badge_consumed_secondary = false;
 
         // Add Layer into Global section or Region.
         let show_add = matches!(
@@ -971,7 +1016,9 @@ pub fn draw_layers_gui(
             }
         }
 
-        // Opacity % - hover/selection only (declutter).
+        // Opacity % - hover/selection only (declutter). The label doubles as a
+        // Photoshop-style scrubber: horizontal drag adjusts opacity (1% per
+        // ~2px), emitting SetOpacity continuously (the app coalesces the undo).
         let show_opacity = matches!(
             row_data.role,
             TreeRole::Layer | TreeRole::Foundation | TreeRole::Group | TreeRole::Biome
@@ -979,16 +1026,153 @@ pub fn draw_layers_gui(
             && !compact;
         if show_opacity {
             rx -= OPACITY_COL;
-            let pct = format!("{:.0}%", (row_data.opacity * 100.0).round());
+            let scrub = Rect::from_pos_size(
+                rx,
+                row.min_y + (row_h - CTRL_SZ) * 0.5,
+                OPACITY_COL,
+                CTRL_SZ,
+            );
+            let op_id = Id::new("lopacity").child(&format!("{:?}", row_data.id));
+            let op_hovered = ui.pointer_in(scrub);
+            if op_hovered {
+                ui.state.set_hot(op_id);
+                if ui.input.primary_pressed {
+                    ui.state.active = Some(op_id);
+                    if let Some((px, _)) = ui.input.pointer {
+                        state.opacity_drag = Some(OpacityDrag {
+                            id: row_data.id,
+                            start_x: px,
+                            start_opacity: row_data.opacity,
+                        });
+                    }
+                }
+            }
+            let op_active = ui.state.is_active(op_id);
+            let mut shown_opacity = row_data.opacity;
+            if op_active {
+                if let (Some(drag), Some((px, _))) =
+                    (state.opacity_drag.as_ref(), ui.input.pointer)
+                {
+                    if drag.id == row_data.id {
+                        let v = (drag.start_opacity + (px - drag.start_x) * OPACITY_SCRUB_PER_PX)
+                            .clamp(0.0, 1.0);
+                        shown_opacity = v;
+                        if (v - row_data.opacity).abs() > 1e-4 {
+                            actions.push(PanelAction::SetOpacity {
+                                id: row_data.id,
+                                opacity: v,
+                            });
+                        }
+                    }
+                }
+                state.cursor_hint = crate::ui::UiCursor::EResize;
+            } else if state
+                .opacity_drag
+                .as_ref()
+                .is_some_and(|d| d.id == row_data.id)
+            {
+                state.opacity_drag = None;
+            }
+            if op_hovered || op_active {
+                ui.panel_rounded(
+                    scrub,
+                    if op_active {
+                        style::ACCENT_SOFT
+                    } else {
+                        style::BUTTON_BG
+                    },
+                    style::RADIUS_SM,
+                );
+            }
+            let pct = format!("{:.0}%", (shown_opacity * 100.0).round());
             let op_scale = FONT_SCALE * TYPE_CAPTION;
             let tw = DrawList::text_width(&pct, op_scale);
             ui.label_at(
                 rx + OPACITY_COL - tw - 2.0,
                 label_y(row.min_y, row_h, op_scale),
                 &pct,
-                style::TEXT_MUTED,
+                if op_active {
+                    style::ACCENT
+                } else {
+                    style::TEXT_MUTED
+                },
                 op_scale,
             );
+        }
+
+        // Blend-mode badge on the selected row: click cycles forward through
+        // BLEND_MODES, right-click cycles backward. Skipped on narrow rows.
+        let show_blend = selected
+            && !compact
+            && row.width() > BLEND_BADGE_MIN_ROW_W
+            && matches!(
+                row_data.role,
+                TreeRole::Layer | TreeRole::Foundation | TreeRole::Group | TreeRole::Biome
+            );
+        if show_blend {
+            let blend = doc
+                .stack
+                .find(row_data.id)
+                .map(|l| l.common.blend)
+                .or_else(|| doc.stack.find_group(row_data.id).map(|g| g.blend));
+            if let Some(blend) = blend {
+                rx -= BLEND_BADGE_W + 4.0;
+                let badge = Rect::from_pos_size(
+                    rx,
+                    row.min_y + (row_h - CTRL_SZ) * 0.5,
+                    BLEND_BADGE_W,
+                    CTRL_SZ,
+                );
+                let b_id = Id::new("lblend").child(&format!("{:?}", row_data.id));
+                let b_hovered = ui.pointer_in(badge);
+                if b_hovered {
+                    ui.state.set_hot(b_id);
+                    if ui.input.primary_pressed {
+                        ui.state.active = Some(b_id);
+                    }
+                }
+                let idx = blend_mode_index(blend);
+                let n = BLEND_MODES.len();
+                if b_hovered && ui.input.primary_released && ui.state.is_active(b_id) {
+                    actions.push(PanelAction::SetBlend {
+                        id: row_data.id,
+                        blend: blend_mode_at((idx + 1) % n),
+                    });
+                } else if b_hovered && ui.input.secondary_pressed {
+                    actions.push(PanelAction::SetBlend {
+                        id: row_data.id,
+                        blend: blend_mode_at((idx + n - 1) % n),
+                    });
+                    blend_badge_consumed_secondary = true;
+                }
+                ui.panel_rounded(
+                    badge,
+                    if b_hovered {
+                        style::ACCENT_SOFT
+                    } else {
+                        style::BUTTON_BG
+                    },
+                    style::RADIUS_SM,
+                );
+                let b_scale = FONT_SCALE * TYPE_CAPTION;
+                let b_label = BLEND_SHORT_LABELS[idx];
+                let b_tw = DrawList::text_width(b_label, b_scale);
+                ui.label_at(
+                    badge.min_x + ((BLEND_BADGE_W - b_tw) * 0.5).max(2.0),
+                    label_y(row.min_y, row_h, b_scale),
+                    b_label,
+                    style::TEXT_MUTED,
+                    b_scale,
+                );
+                if b_hovered {
+                    ui.queue_tooltip(
+                        badge,
+                        BLEND_LABELS[idx],
+                        "Click: next blend / Right-click: previous",
+                        None,
+                    );
+                }
+            }
         }
 
         if row_data.is_layer && show_secondary && row_data.role == TreeRole::Layer {
@@ -1292,6 +1476,7 @@ pub fn draw_layers_gui(
 
         if hovered
             && ui.input.secondary_pressed
+            && !blend_badge_consumed_secondary
             && matches!(
                 row_data.role,
                 TreeRole::Layer
