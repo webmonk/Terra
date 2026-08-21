@@ -1589,6 +1589,75 @@ mod tests {
         assert_eq!(eval.scrub_hits, 2, "changed params must miss the checkpoint");
     }
 
+    /// Isolated-group cache reuse is validated by a sparse input fingerprint,
+    /// which a small edit can slip between. That is safe only because the
+    /// fingerprint is a *secondary* check: a height-changing edit below the
+    /// group dirties every layer above it, including the group's descendants,
+    /// and `try_reuse_group_cache` refuses reuse when any descendant is dirty.
+    /// This pins that invariant - if dirty propagation is ever narrowed so a
+    /// group's descendants can stay clean while its input height changes, the
+    /// fingerprint becomes load-bearing and must be strengthened.
+    #[test]
+    fn group_cache_is_not_fooled_by_a_localized_edit_below() {
+        use crate::authoring::{SculptPoint, SculptStroke, SculptStrokeKind};
+        use crate::layer::{FbmParams, FlatParams, LayerGroup, SculptStrokeParams};
+
+        let metrics = HeightfieldMetrics::new(96, 96, 512.0, 512.0);
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "Base",
+            LayerKind::Flat(FlatParams { height: 100.0 }),
+        ));
+        let sculpt = Layer::new(
+            "Sculpt",
+            LayerKind::SculptStrokes(SculptStrokeParams::default()),
+        );
+        let sculpt_id = sculpt.id();
+        stack.push(sculpt);
+        let mut group = LayerGroup::isolated("G");
+        let mut fbm = Layer::new("Fbm", LayerKind::Fbm(FbmParams::default()));
+        fbm.common.blend = BlendMode::Add;
+        let inner_id = fbm.id();
+        group.children.push(StackNode::Layer(fbm));
+        stack.nodes.push(StackNode::Group(group));
+
+        let mut eval = StackEvaluator::new();
+        let mut ctx = EvalContext::new(metrics);
+        let before = eval.rebuild_all(&stack, &mut ctx).unwrap();
+
+        // Same between-samples stroke that defeated the scrub fingerprint.
+        if let Some(l) = stack.find_mut(sculpt_id) {
+            if let LayerKind::SculptStrokes(p) = &mut l.kind {
+                p.strokes.push(SculptStroke {
+                    kind: SculptStrokeKind::Raise,
+                    points: vec![SculptPoint {
+                        u: 0.4427,
+                        v: 0.4427,
+                        pressure: 1.0,
+                    }],
+                    radius_m: 18.0,
+                    strength: 120.0,
+                    ..Default::default()
+                });
+            }
+        }
+        eval.mark_dirty_from(&stack, sculpt_id);
+        assert!(
+            eval.cache.is_dirty(inner_id),
+            "a height edit below an isolated group must dirty the group's \
+             descendants - this is what keeps the sparse group fingerprint safe"
+        );
+        let after = eval.rebuild_incremental(&stack, &mut ctx).unwrap();
+
+        let mut diff = 0.0f32;
+        for j in 0..96 {
+            for i in 0..96 {
+                diff = diff.max((before.get(i, j) - after.get(i, j)).abs());
+            }
+        }
+        assert!(diff > 1e-3, "localized edit below a group must reach the output");
+    }
+
     /// A localized edit below a scrubbed sim must invalidate its checkpoint.
     /// The sparse fingerprint sample grid can miss a small edit entirely, so
     /// checkpoint keys hash full content.
