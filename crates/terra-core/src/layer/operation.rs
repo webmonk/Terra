@@ -279,6 +279,8 @@ impl LayerKind {
                 FieldId::BedrockHeight,
                 FieldId::SedimentThickness,
                 FieldId::Rainfall,
+                FieldId::Hardness,
+                FieldId::Named(crate::fields::keys::WATER_DEPTH.into()),
             ],
             LayerKind::SandSimulation(_) | LayerKind::Dunes(_) => vec![
                 FieldId::Height,
@@ -318,14 +320,25 @@ impl LayerKind {
                     FieldId::SlidePath,
                     FieldId::Instability,
                     FieldId::FlowAccumulation,
+                    FieldId::Hardness,
                 ]
             }
-            LayerKind::StreamPowerErosion(_) | LayerKind::RiverCarve(_) => vec![
+            LayerKind::StreamPowerErosion(_) => vec![
                 FieldId::Height,
                 FieldId::FlowDirection,
                 FieldId::FlowAccumulation,
                 FieldId::StreamOrder,
                 FieldId::SpeIncision,
+                FieldId::Erosion,
+                FieldId::Hardness,
+            ],
+            LayerKind::RiverCarve(_) => vec![
+                FieldId::Height,
+                FieldId::FlowDirection,
+                FieldId::FlowAccumulation,
+                FieldId::StreamOrder,
+                FieldId::SpeIncision,
+                FieldId::Wetness,
             ],
             LayerKind::Materials(_) => {
                 vec![
@@ -344,13 +357,29 @@ impl LayerKind {
                 FieldId::SoilMoisture,
                 FieldId::WindExposure,
             ],
-            LayerKind::Vegetation(_) => vec![FieldId::Vegetation],
+            // Hardness only when root cohesion is enabled, but contracts are
+            // static: declaring it keeps consumers invalidated either way.
+            LayerKind::Vegetation(_) => vec![FieldId::Vegetation, FieldId::Hardness],
             LayerKind::OverhangStamp(_) | LayerKind::LocalSdf(_) => {
                 vec![
                     FieldId::Height,
                     FieldId::OverhangCeiling,
                     FieldId::OverhangMask,
                 ]
+            }
+            LayerKind::MultiScaleAmplify(_) => vec![
+                FieldId::Height,
+                FieldId::Erosion,
+                FieldId::Deposition,
+                FieldId::Hardness,
+            ],
+            LayerKind::FluidSimulation(_) => vec![
+                FieldId::Height,
+                FieldId::Wetness,
+                FieldId::Named(crate::fields::keys::WATER_DEPTH.into()),
+            ],
+            LayerKind::RiverNetwork(_) | LayerKind::Path(_) => {
+                vec![FieldId::Height, FieldId::Wetness]
             }
             _ if matches!(self.category(), OperationCategory::Generator) => {
                 vec![FieldId::Height]

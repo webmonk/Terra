@@ -170,6 +170,24 @@ struct ScrubEntry {
 
 const SCRUB_ENTRIES_PER_LAYER: usize = 16;
 
+/// Full-content hash of a heightfield's interior samples.
+///
+/// Scrub checkpoints must not replay against a *different* input, and the
+/// sparse [`height_fingerprint`] sample grid can miss a localized edit
+/// entirely (a sculpt stroke narrower than the sample stride), so
+/// checkpoint validation hashes every sample. The cost is negligible
+/// against re-running the simulation the checkpoint exists to avoid.
+fn height_content_hash(hf: &Heightfield) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    for tile in hf.tiles() {
+        for &v in tile.interior() {
+            hash ^= v.to_bits() as u64;
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    hash
+}
+
 /// Cheap parameter identity for scrub-checkpoint validation: any edit beyond
 /// the progress scrub itself changes the fingerprint and misses the cache.
 fn scrub_params_fingerprint(layer: &Layer) -> u64 {
@@ -540,6 +558,9 @@ impl StackEvaluator {
         start_index: usize,
         mut current: Heightfield,
     ) -> Result<Heightfield, EvalError> {
+        // A suffix run is a fresh pass: no layer below it was computed here,
+        // so nothing is pending-restore from this context.
+        ctx.pass_changed.clear();
         let layers = stack.flatten_layers();
         let track_bases = layers
             .iter()
@@ -671,7 +692,7 @@ impl StackEvaluator {
         let scrub_key = scrubbing.then(|| {
             (
                 (layer.common.sim_progress.clamp(0.0, 1.0) * 100.0).round() as u8,
-                height_fingerprint(input),
+                height_content_hash(input),
                 scrub_params_fingerprint(layer),
             )
         });
@@ -1446,6 +1467,73 @@ mod tests {
         }
     }
 
+    /// Field-aware invalidation trusts the static field contracts: a layer
+    /// that writes a channel it never declares can leave consumers above it
+    /// stale, since they are only dirtied when a *declared* channel they read
+    /// changes. This validates every registered kind's declaration against
+    /// what its processor actually writes at runtime (copy-on-write buffer
+    /// identity), so a new under-declaration fails here instead of silently
+    /// corrupting incremental rebuilds.
+    #[test]
+    fn processor_writes_stay_within_declared_contracts() {
+        use crate::fields::keys;
+        use crate::layer::LayerTypeRegistry;
+
+        let registry = LayerTypeRegistry::builtin();
+        let metrics = HeightfieldMetrics::new(32, 32, 256.0, 256.0);
+        // A little relief so sims and analysis have something to act on.
+        let mut input = Heightfield::zeros(metrics);
+        for j in 0..32u32 {
+            for i in 0..32u32 {
+                let (x, y) = (i as f32 / 31.0, j as f32 / 31.0);
+                input.set(i, j, 40.0 * (x * 6.0).sin() * (y * 5.0).cos() + 60.0 * x);
+            }
+        }
+        input.refresh_halos();
+
+        let mut violations: Vec<String> = Vec::new();
+        for meta in registry.all() {
+            let Some(layer) = registry.create(meta.type_id) else {
+                continue;
+            };
+            let declared: HashSet<String> = layer
+                .kind
+                .produced_fields()
+                .into_iter()
+                .chain(layer.kind.modified_fields())
+                .map(|f| f.cache_key())
+                .collect();
+
+            let mut eval = StackEvaluator::new();
+            let mut ctx = EvalContext::new(metrics);
+            ctx.quality = PreviewQuality::Draft;
+            if eval
+                .evaluate_layer(&mut ctx, &input, &layer, None, false)
+                .is_err()
+            {
+                continue;
+            }
+            for key in &ctx.pass_changed {
+                // Derived caches are recomputed from the current height by
+                // the context itself, and any height change already dirties
+                // everything above, so they are not the layer's product.
+                if key == keys::SLOPE || key == keys::CURVATURE {
+                    continue;
+                }
+                if !declared.contains(key) {
+                    violations.push(format!("{} writes undeclared '{}'", meta.type_id, key));
+                }
+            }
+        }
+        violations.sort();
+        assert!(
+            violations.is_empty(),
+            "layer kinds write channels their field contracts do not declare, so \
+             consumers of those channels are not invalidated:\n  {}",
+            violations.join("\n  ")
+        );
+    }
+
     #[test]
     fn scrub_checkpoints_replay_visited_positions() {
         use crate::layer::{FbmParams, ThermalErosionParams};
@@ -1499,6 +1587,68 @@ mod tests {
         eval.mark_dirty_from(&stack, thermal_id);
         eval.rebuild_incremental(&stack, &mut ctx).unwrap();
         assert_eq!(eval.scrub_hits, 2, "changed params must miss the checkpoint");
+    }
+
+    /// A localized edit below a scrubbed sim must invalidate its checkpoint.
+    /// The sparse fingerprint sample grid can miss a small edit entirely, so
+    /// checkpoint keys hash full content.
+    #[test]
+    fn scrub_checkpoint_sees_localized_edits_below() {
+        use crate::layer::{FlatParams, SculptStrokeParams, ThermalErosionParams};
+        use crate::authoring::{SculptPoint, SculptStroke, SculptStrokeKind};
+
+        let metrics = HeightfieldMetrics::new(96, 96, 512.0, 512.0);
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new(
+            "Base",
+            LayerKind::Flat(FlatParams { height: 100.0 }),
+        ));
+        let sculpt = Layer::new("Sculpt", LayerKind::SculptStrokes(SculptStrokeParams::default()));
+        let sculpt_id = sculpt.id();
+        stack.push(sculpt);
+        let mut thermal = Layer::new(
+            "Thermal",
+            LayerKind::ThermalErosion(ThermalErosionParams::default()),
+        );
+        thermal.common.sim_progress = 0.5;
+        stack.push(thermal);
+
+        let mut eval = StackEvaluator::new();
+        let mut ctx = EvalContext::new(metrics);
+        let before = eval.rebuild_all(&stack, &mut ctx).unwrap();
+
+        // A narrow stroke between fingerprint sample points.
+        if let Some(l) = stack.find_mut(sculpt_id) {
+            if let LayerKind::SculptStrokes(p) = &mut l.kind {
+                p.strokes.push(SculptStroke {
+                    kind: SculptStrokeKind::Raise,
+                    // Centred at texel ~42.5 with a ~3-texel radius: the
+                    // sparse fingerprint samples every 12th texel (36, 48),
+                    // so this edit falls entirely between sample points.
+                    points: vec![SculptPoint {
+                        u: 0.4427,
+                        v: 0.4427,
+                        pressure: 1.0,
+                    }],
+                    radius_m: 18.0,
+                    strength: 120.0,
+                    ..Default::default()
+                });
+            }
+        }
+        eval.mark_dirty_from(&stack, sculpt_id);
+        let after = eval.rebuild_incremental(&stack, &mut ctx).unwrap();
+
+        let mut diff = 0.0f32;
+        for j in 0..96 {
+            for i in 0..96 {
+                diff = diff.max((before.get(i, j) - after.get(i, j)).abs());
+            }
+        }
+        assert!(
+            diff > 1e-3,
+            "a localized edit below a scrubbed sim must not replay a stale checkpoint"
+        );
     }
 
     #[test]
