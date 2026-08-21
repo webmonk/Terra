@@ -387,10 +387,10 @@ impl TerraApp {
             let screen_h = surface_h as f32 / pixels_per_point;
 
             let ui_t0 = Instant::now();
-            let hist_fp = self.session.history.ui_fingerprint();
+            let hist_fp = self.session.history_ui_fingerprint();
             if hist_fp != self.ui_history_fp {
                 self.ui_history_fp = hist_fp;
-                self.ui_state.history_descriptions = self.session.history.undo_descriptions();
+                self.ui_state.history_entries = self.session.unified_history();
             }
             let outdated_fp = self.session.outdated_sim_layers.len();
             if outdated_fp != self.ui_outdated_fp

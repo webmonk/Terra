@@ -5,7 +5,7 @@ mod session;
 #[cfg(test)]
 mod tests;
 
-pub use session::{EditorSession, MaskPaintPatch, PaintStrokeUndo, UndoDomain};
+pub use session::{EditorSession, HistoryEntry, MaskPaintPatch, PaintStrokeUndo, UndoDomain};
 
 use crate::deps::DependencyGraph;
 use crate::heightfield::HeightfieldMetrics;

@@ -199,8 +199,9 @@ pub struct UiState {
     pub viewport_lighting_selected: bool,
     /// Camera locations saved with Ctrl+1 through Ctrl+9.
     pub bookmarks: [Option<CameraBookmark>; 9],
-    /// Read-only history labels supplied by the app, oldest to newest.
-    pub history_descriptions: Vec<String>,
+    /// Read-only unified history rows supplied by the app, oldest to newest
+    /// (merged chronologically across every undo stack).
+    pub history_entries: Vec<terra_core::document::HistoryEntry>,
     /// Environment lighting preset for the 3D viewport (presentation only).
     pub lighting_preset: LightingPreset,
     /// True when the lighting values have been edited away from `lighting_preset`,

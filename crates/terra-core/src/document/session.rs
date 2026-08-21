@@ -128,6 +128,19 @@ pub enum UndoDomain {
     BiomePaint,
 }
 
+/// One row of the unified chronological History panel.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct HistoryEntry {
+    /// Global edit stamp from [`crate::command::next_edit_seq`].
+    pub seq: u64,
+    /// Artist-facing label.
+    pub label: String,
+    /// Which undo stack owns the entry.
+    pub domain: UndoDomain,
+    /// True when the entry has been undone and awaits redo.
+    pub pending_redo: bool,
+}
+
 impl Default for EditorSession {
     fn default() -> Self {
         Self::new()
@@ -209,6 +222,75 @@ impl EditorSession {
             .filter_map(|(d, s)| s.map(|s| (d, s)))
             .min_by_key(|&(_, s)| s)
             .map(|(d, _)| d)
+    }
+
+    /// Every edit across all undo stacks, merged chronologically (ascending
+    /// by global edit stamp). Undone-but-redoable edits carry
+    /// `pending_redo = true`.
+    pub fn unified_history(&self) -> Vec<HistoryEntry> {
+        let mut entries: Vec<HistoryEntry> = Vec::new();
+        let mut push = |seq: u64, label: String, domain: UndoDomain, pending_redo: bool| {
+            entries.push(HistoryEntry {
+                seq,
+                label,
+                domain,
+                pending_redo,
+            });
+        };
+        for (seq, label) in self.history.undo_entries() {
+            push(seq, label, UndoDomain::Stack, false);
+        }
+        for (seq, label) in self.history.redo_entries() {
+            push(seq, label, UndoDomain::Stack, true);
+        }
+        for (_, seq) in &self.world_rule_undo {
+            push(*seq, "World Rule Edit".into(), UndoDomain::WorldRule, false);
+        }
+        for (_, seq) in &self.world_rule_redo {
+            push(*seq, "World Rule Edit".into(), UndoDomain::WorldRule, true);
+        }
+        for (_, seq) in &self.scenario_undo {
+            push(*seq, "Scenario Edit".into(), UndoDomain::Scenario, false);
+        }
+        for (_, seq) in &self.scenario_redo {
+            push(*seq, "Scenario Edit".into(), UndoDomain::Scenario, true);
+        }
+        for (patch, seq) in &self.mask_paint_undo {
+            push(*seq, patch.label.clone(), UndoDomain::MaskPaint, false);
+        }
+        for (patch, seq) in &self.mask_paint_redo {
+            push(*seq, patch.label.clone(), UndoDomain::MaskPaint, true);
+        }
+        // Biome paint strokes have no redo stack.
+        for (stroke, seq) in &self.paint_undo {
+            push(*seq, stroke.label.clone(), UndoDomain::BiomePaint, false);
+        }
+        entries.sort_by_key(|e| e.seq);
+        entries
+    }
+
+    /// Cheap change fingerprint across every undo/redo stack, for UI cache
+    /// invalidation (extends [`CommandHistory::ui_fingerprint`]). Includes the
+    /// stack's newest edit stamp so coalesced in-place updates are caught.
+    pub fn history_ui_fingerprint(&self) -> (usize, usize) {
+        let (stack_undo, stack_redo) = self.history.ui_fingerprint();
+        let parts = [
+            stack_undo as u64,
+            stack_redo as u64,
+            self.history.top_undo_seq().unwrap_or(0),
+            self.world_rule_undo.len() as u64,
+            self.world_rule_redo.len() as u64,
+            self.scenario_undo.len() as u64,
+            self.scenario_redo.len() as u64,
+            self.mask_paint_undo.len() as u64,
+            self.mask_paint_redo.len() as u64,
+            self.paint_undo.len() as u64,
+        ];
+        let mut hash: u64 = 0xcbf2_9ce4_8422_2325;
+        for part in parts {
+            hash = (hash ^ part).wrapping_mul(0x1000_0000_01b3);
+        }
+        ((hash >> 32) as usize, (hash & 0xffff_ffff) as usize)
     }
 
     pub fn push_world_rule_command(&mut self, cmd: WorldRuleCommand) {
@@ -412,6 +494,50 @@ mod tests {
         assert_eq!(session.oldest_redo_domain(), Some(UndoDomain::Stack));
         session.history.redo(&mut session.document.stack);
         assert_eq!(session.oldest_redo_domain(), Some(UndoDomain::MaskPaint));
+    }
+
+    #[test]
+    fn unified_history_merges_stacks_chronologically() {
+        use crate::command::EditorCommand;
+        use crate::layer::{FlatParams, Layer, LayerKind};
+
+        let mut session = EditorSession::new();
+        let layer = Layer::new("A", LayerKind::Flat(FlatParams { height: 1.0 }));
+        let id = layer.id();
+        session.document.stack.push(layer);
+
+        // Edit 1: stack command. Edit 2: mask paint. Then undo the paint.
+        let cmd = EditorCommand::SetOpacity {
+            id,
+            opacity: 0.5,
+            previous: 1.0,
+        };
+        crate::command::apply(&cmd, &mut session.document.stack);
+        session.history.push_executed(cmd);
+        session.push_mask_paint_patch(MaskPaintPatch {
+            label: "Painted Mask".into(),
+            mask_id: MaskId::new(),
+            buffer_width: 2,
+            buffer_height: 1,
+            x: 0,
+            y: 0,
+            w: 1,
+            h: 1,
+            before: vec![0.0],
+            after: vec![1.0],
+        });
+        assert!(session.undo_mask_paint().is_some());
+
+        let entries = session.unified_history();
+        assert_eq!(entries.len(), 2);
+        // Ascending by seq: the stack command came first.
+        assert!(entries[0].seq < entries[1].seq);
+        assert_eq!(entries[0].domain, UndoDomain::Stack);
+        assert_eq!(entries[0].label, "Changed Opacity");
+        assert!(!entries[0].pending_redo);
+        assert_eq!(entries[1].domain, UndoDomain::MaskPaint);
+        assert_eq!(entries[1].label, "Painted Mask");
+        assert!(entries[1].pending_redo);
     }
 
     #[test]
