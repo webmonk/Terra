@@ -278,9 +278,8 @@ fn draw_selection_chip_row(
         ("+ Height", 8),
     ];
     let btn_w = |l: &str| (DrawList::text_width(l, font_scale) + 16.0).max(40.0);
-    let row_w = |labels: &[&str]| {
-        labels.iter().map(|l| btn_w(l)).sum::<f32>() + gap * labels.len() as f32
-    };
+    let row_w =
+        |labels: &[&str]| labels.iter().map(|l| btn_w(l)).sum::<f32>() + gap * labels.len() as f32;
     let row1_w = row_w(&row1.map(|(l, _)| l));
     let row2_w = row_w(&row2.map(|(l, _)| l));
     let panel_w = pad * 2.0 + label_w + row1_w.max(row2_w);
@@ -638,8 +637,7 @@ fn estimate_viewport_mode_bar_width(state: &UiState, vp: Rect) -> f32 {
         )
         + 14.0
         + label_pad_x)
-        .max(72.0)
-        .min(148.0);
+        .clamp(72.0, 148.0);
     let render_w = (DrawList::text_width("Render", font_scale) + label_pad_x * 2.0).max(64.0);
     let content_w =
         modes_w + sep_gap + 1.0 + sep_gap + lighting_w + sep_gap + 1.0 + sep_gap + render_w;
@@ -700,8 +698,7 @@ fn draw_viewport_mode_bar(
     };
     let lighting_w =
         (18.0 + 4.0 + DrawList::text_width(preset_label, font_scale) + 14.0 + label_pad_x)
-            .max(72.0)
-            .min(148.0);
+            .clamp(72.0, 148.0);
 
     let widths: Vec<f32> = items
         .iter()
@@ -922,6 +919,7 @@ fn draw_viewport_display_bar(
     ui.end_overlay();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn display_aid_toggle(
     ui: &mut GuiContext<'_>,
     id: Id,
@@ -1023,6 +1021,7 @@ fn lighting_combo_button(
     clicked
 }
 
+#[allow(clippy::too_many_arguments)]
 fn mode_button(
     ui: &mut GuiContext<'_>,
     id: Id,
@@ -1207,7 +1206,13 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
         section_header(ui, "Lighting");
         let mut lighting_edited = false;
         lighting_edited |= slider_f32(ui, "Sun azimuth  deg", &mut vr.sun_azimuth_deg, 0.0, 360.0);
-        lighting_edited |= slider_f32(ui, "Sun elevation  deg", &mut vr.sun_elevation_deg, 0.0, 90.0);
+        lighting_edited |= slider_f32(
+            ui,
+            "Sun elevation  deg",
+            &mut vr.sun_elevation_deg,
+            0.0,
+            90.0,
+        );
         lighting_edited |= slider_f32(ui, "Sun intensity", &mut vr.sun_intensity, 0.0, 3.0);
         lighting_edited |= slider_f32(ui, "Exposure", &mut vr.exposure, 0.1, 4.0);
         lighting_edited |= slider_f32(ui, "Sky R", &mut vr.sky_color[0], 0.0, 1.0);
@@ -1718,7 +1723,7 @@ fn draw_camera_speed_menu(ui: &mut GuiContext<'_>, state: &mut UiState, anchor: 
 }
 
 fn draw_brush_bar(ui: &mut GuiContext<'_>, state: &mut UiState, vp: Rect) {
-    let bar_w = (vp.width() - PAD * 2.0).min(560.0).max(280.0);
+    let bar_w = (vp.width() - PAD * 2.0).clamp(280.0, 560.0);
     let bar = Rect::from_pos_size(
         vp.min_x + (vp.width() - bar_w) * 0.5,
         vp.max_y - PAD - style::VIEWPORT_TOOL_MODE_BAR_H - GAP - style::BRUSH_BAR_H,
@@ -1826,6 +1831,7 @@ fn draw_brush_bar(ui: &mut GuiContext<'_>, state: &mut UiState, vp: Rect) {
     ui.end_overlay();
 }
 
+#[allow(clippy::too_many_arguments)]
 fn compact_slider(
     ui: &mut GuiContext<'_>,
     id: Id,

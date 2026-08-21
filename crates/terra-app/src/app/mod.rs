@@ -268,6 +268,7 @@ pub struct TerraApp {
 }
 
 impl Default for TerraApp {
+    #[allow(clippy::field_reassign_with_default)] // prefs are layered onto sub-state defaults
     fn default() -> Self {
         let now = Instant::now();
         let prefs = crate::app::prefs::load_editor_prefs();
@@ -333,7 +334,7 @@ impl Default for TerraApp {
             inspector_gui: InspectorGuiState::default(),
             layers_gui: LayersGuiState::default(),
             windows_gui: WindowsGuiState::default(),
-            dock_gui: DockGuiState::default(),
+            dock_gui: DockGuiState,
             gui_scroll_delta: 0.0,
             gui_text: String::new(),
             gui_backspace: false,
@@ -529,6 +530,7 @@ pub(crate) fn apply_blueprint_to_stack(doc: &mut terra_core::document::TerrainDo
     }
 }
 
+#[allow(clippy::field_reassign_with_default)] // stepwise param setup reads clearer here
 pub(crate) fn ensure_hydrology_processes(doc: &mut terra_core::document::TerrainDocument) {
     use terra_core::authoring::{
         GeomorphicDetailParams, HydrologyRepairParams, LandscapeEvolutionParams,

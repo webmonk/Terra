@@ -89,10 +89,12 @@ fn local_placement_compiles_height_and_slope() {
     assert!(!text.contains("MaskId"));
 
     // Second condition style (slope) for readable AND summaries.
-    let mut slope = OperationPlacement::default();
-    slope.apply_where = ApplyWhere::SlopeRange;
-    slope.slope_min = 0.0;
-    slope.slope_max = 50.0;
+    let mut slope = OperationPlacement {
+        apply_where: ApplyWhere::SlopeRange,
+        slope_min: 0.0,
+        slope_max: 50.0,
+        ..Default::default()
+    };
     slope.sync_definition_from_apply_where();
     let slope_text = slope.summary_paragraph("Alpine Mountains");
     assert!(slope_text.contains("50"));

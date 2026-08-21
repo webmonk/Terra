@@ -338,8 +338,8 @@ impl PaintBuffer {
                 let lo = i.saturating_sub(r);
                 let hi = (i + r).min(w - 1);
                 let mut acc = row[lo];
-                for x in lo + 1..=hi {
-                    acc = pick(acc, row[x]);
+                for &v in &row[lo + 1..=hi] {
+                    acc = pick(acc, v);
                 }
                 tmp[j * w + i] = acc;
             }

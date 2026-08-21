@@ -396,6 +396,7 @@ fn sparse_gabor_raw(x: f32, z: f32, frequency: f32, seed: u64) -> f32 {
 }
 
 /// Multi-octave sparse Gabor (distinct from Perlin/Value FBM).
+#[allow(clippy::too_many_arguments)]
 pub fn sparse_gabor_fbm(
     x: f32,
     z: f32,
@@ -497,6 +498,7 @@ fn phasor_noise_raw(x: f32, z: f32, frequency: f32, seed: u64) -> f32 {
 }
 
 /// Multi-octave phasor noise (distinct from Perlin/Simplex FBM).
+#[allow(clippy::too_many_arguments)]
 pub fn phasor_noise_fbm(
     x: f32,
     z: f32,

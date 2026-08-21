@@ -10,8 +10,10 @@ use terra_core::mask::{
 };
 
 fn alpine_rules() -> PlacementDefinition {
-    let mut p = PlacementDefinition::default();
-    p.space = PlacementCoordinateSpace::RuleBased;
+    let mut p = PlacementDefinition {
+        space: PlacementCoordinateSpace::RuleBased,
+        ..Default::default()
+    };
     p.root = RuleGroup {
         mode: RuleGroupMode::All,
         invert: false,
@@ -120,8 +122,10 @@ fn nested_groups_respect_depth_cap() {
             children: vec![RuleNode::Group(inner)],
         };
     }
-    let mut p = PlacementDefinition::default();
-    p.root = inner;
+    let mut p = PlacementDefinition {
+        root: inner,
+        ..Default::default()
+    };
     p.recompute_hash();
     let dist = p.compile();
     // Must compile without panic; deepest levels become Fill identity.
@@ -132,8 +136,10 @@ fn nested_groups_respect_depth_cap() {
 #[test]
 fn painted_area_plus_conditions() {
     let mid = MaskId::new();
-    let mut p = PlacementDefinition::default();
-    p.space = PlacementCoordinateSpace::WorldSpace;
+    let mut p = PlacementDefinition {
+        space: PlacementCoordinateSpace::WorldSpace,
+        ..Default::default()
+    };
     p.coverage.push(CoverageTerm::PaintedWorld { mask: mid });
     p.root.children = vec![
         RuleNode::CoverageRef { index: 0 },
@@ -298,8 +304,10 @@ fn group_any_bake_max_not_ones() {
 #[test]
 fn biome_placement_rules_compiled_distribution() {
     use terra_core::biome_definition::BiomePlacementRules;
-    let mut rules = BiomePlacementRules::default();
-    rules.definition = Some(alpine_rules());
+    let mut rules = BiomePlacementRules {
+        definition: Some(alpine_rules()),
+        ..Default::default()
+    };
     let dist = rules.compiled_distribution();
     assert!(matches!(dist.nodes[0].kind, DistNodeKind::GroupAll));
     rules.mark_mask_stack_custom(dist.clone());

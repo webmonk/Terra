@@ -348,7 +348,7 @@ fn writer_never_emits_a_version_lower_than_2() {
     let saved = doc.to_json().expect("document must save");
     let value: serde_json::Value = serde_json::from_str(&saved).expect("valid saved JSON");
     assert_eq!(value["version"], DOCUMENT_VERSION);
-    assert!(DOCUMENT_VERSION >= 2);
+    assert!(value["version"].as_u64().is_some_and(|v| v >= 2));
 }
 
 #[test]

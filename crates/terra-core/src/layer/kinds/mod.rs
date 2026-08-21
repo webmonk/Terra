@@ -33,6 +33,7 @@ pub use crate::landscape_evolution::{
 use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum LayerKind {
     // Artist foundation - painted height buffer (always bottom in default docs)
     SculptBase(SculptParams),

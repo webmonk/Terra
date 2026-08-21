@@ -201,6 +201,7 @@ pub fn evolve_analytical(
     (z, cache, incision)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn analytical_on_tree(
     z: &Heightfield,
     z0: &Heightfield,
@@ -339,6 +340,7 @@ fn analytical_on_tree(
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 fn characteristic_elevation(
     idx: usize,
     t: f32,

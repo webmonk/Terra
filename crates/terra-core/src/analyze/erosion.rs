@@ -905,6 +905,7 @@ fn add_bilinear(
     amount
 }
 
+#[allow(clippy::too_many_arguments)]
 fn erode_particle_brush(
     heights: &mut [f32],
     erosion: &mut [f32],

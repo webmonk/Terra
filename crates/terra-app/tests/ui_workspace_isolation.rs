@@ -1,3 +1,5 @@
+// Tests build fixtures by mutating Default instances; clearer than giant initializers.
+#![allow(clippy::field_reassign_with_default)]
 //! Workspace switch isolation: presentation must not mutate project or selection.
 
 use terra_app::ui::{AppWorkspace, UiState, WorkspaceMode, WorkspaceState};

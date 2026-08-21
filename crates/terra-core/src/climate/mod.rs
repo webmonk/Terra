@@ -201,6 +201,7 @@ pub fn classify_biomes(
     out
 }
 
+#[allow(clippy::too_many_arguments)]
 fn band_matches(
     band: &BiomeBand,
     h: f32,

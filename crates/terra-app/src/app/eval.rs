@@ -305,7 +305,9 @@ impl TerraApp {
         }
         for (id, generation, height) in todo {
             let thumb = render_height_thumbnail(&height, LAYER_THUMB_RES);
-            self.layers_gui.thumbnails.insert_real(id, generation, thumb);
+            self.layers_gui
+                .thumbnails
+                .insert_real(id, generation, thumb);
         }
     }
 
@@ -883,27 +885,28 @@ impl TerraApp {
         let n = (w * h) as usize;
 
         let placement = doc.selected_placement_layer();
-        let isolate = placement
-            .filter(|l| l.isolate_active)
-            .and_then(|_| doc.active_biome);
+        let isolate = placement.filter(|l| l.isolate_active).and(doc.active_biome);
 
         let surface = doc.stack.find_category(StackCategory::Surface)?;
-        let biomes: Vec<(terra_core::layer::LayerId, [f32; 3], &terra_core::mask::Distribution)> =
-            surface
-                .children
-                .iter()
-                .filter_map(|child| match child {
-                    StackNode::Group(g) if g.is_biome() && g.enabled => {
-                        let color = doc
-                            .biome_library
-                            .by_group(g.id)
-                            .map(|d| d.color)
-                            .unwrap_or(g.preview_color);
-                        Some((g.id, color, &g.masks))
-                    }
-                    _ => None,
-                })
-                .collect();
+        let biomes: Vec<(
+            terra_core::layer::LayerId,
+            [f32; 3],
+            &terra_core::mask::Distribution,
+        )> = surface
+            .children
+            .iter()
+            .filter_map(|child| match child {
+                StackNode::Group(g) if g.is_biome() && g.enabled => {
+                    let color = doc
+                        .biome_library
+                        .by_group(g.id)
+                        .map(|d| d.color)
+                        .unwrap_or(g.preview_color);
+                    Some((g.id, color, &g.masks))
+                }
+                _ => None,
+            })
+            .collect();
         if biomes.is_empty() {
             return None;
         }
@@ -945,13 +948,12 @@ impl TerraApp {
         }
 
         let mut rgba = vec![0u8; n * 4];
-        for i in 0..n {
-            let idx = i * 4;
+        for (i, px) in rgba.chunks_exact_mut(4).enumerate() {
             let c = i * 3;
-            rgba[idx] = (color[c].clamp(0.0, 1.0) * 255.0) as u8;
-            rgba[idx + 1] = (color[c + 1].clamp(0.0, 1.0) * 255.0) as u8;
-            rgba[idx + 2] = (color[c + 2].clamp(0.0, 1.0) * 255.0) as u8;
-            rgba[idx + 3] = (alpha[i].clamp(0.0, 1.0) * 220.0) as u8;
+            px[0] = (color[c].clamp(0.0, 1.0) * 255.0) as u8;
+            px[1] = (color[c + 1].clamp(0.0, 1.0) * 255.0) as u8;
+            px[2] = (color[c + 2].clamp(0.0, 1.0) * 255.0) as u8;
+            px[3] = (alpha[i].clamp(0.0, 1.0) * 220.0) as u8;
         }
 
         // Painted placement weights own wherever painted.
@@ -1041,13 +1043,7 @@ impl TerraApp {
                     self.ui_state.preview_rgba = None;
                     return;
                 };
-                let max = flow
-                    .data()
-                    .iter()
-                    .copied()
-                    .into_iter()
-                    .fold(1.0f32, f32::max)
-                    .ln_1p();
+                let max = flow.data().iter().copied().fold(1.0f32, f32::max).ln_1p();
                 flow.data()
                     .iter()
                     .copied()

@@ -464,8 +464,7 @@ impl TerraApp {
 
             // Export panel checkboxes list whatever aux maps the last evaluation produced.
             if self.ui_state.show_export {
-                let mut aux_keys: Vec<String> =
-                    self.scheduler.last_aux.keys().cloned().collect();
+                let mut aux_keys: Vec<String> = self.scheduler.last_aux.keys().cloned().collect();
                 aux_keys.sort();
                 self.ui_state.export_available_aux = aux_keys;
             }
@@ -717,7 +716,9 @@ impl TerraApp {
 
 /// Min / max / strided-median height stats for the selection height popover
 /// (same strided sampling as the auto-median selection preset).
-fn terrain_height_stats(hf: &terra_core::heightfield::Heightfield) -> crate::ui::TerrainHeightStats {
+fn terrain_height_stats(
+    hf: &terra_core::heightfield::Heightfield,
+) -> crate::ui::TerrainHeightStats {
     let (min, max) = hf.min_max();
     let m = hf.metrics;
     let stride = (m.width.max(m.height) / 128).max(1);

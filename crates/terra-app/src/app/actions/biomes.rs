@@ -5,12 +5,14 @@ use crate::ui::{builtin_recipes, instantiate_recipe, PanelAction};
 use super::super::TerraApp;
 use super::ApplyCtx;
 
+// Err intentionally carries the unhandled action back to the router.
+#[allow(clippy::result_large_err)]
 pub(crate) fn try_apply(
     app: &mut TerraApp,
     action: PanelAction,
     ctx: &mut ApplyCtx,
 ) -> Result<(), PanelAction> {
-    let result = match action {
+    match action {
         PanelAction::AddBiome { name } => {
             let biome = terra_core::layer::LayerGroup::biome(name);
             let id = biome.id;
@@ -131,7 +133,7 @@ pub(crate) fn try_apply(
                         .stamp_circle(key, wx, wz, radius_m, strength, false);
                 }
             }
-            let res = app.session.document.preview_resolution.min(8192).max(64);
+            let res = app.session.document.preview_resolution.clamp(64, 8192);
             if let Some(layer) = app.session.document.selected_placement_layer_mut() {
                 match tool {
                     terra_core::biome_paint::BiomePaintTool::Smooth => {
@@ -236,7 +238,7 @@ pub(crate) fn try_apply(
             }
         }
         PanelAction::AddHoleLayer { name } => {
-            let res = app.session.document.preview_resolution.min(512).max(64);
+            let res = app.session.document.preview_resolution.clamp(64, 512);
             app.session
                 .document
                 .hole_layers
@@ -372,12 +374,13 @@ pub(crate) fn try_apply(
         }
         other => return Err(other),
     };
-    let _ = result;
     Ok(())
 }
 
 #[cfg(test)]
 mod tests {
+    // Tests build fixtures by mutating Default instances; clearer than giant initializers.
+    #![allow(clippy::field_reassign_with_default)]
     use terra_core::layer::{LayerGroup, StackNode};
 
     use super::*;

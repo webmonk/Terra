@@ -4,8 +4,8 @@ use crate::ui::style::{self, FONT_SCALE, PAD, TOOLBAR_BTN_H, TYPE_BODY, TYPE_LAB
 use crate::ui::{FrameUiOutput, UiState, WindowResizeEdge};
 use terra_core::document::TerrainDocument;
 use terra_gui::{
-    checkbox, icon_button, menu_button as menu_row, Color, DrawList, GuiContext, Icon,
-    Id, Rect, INSET_TOP,
+    checkbox, icon_button, menu_button as menu_row, Color, DrawList, GuiContext, Icon, Id, Rect,
+    INSET_TOP,
 };
 
 /// Logical width reserved for minimize / maximize / close on the right.
@@ -108,13 +108,7 @@ fn caption_icon_button(
     ui.icon_centered(
         rect,
         icon,
-        if hovered && is_close {
-            style::TEXT
-        } else if hovered {
-            style::TEXT
-        } else {
-            style::TEXT_DIM
-        },
+        if hovered { style::TEXT } else { style::TEXT_DIM },
         14.0,
     );
 }
@@ -268,8 +262,7 @@ pub fn draw_menu_bar(
         doc.name.as_str()
     };
     let mut project_w = DrawList::text_width(project_name, FONT_SCALE)
-        .min(160.0)
-        .max(72.0)
+        .clamp(72.0, 160.0)
         + 36.0;
     let mut project_r =
         Rect::from_pos_size(size_r.min_x - 14.0 - project_w, y, project_w, TOOLBAR_BTN_H);
@@ -697,4 +690,3 @@ fn draw_dropdown(
 fn menu_item(ui: &mut GuiContext<'_>, text: &str) -> bool {
     menu_row(ui, Id::new("menu_item").child(text), text)
 }
-

@@ -501,9 +501,10 @@ impl HydraulicErosionParams {
     }
 
     pub fn with_transport_model(model: TransportModel) -> Self {
-        let mut p = Self::default();
-        p.transport_model = model;
-        p
+        Self {
+            transport_model: model,
+            ..Default::default()
+        }
     }
 }
 

@@ -149,11 +149,13 @@ pub fn asymmetric_belt(
     angle_rad: f32,
     bias: f32,
 ) -> MaskField {
-    let mut p = LandscapeEvolutionParams::default();
-    p.uplift_mode = UpliftMode::LinearBelt;
-    p.uplift_angle_rad = angle_rad;
-    p.uplift_falloff = 0.28;
-    p.uplift_noise = 0.05;
+    let p = LandscapeEvolutionParams {
+        uplift_mode: UpliftMode::LinearBelt,
+        uplift_angle_rad: angle_rad,
+        uplift_falloff: 0.28,
+        uplift_noise: 0.05,
+        ..Default::default()
+    };
     let mut field = synthesise_uplift(metrics, &p, None);
     let m = metrics;
     let (ca, sa) = (angle_rad.cos(), angle_rad.sin());

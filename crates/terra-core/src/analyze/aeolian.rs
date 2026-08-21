@@ -194,8 +194,7 @@ impl AeolianState {
         // Look back far enough to catch dune-scale lee shadows (Paris ~10 m, but
         // authoring grids often use larger cells - keep a minimum cell count).
         let max_steps = ((14.0 / cell).ceil() as i32)
-            .max(8)
-            .min(48)
+            .clamp(8, 48)
             .max(p.transport_length.ceil() as i32);
         let t10 = (10.0f32).to_radians().tan();
         let t15 = (15.0f32).to_radians().tan();
@@ -239,7 +238,7 @@ impl AeolianState {
         let hop = p.transport_length.max(0.5);
 
         // Lift into slab (deterministic expected-value form; Nilles 2024).
-        for idx in 0..n {
+        for (idx, slab_cell) in slab.iter_mut().enumerate() {
             let exposed = 1.0 - self.sheltering[idx];
             let wind_f = (self.wind_speed[idx] / p.wind_speed.max(1e-3)).clamp(0.0, 2.0);
             let lift = (eps * exposed * wind_f).min(self.sand[idx]);
@@ -247,7 +246,7 @@ impl AeolianState {
                 continue;
             }
             self.sand[idx] -= lift;
-            slab[idx] += lift;
+            *slab_cell += lift;
             self.erosion[idx] += lift;
             self.sand_flux[idx] += lift;
         }
@@ -269,8 +268,7 @@ impl AeolianState {
         }
 
         // Deposit where carrying capacity drops (shadow / slow wind); remainder abrades / stays mobile briefly.
-        for idx in 0..n {
-            let carried = advected[idx];
+        for (idx, &carried) in advected.iter().enumerate() {
             if carried <= 1e-8 {
                 continue;
             }
@@ -343,8 +341,7 @@ impl AeolianState {
                 }
             }
         }
-        for idx in 0..delta.len() {
-            let d = delta[idx];
+        for (idx, &d) in delta.iter().enumerate() {
             if d > 0.0 {
                 self.sand[idx] += d;
             } else {
@@ -441,10 +438,12 @@ impl AeolianState {
         let sand_depth = MaskField::from_raw(metrics, &self.sand);
         let bedrock = MaskField::from_raw(metrics, &self.bedrock);
 
-        let mut wind_dir = vec![0.0f32; n];
-        for i in 0..n {
-            wind_dir[i] = self.wind_v[i].atan2(self.wind_u[i]);
-        }
+        let wind_dir: Vec<f32> = self
+            .wind_v
+            .iter()
+            .zip(&self.wind_u)
+            .map(|(v, u)| v.atan2(*u))
+            .collect();
         let wind_direction = MaskField::from_raw(metrics, &wind_dir);
         let wind_speed = normalize_positive(metrics, &self.wind_speed);
         let sand_flux = normalize_positive(metrics, &self.sand_flux);
@@ -455,9 +454,12 @@ impl AeolianState {
         // Crest proxy: high sand + exposed (low shelter) windward shoulders.
         let mut crest = vec![0.0f32; n];
         let mut cmax = 1e-6f32;
-        for i in 0..n {
-            let v = self.sand[i] * (1.0 - self.sheltering[i] * 0.65);
-            crest[i] = v;
+        for (c, (&sand, &shelter)) in crest
+            .iter_mut()
+            .zip(self.sand.iter().zip(&self.sheltering))
+        {
+            let v = sand * (1.0 - shelter * 0.65);
+            *c = v;
             cmax = cmax.max(v);
         }
         for v in &mut crest {

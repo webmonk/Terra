@@ -49,6 +49,7 @@ impl StagingRing {
     ///
     /// Tiny payloads stay on `queue.write_texture` (lower overhead). Larger
     /// regions go through a ring slot with padded rows.
+    #[allow(clippy::too_many_arguments)]
     pub fn write_r32_region(
         &mut self,
         device: &wgpu::Device,

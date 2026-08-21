@@ -150,8 +150,10 @@ impl OperationPlacement {
             // Keep custom conditions artist edits.
             return;
         }
-        let mut def = PlacementDefinition::default();
-        def.source = PlacementSource::Rules;
+        let mut def = PlacementDefinition {
+            source: PlacementSource::Rules,
+            ..Default::default()
+        };
         let mut children = Vec::new();
         match self.apply_where {
             ApplyWhere::EntireBiome | ApplyWhere::AdvancedMask | ApplyWhere::CustomConditions => {}
@@ -451,10 +453,12 @@ mod tests {
 
     #[test]
     fn height_range_summary_readable() {
-        let mut p = OperationPlacement::default();
-        p.apply_where = ApplyWhere::HeightRange;
-        p.height_min = 1200.0;
-        p.height_max = 5000.0;
+        let mut p = OperationPlacement {
+            apply_where: ApplyWhere::HeightRange,
+            height_min: 1200.0,
+            height_max: 5000.0,
+            ..Default::default()
+        };
         p.sync_definition_from_apply_where();
         let text = p.summary_paragraph("Alpine Mountains");
         assert!(text.contains("Alpine Mountains"));
@@ -465,10 +469,12 @@ mod tests {
 
     #[test]
     fn slope_below_summary() {
-        let mut p = OperationPlacement::default();
-        p.apply_where = ApplyWhere::SlopeRange;
-        p.slope_min = 0.0;
-        p.slope_max = 50.0;
+        let mut p = OperationPlacement {
+            apply_where: ApplyWhere::SlopeRange,
+            slope_min: 0.0,
+            slope_max: 50.0,
+            ..Default::default()
+        };
         p.sync_definition_from_apply_where();
         let text = p.summary_paragraph("Alpine Mountains");
         assert!(text.contains("50"));

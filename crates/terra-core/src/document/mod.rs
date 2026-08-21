@@ -172,9 +172,11 @@ impl TerrainDocument {
             def.group_id = Some(biome_id);
         }
         let world_extent = metrics.world_size_x.max(metrics.world_size_z);
-        let mut blueprint = crate::landscape_blueprint::LandscapeBlueprint::default();
-        blueprint.world_size_m = world_extent;
-        blueprint.metres_per_sample = (world_extent / metrics.width.max(1) as f32).max(0.5);
+        let blueprint = crate::landscape_blueprint::LandscapeBlueprint {
+            world_size_m: world_extent,
+            metres_per_sample: (world_extent / metrics.width.max(1) as f32).max(0.5),
+            ..Default::default()
+        };
         let mut sparse_paint =
             crate::sparse_paint::SparsePaintStore::new(blueprint.metres_per_sample, 256);
         sparse_paint.metres_per_sample = blueprint.metres_per_sample;
@@ -492,10 +494,9 @@ impl TerrainDocument {
         };
         let dist = if let Some(l) = self.stack.find_mut(layer_id) {
             &mut l.common.masks
-        } else if let Some(g) = self.stack.find_group_mut(layer_id) {
-            &mut g.masks
         } else {
-            return None;
+            let g = self.stack.find_group_mut(layer_id)?;
+            &mut g.masks
         };
         if !dist.entries.iter().any(|e| e.mask.id == mask_id) {
             dist.push(crate::mask::MaskRef::new(mask_id));
@@ -639,7 +640,7 @@ impl TerrainDocument {
             placement_id,
             biome_id,
         };
-        let res = self.preview_resolution.min(1024).max(64);
+        let res = self.preview_resolution.clamp(64, 1024);
         let paint = if self.sparse_paint.has_channel(key) {
             let samples = self.sparse_paint.bake_uv(key, res, res, world_x, world_z);
             crate::mask::PaintBuffer {

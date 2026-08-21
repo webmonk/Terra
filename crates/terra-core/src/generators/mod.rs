@@ -615,7 +615,7 @@ pub fn uplift(metrics: HeightfieldMetrics, p: &UpliftParams) -> Heightfield {
         // Detail: fBm attenuated in low-uplift cells so structure drains coherently.
         let detail_params = NoiseParams {
             seed: p.seed ^ 0xC0FFEE,
-            octaves: p.detail_octaves.max(1).min(8),
+            octaves: p.detail_octaves.clamp(1, 8),
             frequency: p.detail_frequency.max(1e-6),
             amplitude: p.detail_amplitude.max(0.0),
             lacunarity: 2.0,
@@ -692,7 +692,7 @@ pub fn dunes_with_aux(
         wind_warp: 0.25,
         linearity: p.linearity.clamp(0.0, 1.0),
     };
-    state.evolve(&transport, p.iterations.max(1).min(48));
+    state.evolve(&transport, p.iterations.clamp(1, 48));
     let mut result = state.into_result(1.0, &bedrock_hf);
     // Soft floor: lift only the deepest cells with a little noise so we never
     // create a broad exactly-flat interdune slab.
@@ -715,6 +715,7 @@ pub fn dunes_with_aux(
 }
 
 /// Directional band-limited / phasor dune seed (sand thickness in meters).
+#[allow(clippy::too_many_arguments)]
 pub fn seed_dune_sand(
     metrics: HeightfieldMetrics,
     direction_deg: f32,
@@ -1263,7 +1264,7 @@ pub fn effect_filter(input: &Heightfield, p: &EffectFilterParams) -> Heightfield
             // (bilateral) - which by design keeps sharp features, including a
             // lone spike, intact and so is the wrong tool for reducing spikes.
             let mut h = input.clone();
-            for _ in 0..p.iterations.max(1).min(4) {
+            for _ in 0..p.iterations.clamp(1, 4) {
                 h = filter_kernels::box_blur(&h, p.radius.max(1));
             }
             h
@@ -1343,7 +1344,7 @@ pub fn effect_filter(input: &Heightfield, p: &EffectFilterParams) -> Heightfield
             let mut h = input.clone();
             let sigma_s = (p.radius.max(1) as f32) * 0.55;
             let sigma_r = p.amount.max(0.5);
-            for _ in 0..p.iterations.max(1).min(4) {
+            for _ in 0..p.iterations.clamp(1, 4) {
                 h = filter_kernels::bilateral(&h, p.radius.max(1), sigma_s, sigma_r);
             }
             h
@@ -1868,10 +1869,10 @@ pub fn sand_simulation_full(
     let mut state = analyze::AeolianState::from_height_and_sand(input, 0.0, Some(&sand));
     // Treat input height as bedrock + existing cover: peel authored sand off the DEM.
     let dense = input.to_dense();
-    for i in 0..dense.len() {
-        let s = state.sand[i].min(dense[i].max(0.0));
+    for (i, &d) in dense.iter().enumerate() {
+        let s = state.sand[i].min(d.max(0.0));
         state.sand[i] = s;
-        state.bedrock[i] = (dense[i] - s).max(0.0);
+        state.bedrock[i] = (d - s).max(0.0);
     }
 
     let transport = analyze::AeolianTransportParams {
@@ -1880,7 +1881,7 @@ pub fn sand_simulation_full(
         transport_length: p.transport_length.max(0.5),
         repose_angle_deg: p.slope_angle_deg.clamp(12.0, 45.0),
         slab_size: (cover * 0.08).clamp(0.05, 1.5),
-        avalanche_iters: p.avalanche_iters.max(1).min(64),
+        avalanche_iters: p.avalanche_iters.clamp(1, 64),
         abrasion: p.abrasion.clamp(0.0, 1.0),
         reptation: p.reptation.clamp(0.0, 1.0),
         wind_warp: 0.4,
@@ -1968,8 +1969,10 @@ mod tests {
         let high = low + (1u64 << 32);
         let metrics = HeightfieldMetrics::new(48, 48, 768.0, 768.0);
 
-        let mut island_low = IslandParams::default();
-        island_low.seed = low;
+        let island_low = IslandParams {
+            seed: low,
+            ..Default::default()
+        };
         let mut island_high = island_low.clone();
         island_high.seed = high;
         assert_ne!(
@@ -1977,8 +1980,10 @@ mod tests {
             field_bits(&island(metrics, &island_high).height)
         );
 
-        let mut canyon_low = CanyonParams::default();
-        canyon_low.seed = low;
+        let canyon_low = CanyonParams {
+            seed: low,
+            ..Default::default()
+        };
         let mut canyon_high = canyon_low.clone();
         canyon_high.seed = high;
         assert_ne!(
@@ -2089,11 +2094,13 @@ mod tests {
     #[test]
     fn dunes_linearity_changes_lateral_coherence() {
         let metrics = HeightfieldMetrics::new(96, 96, 1536.0, 1536.0);
-        let mut linear = DuneParams::default();
-        linear.linearity = 0.95;
-        linear.sand_supply = 1.0;
-        linear.iterations = 8;
-        linear.direction_deg = 0.0;
+        let linear = DuneParams {
+            linearity: 0.95,
+            sand_supply: 1.0,
+            iterations: 8,
+            direction_deg: 0.0,
+            ..Default::default()
+        };
         let mut star = linear.clone();
         star.linearity = 0.1;
         let a = dunes(metrics, &linear).to_dense();
@@ -2123,11 +2130,13 @@ mod tests {
     fn sand_simulation_publishes_transport_fields() {
         let metrics = HeightfieldMetrics::new(64, 64, 640.0, 640.0);
         let input = Heightfield::filled(metrics, 12.0);
-        let mut p = SandSimParams::default();
-        p.iterations = 24;
-        p.avalanche_iters = 4;
-        p.spawn_amount = 2.0;
-        p.seed_amount = 0.5;
+        let p = SandSimParams {
+            iterations: 24,
+            avalanche_iters: 4,
+            spawn_amount: 2.0,
+            seed_amount: 0.5,
+            ..Default::default()
+        };
         let result = sand_simulation_full(&input, &p, 24);
         assert!(result.sand_depth.data().iter().any(|&v| v > 0.0));
         assert!(result.sheltering.data().iter().any(|&v| v >= 0.0));

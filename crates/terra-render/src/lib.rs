@@ -406,8 +406,7 @@ pub async fn init_gpu(
     // Path tracer uses 4 storage textures; request headroom when the adapter allows it.
     limits.max_storage_textures_per_shader_stage = adapter_limits
         .max_storage_textures_per_shader_stage
-        .max(4)
-        .min(16);
+        .clamp(4, 16);
     limits.max_storage_buffers_per_shader_stage = adapter_limits
         .max_storage_buffers_per_shader_stage
         .max(limits.max_storage_buffers_per_shader_stage);
@@ -1023,6 +1022,7 @@ impl TerrainRenderer {
 
     // (pipeline compile complete - logged via terrain shader message above)
 
+    #[allow(clippy::too_many_arguments)]
     fn make_bind_group(
         device: &wgpu::Device,
         layout: &wgpu::BindGroupLayout,
@@ -1299,6 +1299,7 @@ impl TerrainRenderer {
     }
 
     /// Upload materials/wetness/vegetation plus optional climate R32Float aux maps and flow.
+    #[allow(clippy::too_many_arguments)]
     pub fn upload_aux_maps_ex(
         &mut self,
         materials: Option<&MaskField>,
@@ -1337,6 +1338,7 @@ impl TerrainRenderer {
     }
 
     /// Present a GPU-resident height texture (Wave C - no CPU readback).
+    #[allow(clippy::too_many_arguments)]
     pub fn present_gpu_height(
         &mut self,
         src: &wgpu::Texture,
@@ -1350,6 +1352,7 @@ impl TerrainRenderer {
         self.present_gpu_height_region(src, width, height, world_size, height_range, dx, dz, None);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn present_gpu_height_region(
         &mut self,
         src: &wgpu::Texture,
@@ -1380,6 +1383,7 @@ impl TerrainRenderer {
 
     /// Bind a GPU engine height texture directly when formats match (full field).
     /// Partial [`SampleRect`] updates still copy through the double-buffer path.
+    #[allow(clippy::too_many_arguments)]
     pub fn present_gpu_height_shared(
         &mut self,
         src: &wgpu::Texture,
@@ -1567,6 +1571,7 @@ impl TerrainRenderer {
     ///
     /// `atlas_view` / `page_table` must remain valid while streaming is enabled
     /// (typically owned by `GpuTileAtlas` in the app).
+    #[allow(clippy::too_many_arguments)]
     pub fn set_tile_stream_resources(
         &mut self,
         atlas_view: wgpu::TextureView,

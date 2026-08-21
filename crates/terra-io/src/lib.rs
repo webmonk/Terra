@@ -37,6 +37,7 @@ pub struct BuildJob {
     pub result: Option<Result<ExportResult, String>>,
 }
 
+#[allow(clippy::large_enum_variant)]
 enum JobMsg {
     Progress(f32),
     Done(Result<ExportResult, String>),
@@ -158,6 +159,7 @@ pub fn load_project(path: &std::path::Path) -> Result<TerrainDocument, IoError> 
     Ok(TerrainDocument::from_json(&s)?)
 }
 
+#[allow(clippy::large_enum_variant)]
 enum ProjectIoMsg {
     Progress(&'static str),
     Saved { path: PathBuf },
@@ -167,6 +169,7 @@ enum ProjectIoMsg {
 
 /// Result of a finished background project I/O job.
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)]
 pub enum ProjectIoResult {
     Saved { path: PathBuf },
     Loaded { path: PathBuf, doc: TerrainDocument },

@@ -167,7 +167,7 @@ pub fn apply_local_sdf(hf: &Heightfield, p: &LocalSdfParams) -> DualHeightResult
     let j0 = (v0 * m.height as f32).floor() as u32;
     let j1 = ((v1 * m.height as f32).ceil() as u32).min(m.height);
 
-    let y_samples = p.vertical_samples.max(4).min(64);
+    let y_samples = p.vertical_samples.clamp(4, 64);
     let noise_amp = p.noise_amplitude.clamp(0.0, 1.0);
 
     for j in j0..j1 {
@@ -214,6 +214,7 @@ pub fn apply_local_sdf(hf: &Heightfield, p: &LocalSdfParams) -> DualHeightResult
 /// Analytic cave SDF: ellipsoid chamber union soft entrance tunnel toward `ent_dir`.
 ///
 /// Negative = void. Noise warps the shell slightly for organic walls (deterministic seed).
+#[allow(clippy::too_many_arguments)]
 fn cave_sdf(
     x: f32,
     y: f32,
@@ -257,6 +258,7 @@ fn cave_sdf(
     d
 }
 
+#[allow(clippy::too_many_arguments)]
 fn capsule_xz(
     x: f32,
     y: f32,
@@ -269,22 +271,22 @@ fn capsule_xz(
     bz: f32,
     r: f32,
 ) -> f32 {
-    let pax = x - ax;
-    let pay = y - ay;
-    let paz = z - az;
-    let bax = bx - ax;
-    let bay = by - ay;
-    let baz = bz - az;
-    let baba = bax * bax + bay * bay + baz * baz;
-    let paba = pax * bax + pay * bay + paz * baz;
+    let pa_x = x - ax;
+    let pa_y = y - ay;
+    let pa_z = z - az;
+    let ba_x = bx - ax;
+    let ba_y = by - ay;
+    let ba_z = bz - az;
+    let baba = ba_x * ba_x + ba_y * ba_y + ba_z * ba_z;
+    let paba = pa_x * ba_x + pa_y * ba_y + pa_z * ba_z;
     let h = if baba > 1e-8 {
         (paba / baba).clamp(0.0, 1.0)
     } else {
         0.0
     };
-    let dx = pax - bax * h;
-    let dy = pay - bay * h;
-    let dz = paz - baz * h;
+    let dx = pa_x - ba_x * h;
+    let dy = pa_y - ba_y * h;
+    let dz = pa_z - ba_z * h;
     (dx * dx + dy * dy + dz * dz).sqrt() - r
 }
 

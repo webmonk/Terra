@@ -66,6 +66,7 @@ fn accepted(
     s >= p.min_slope_deg && s <= p.max_slope_deg
 }
 
+#[allow(clippy::too_many_arguments)]
 fn try_add(
     x: f32,
     z: f32,

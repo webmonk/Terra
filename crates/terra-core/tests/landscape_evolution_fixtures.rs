@@ -111,23 +111,25 @@ fn run_evo(
     solver: EvolutionSolverMode,
     painted: Option<&MaskField>,
 ) -> terra_core::landscape_evolution::LandscapeEvolutionOutput {
-    let mut p = LandscapeEvolutionParams::default();
-    p.uplift_mode = uplift_mode;
-    p.geological_age = age;
-    p.solver = solver;
-    p.uplift = 0.9;
-    p.erosion = 0.85;
-    p.rainfall = 1.4;
-    p.river_incision = 0.9;
-    p.drainage_scale = 0.6;
-    p.hillslope_diffusion = 0.1;
-    p.fixed_point_iters = 6;
-    p.iterations = 24;
-    p.boundary = BoundaryMode::SeaLevel;
-    p.base_level = 0.0;
-    p.uplift_noise = 0.04;
-    p.time_scale = 1.2e6;
-    p.dt = 5_000.0;
+    let p = LandscapeEvolutionParams {
+        uplift_mode,
+        geological_age: age,
+        solver,
+        uplift: 0.9,
+        erosion: 0.85,
+        rainfall: 1.4,
+        river_incision: 0.9,
+        drainage_scale: 0.6,
+        hillslope_diffusion: 0.1,
+        fixed_point_iters: 6,
+        iterations: 24,
+        boundary: BoundaryMode::SeaLevel,
+        base_level: 0.0,
+        uplift_noise: 0.04,
+        time_scale: 1.2e6,
+        dt: 5_000.0,
+        ..Default::default()
+    };
     let op = LandscapeEvolutionOperator::new(p);
     op.evaluate(LandscapeEvolutionInput {
         elevation: seed,
@@ -214,16 +216,18 @@ fn linear_mountain_belt_forms_organised_ridges() {
 fn radial_dome_produces_outward_drainage() {
     let m = metrics();
     let seed = flat_seed(m, 5.0);
-    let mut p = LandscapeEvolutionParams::default();
-    p.uplift_mode = UpliftMode::Radial;
-    p.uplift_center_u = 0.5;
-    p.uplift_center_v = 0.5;
-    p.uplift_falloff = 0.4;
-    p.geological_age = 0.65;
-    p.solver = EvolutionSolverMode::Fast;
-    p.time_scale = 8.0e5;
-    p.fixed_point_iters = 4;
-    p.hillslope_diffusion = 0.1;
+    let p = LandscapeEvolutionParams {
+        uplift_mode: UpliftMode::Radial,
+        uplift_center_u: 0.5,
+        uplift_center_v: 0.5,
+        uplift_falloff: 0.4,
+        geological_age: 0.65,
+        solver: EvolutionSolverMode::Fast,
+        time_scale: 8.0e5,
+        fixed_point_iters: 4,
+        hillslope_diffusion: 0.1,
+        ..Default::default()
+    };
     let op = LandscapeEvolutionOperator::new(p);
     let out = op.evaluate(LandscapeEvolutionInput {
         elevation: &seed,
@@ -375,9 +379,11 @@ fn accurate_and_fast_share_high_level_params() {
 #[test]
 fn synthesise_uplift_modes_are_smooth() {
     let m = metrics();
-    let mut p = LandscapeEvolutionParams::default();
-    p.uplift_mode = UpliftMode::Procedural;
-    p.uplift_noise = 0.1;
+    let p = LandscapeEvolutionParams {
+        uplift_mode: UpliftMode::Procedural,
+        uplift_noise: 0.1,
+        ..Default::default()
+    };
     let field = synthesise_uplift(m, &p, None);
     // Neighbour differences should stay modest (geological smoothness).
     let mut max_grad = 0.0f32;
@@ -429,11 +435,13 @@ fn evolution_is_deterministic() {
 fn zero_erosion_has_explicit_bounded_limits_in_both_solvers() {
     let seed = plateau_cone_seed();
     for solver in [EvolutionSolverMode::Fast, EvolutionSolverMode::Accurate] {
-        let mut p = LandscapeEvolutionParams::default();
-        p.solver = solver;
-        p.erosion = 0.0;
-        p.hillslope_diffusion = 0.0;
-        p.fixed_point_iters = 2;
+        let p = LandscapeEvolutionParams {
+            solver,
+            erosion: 0.0,
+            hillslope_diffusion: 0.0,
+            fixed_point_iters: 2,
+            ..Default::default()
+        };
 
         let out = evaluate_with_inputs(&seed, &p, None, None);
         assert!(
@@ -473,11 +481,13 @@ fn zero_erosion_has_explicit_bounded_limits_in_both_solvers() {
 #[test]
 fn zero_uplift_overrides_legacy_rate_without_disabling_incision() {
     let seed = plateau_cone_seed();
-    let mut p = LandscapeEvolutionParams::default();
-    p.uplift = 0.0;
-    p.uplift_mode = UpliftMode::Uniform;
-    p.hillslope_diffusion = 0.0;
-    p.fixed_point_iters = 2;
+    let p = LandscapeEvolutionParams {
+        uplift: 0.0,
+        uplift_mode: UpliftMode::Uniform,
+        hillslope_diffusion: 0.0,
+        fixed_point_iters: 2,
+        ..Default::default()
+    };
 
     let out = evaluate_with_inputs(&seed, &p, None, None);
     assert!(out.uplift_field.data().iter().all(|&v| v == 0.0));
@@ -495,11 +505,13 @@ fn full_resistance_remains_no_incision_after_spatial_softening() {
     let lithology = MaskField::zeros(m);
     let precipitation = MaskField::filled(m, 2.5);
     for solver in [EvolutionSolverMode::Fast, EvolutionSolverMode::Accurate] {
-        let mut p = LandscapeEvolutionParams::default();
-        p.solver = solver;
-        p.terrain_resistance = 1.0;
-        p.hillslope_diffusion = 0.0;
-        p.fixed_point_iters = 2;
+        let p = LandscapeEvolutionParams {
+            solver,
+            terrain_resistance: 1.0,
+            hillslope_diffusion: 0.0,
+            fixed_point_iters: 2,
+            ..Default::default()
+        };
 
         let out = evaluate_with_inputs(&seed, &p, Some(&lithology), Some(&precipitation));
         let incision: f32 = out.incision.data().iter().copied().sum();
@@ -526,9 +538,11 @@ fn mixed_hardness_terminates_characteristics_without_extreme_relief() {
             hardness.set(i, j, 1.0);
         }
     }
-    let mut p = LandscapeEvolutionParams::default();
-    p.hillslope_diffusion = 0.0;
-    p.fixed_point_iters = 2;
+    let p = LandscapeEvolutionParams {
+        hillslope_diffusion: 0.0,
+        fixed_point_iters: 2,
+        ..Default::default()
+    };
 
     let out = evaluate_with_inputs(&seed, &p, Some(&hardness), None);
     assert!(out.elevation.to_dense().iter().all(|v| v.is_finite()));
@@ -560,9 +574,11 @@ fn mixed_hardness_terminates_characteristics_without_extreme_relief() {
 #[test]
 fn default_fast_plateau_cone_retains_incision_and_bounded_relief() {
     let seed = plateau_cone_seed();
-    let mut p = LandscapeEvolutionParams::default();
-    p.hillslope_diffusion = 0.0;
-    p.fixed_point_iters = 2;
+    let p = LandscapeEvolutionParams {
+        hillslope_diffusion: 0.0,
+        fixed_point_iters: 2,
+        ..Default::default()
+    };
     let out = evaluate_with_inputs(&seed, &p, None, None);
     let values = out.elevation.to_dense();
     assert!(values.iter().all(|v| v.is_finite()));
@@ -596,20 +612,22 @@ fn boundary_case(
     solver: EvolutionSolverMode,
     outlet_mask: Option<&MaskField>,
 ) -> terra_core::landscape_evolution::LandscapeEvolutionOutput {
-    let mut p = LandscapeEvolutionParams::default();
-    p.boundary = boundary;
-    p.solver = solver;
-    p.uplift_mode = UpliftMode::Uniform;
-    p.uplift = 0.8;
-    p.uplift_noise = 0.0;
-    p.geological_age = 0.8;
-    p.hillslope_diffusion = 0.15;
-    p.constraint_preservation = 0.8;
-    p.fixed_point_iters = 2;
-    p.iterations = 9;
-    p.time_scale = 300_000.0;
-    p.dt = 5_000.0;
-    p.base_level = 0.0;
+    let p = LandscapeEvolutionParams {
+        boundary,
+        solver,
+        uplift_mode: UpliftMode::Uniform,
+        uplift: 0.8,
+        uplift_noise: 0.0,
+        geological_age: 0.8,
+        hillslope_diffusion: 0.15,
+        constraint_preservation: 0.8,
+        fixed_point_iters: 2,
+        iterations: 9,
+        time_scale: 300_000.0,
+        dt: 5_000.0,
+        base_level: 0.0,
+        ..Default::default()
+    };
 
     LandscapeEvolutionOperator::new(p).evaluate(LandscapeEvolutionInput {
         elevation: seed,

@@ -16,6 +16,7 @@ pub struct CommandPaletteState {
 }
 
 #[derive(Debug)]
+#[allow(clippy::large_enum_variant)] // short-lived UI action; boxing adds churn for no gain
 pub enum PaletteAction {
     Panel(PanelAction),
     Undo,

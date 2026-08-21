@@ -166,10 +166,10 @@ pub fn aspect_radians(hf: &Heightfield, radius_m: f32) -> MaskField {
     out
 }
 
-fn second_derivatives(
-    hf: &Heightfield,
-    radius_m: f32,
-) -> (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>) {
+/// `(p, q, r, t, s)` derivative grids as returned by [`second_derivatives`].
+type SecondDerivativeGrids = (Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>, Vec<f32>);
+
+fn second_derivatives(hf: &Heightfield, radius_m: f32) -> SecondDerivativeGrids {
     let m = hf.metrics;
     let w = m.width as usize;
     let h = m.height as usize;

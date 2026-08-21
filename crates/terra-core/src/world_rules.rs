@@ -38,8 +38,10 @@ impl Default for WorldRuleId {
 /// Where a World Rule applies geographically.
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 #[serde(rename_all = "snake_case")]
+#[derive(Default)]
 pub enum WorldRuleScope {
     /// Every Biome in the project.
+    #[default]
     EntireWorld,
     /// Only the listed Biome definitions (and their linked groups).
     SelectedBiomes(Vec<BiomeDefinitionId>),
@@ -53,12 +55,6 @@ pub enum WorldRuleScope {
         #[serde(default)]
         paint_mask: Option<crate::mask::MaskId>,
     },
-}
-
-impl Default for WorldRuleScope {
-    fn default() -> Self {
-        Self::EntireWorld
-    }
 }
 
 impl WorldRuleScope {
@@ -465,6 +461,7 @@ impl WorldRuleLibrary {
 
 /// Undoable World Rule commands (document-level).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum WorldRuleCommand {
     Add {
         rule: WorldRule,
@@ -661,8 +658,10 @@ fn collect_condition_diags(group: &RuleGroup, name: &str, out: &mut Vec<SoftDiag
 
 /// Build a PlacementDefinition from common artist conditions (AND).
 pub fn placement_from_conditions(conditions: Vec<Condition>) -> PlacementDefinition {
-    let mut def = PlacementDefinition::default();
-    def.source = PlacementSource::Rules;
+    let mut def = PlacementDefinition {
+        source: PlacementSource::Rules,
+        ..Default::default()
+    };
     def.root = RuleGroup {
         mode: RuleGroupMode::All,
         invert: false,
@@ -851,7 +850,7 @@ mod tests {
     fn beach_preset_has_multiple_effects() {
         let b = beach_preset();
         assert_eq!(b.effects.len(), 3);
-        assert!(b.compile_placement().nodes.len() > 0 || !b.placement.root.children.is_empty());
+        assert!(!b.compile_placement().nodes.is_empty() || !b.placement.root.children.is_empty());
     }
 
     #[test]

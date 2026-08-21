@@ -208,11 +208,11 @@ impl BrushOverlay {
         let rx = radius_uv.max(0.002) * wx;
         let rz = radius_uv.max(0.002) * wz;
         let mut out = [0.0f32; VERT_CAP];
-        for i in 0..=RING_SEGMENTS {
+        for (i, sample) in out.iter_mut().enumerate().take(RING_SEGMENTS + 1) {
             let t = (i as f32 / RING_SEGMENTS as f32) * std::f32::consts::TAU;
             let x = cx + t.cos() * rx;
             let z = cz + t.sin() * rz;
-            out[i] = sample_height(heights, x, z);
+            *sample = sample_height(heights, x, z);
         }
         out
     }

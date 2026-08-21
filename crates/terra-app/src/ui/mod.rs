@@ -631,6 +631,7 @@ impl Default for ViewportRenderSettings {
 }
 
 impl ViewportRenderSettings {
+    #[allow(clippy::field_reassign_with_default)] // prefs are layered onto defaults field by field
     pub fn from_prefs(prefs: &ViewportRenderPrefs) -> Self {
         let mut s = Self::default();
         s.mode = match prefs.mode.as_str() {
@@ -1323,6 +1324,7 @@ impl FrameProfile {
         self.visible_tiles_missing = missing;
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn update_progressive(
         &mut self,
         versions: terra_render::SceneVersions,
@@ -1499,6 +1501,7 @@ pub struct FrameUiOutput {
 }
 
 /// Draw all editor chrome with terra-gui.
+#[allow(clippy::too_many_arguments)]
 pub fn draw_editor_gui(
     ui: &mut GuiContext<'_>,
     doc: &TerrainDocument,

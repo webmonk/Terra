@@ -458,6 +458,7 @@ impl ProgressiveRenderer {
         self.last_signature = Some(signature);
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn resolve_hdr(
         &mut self,
         device: &wgpu::Device,

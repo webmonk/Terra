@@ -68,14 +68,18 @@ fn alpine_vertical_slice_evaluates() {
             ..Default::default()
         }),
     )));
-    let mut hyd = HydraulicErosionParams::default();
-    hyd.iterations = 2;
+    let hyd = HydraulicErosionParams {
+        iterations: 2,
+        ..Default::default()
+    };
     alpine.children.push(StackNode::Layer(Layer::new(
         "Hydraulic Erosion",
         LayerKind::HydraulicErosion(hyd),
     )));
-    let mut therm = ThermalErosionParams::default();
-    therm.iterations = 2;
+    let therm = ThermalErosionParams {
+        iterations: 2,
+        ..Default::default()
+    };
     alpine.children.push(StackNode::Layer(Layer::new(
         "Thermal Erosion",
         LayerKind::ThermalErosion(therm),
@@ -226,8 +230,10 @@ fn editing_later_layer_keeps_prefix_cache() {
     );
     let mtn_id = mtn.id();
     stack.push(mtn);
-    let mut hyd = HydraulicErosionParams::default();
-    hyd.iterations = 1;
+    let hyd = HydraulicErosionParams {
+        iterations: 1,
+        ..Default::default()
+    };
     let hyd_layer = Layer::new("H", LayerKind::HydraulicErosion(hyd));
     let hyd_id = hyd_layer.id();
     stack.push(hyd_layer);

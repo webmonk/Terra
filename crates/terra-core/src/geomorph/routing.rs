@@ -216,8 +216,7 @@ impl D8Drainage {
         self.receiver.resize(n, usize::MAX);
         self.indegree.clear();
         self.indegree.resize(n, 0);
-        for idx in 0..n {
-            let d = dirs[idx];
+        for (idx, &d) in dirs.iter().enumerate() {
             if d == NO_FLOW || d as usize >= D8_OFFSETS.len() {
                 continue;
             }
@@ -264,8 +263,8 @@ impl D8Drainage {
             for &idx in &self.topo_order {
                 seen[idx] = true;
             }
-            for idx in 0..n {
-                if !seen[idx] {
+            for (idx, &was_seen) in seen.iter().enumerate() {
+                if !was_seen {
                     self.topo_order.push(idx);
                 }
             }
@@ -442,10 +441,10 @@ pub fn flow_direction_dinfinity(hf: &Heightfield) -> Vec<Vec<FlowReceiver>> {
 fn build_donors(receivers: &[Vec<FlowReceiver>], w: usize, h: usize) -> Vec<Vec<usize>> {
     let n = w * h;
     let mut donors = vec![Vec::new(); n];
-    for idx in 0..n {
+    for (idx, recs) in receivers.iter().enumerate() {
         let i = (idx % w) as i32;
         let j = (idx / w) as i32;
-        for fd in &receivers[idx] {
+        for fd in recs {
             let ni = i + fd.di;
             let nj = j + fd.dj;
             if ni < 0 || nj < 0 || ni >= w as i32 || nj >= h as i32 {
@@ -511,8 +510,8 @@ fn topological_order(
         for &i in &order {
             seen[i] = true;
         }
-        for i in 0..n {
-            if !seen[i] {
+        for (i, &was_seen) in seen.iter().enumerate() {
+            if !was_seen {
                 order.push(i);
             }
         }

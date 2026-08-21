@@ -83,6 +83,7 @@ fn downsample_preview(layer: LayerId, generation: u64, hf: &Heightfield) -> Laye
     }
 }
 
+#[allow(clippy::large_enum_variant)]
 enum WorkerMsg {
     Job(EvalWorkRequest),
     Shutdown,

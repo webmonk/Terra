@@ -1,3 +1,5 @@
+// Tests build fixtures by mutating Default instances; clearer than giant initializers.
+#![allow(clippy::field_reassign_with_default)]
 //! Non-linear workspace system: presentation focus without project/eval mutation.
 
 use terra_app::app::prefs::EditorPrefs;

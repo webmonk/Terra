@@ -136,13 +136,13 @@ impl MassWastingState {
         // derive it from the authoritative surface after applying the soft layers.
         // Any residual datum needed below sea level lives in `base`.
         let h = input.to_dense();
-        for i in 0..n {
+        for (i, &hv) in h.iter().enumerate() {
             if !has_bedrock {
-                state.base[i] = h[i].min(0.0);
+                state.base[i] = hv.min(0.0);
                 state.bedrock[i] =
-                    (h[i] - state.base[i] - state.debris[i] - state.sediment[i]).max(0.0);
+                    (hv - state.base[i] - state.debris[i] - state.sediment[i]).max(0.0);
             }
-            state.base[i] = h[i] - state.bedrock[i] - state.debris[i] - state.sediment[i];
+            state.base[i] = hv - state.bedrock[i] - state.debris[i] - state.sediment[i];
         }
         state
     }
@@ -633,10 +633,10 @@ fn pick_receiver(
     let unit = (hash >> 40) as f32 * (1.0 / (1u32 << 24) as f32);
     let r = unit * total;
     let mut acc = 0.0f32;
-    for k in 0..n {
-        acc += candidates[k].1;
+    for (cell, drop) in candidates.iter().take(n) {
+        acc += drop;
         if r <= acc {
-            return Some(candidates[k].0);
+            return Some(*cell);
         }
     }
     Some(candidates[n - 1].0)

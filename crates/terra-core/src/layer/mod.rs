@@ -199,7 +199,7 @@ mod tests {
 
     #[test]
     fn legacy_layer_common_defaults_clip_to_below_false() {
-        let mut json = serde_json::to_value(&LayerCommon::new("Legacy")).unwrap();
+        let mut json = serde_json::to_value(LayerCommon::new("Legacy")).unwrap();
         json.as_object_mut().unwrap().remove("clip_to_below");
         let common: LayerCommon = serde_json::from_value(json).unwrap();
         assert!(!common.clip_to_below);

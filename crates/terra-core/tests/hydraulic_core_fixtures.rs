@@ -71,8 +71,10 @@ fn ridged_protects_divides_without_raising_them() {
 #[test]
 fn layered_sediment_softer_than_bedrock() {
     let hf = hill(28);
-    let mut p = HydraulicErosionParams::default();
-    p.iterations = 24;
+    let mut p = HydraulicErosionParams {
+        iterations: 24,
+        ..Default::default()
+    };
     p = apply_transport_model(&p, TransportModel::HydraulicSediment);
     assert!(p.layered_materials);
     assert!(p.sediment_hardness < p.bedrock_hardness);

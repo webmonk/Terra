@@ -253,7 +253,7 @@ pub(crate) fn gpu_plan_for_layer(layer: &Layer, mask_assets: &[MaskAsset]) -> Op
             GpuKernel::Blur,
             GpuPassKind::Filter,
             GpuDirtyPolicy::Local,
-            p.radius.max(1).min(16),
+            p.radius.clamp(1, 16),
         ),
         EffectFilter(p)
             if matches!(p.kind, EffectFilterKind::Smooth | EffectFilterKind::Inflate)
@@ -263,7 +263,7 @@ pub(crate) fn gpu_plan_for_layer(layer: &Layer, mask_assets: &[MaskAsset]) -> Op
                 GpuKernel::EffectFilter,
                 GpuPassKind::Filter,
                 GpuDirtyPolicy::Local,
-                p.radius.max(1).min(16),
+                p.radius.clamp(1, 16),
             )
         }
         Blur(_) | EffectFilter(_) => return None,

@@ -170,7 +170,7 @@ pub fn expose_strata_height(
 }
 
 /// Look up an authored [`Stratum`] stack at stratigraphic depth (meters into subsurface).
-pub fn stratum_at_depth<'a>(strata: &'a [Stratum], depth: f32) -> Option<&'a Stratum> {
+pub fn stratum_at_depth(strata: &[Stratum], depth: f32) -> Option<&Stratum> {
     if strata.is_empty() {
         return None;
     }

@@ -617,6 +617,10 @@ impl ApplicationHandler for TerraApp {
             if !stall_draft && self.pending_eval {
                 let edit_ms = self.session.rebuild_feedback.prefs.edit_debounce_ms.max(1) as u128;
                 let live_ok = self.session.rebuild_feedback.prefs.live_preview;
+                // PAINT_DEBOUNCE_MS is deliberately 0 today (no paint debounce), which
+                // makes the live_paint comparison trivially true; keep it generic so the
+                // constant stays tunable.
+                #[allow(clippy::absurd_extreme_comparisons)]
                 let ready = if live_paint {
                     self.last_refine.elapsed().as_millis() >= PAINT_DEBOUNCE_MS
                 } else if !live_ok {

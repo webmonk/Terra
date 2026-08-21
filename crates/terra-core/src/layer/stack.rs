@@ -7,6 +7,7 @@ use serde::{Deserialize, Serialize};
 
 /// Nested group or single layer in the stack (bottom -> top order in Vec).
 #[derive(Debug, Clone, Serialize, Deserialize)]
+#[allow(clippy::large_enum_variant)]
 pub enum StackNode {
     Layer(Layer),
     Group(LayerGroup),
@@ -946,11 +947,10 @@ fn contains_id(nodes: &[StackNode], id: LayerId) -> bool {
         match n {
             StackNode::Layer(l) if l.id() == id => return true,
             StackNode::Group(g) if g.id == id => return true,
-            StackNode::Group(g) => {
-                if contains_id(&g.children, id) {
+            StackNode::Group(g)
+                if contains_id(&g.children, id) => {
                     return true;
                 }
-            }
             _ => {}
         }
     }

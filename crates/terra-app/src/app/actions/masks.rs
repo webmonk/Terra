@@ -3,12 +3,14 @@ use crate::ui::{MaskEditAction, PanelAction};
 use super::super::TerraApp;
 use super::ApplyCtx;
 
+// Err intentionally carries the unhandled action back to the router.
+#[allow(clippy::result_large_err)]
 pub(crate) fn try_apply(
     app: &mut TerraApp,
     action: PanelAction,
     ctx: &mut ApplyCtx,
 ) -> Result<(), PanelAction> {
-    let result = match action {
+    match action {
         PanelAction::AddMask(mut asset) => {
             asset.prepare_for_document();
             let id = asset.id;
@@ -545,10 +547,8 @@ pub(crate) fn try_apply(
             return try_apply(app, PanelAction::AddMask(asset), ctx);
         }
         PanelAction::MaskFromSelection { layer } => {
-            let Some(selection_paint) = app
-                .selection
-                .as_ref()
-                .and_then(|asset| asset.paint.clone())
+            let Some(selection_paint) =
+                app.selection.as_ref().and_then(|asset| asset.paint.clone())
             else {
                 app.ui_state.status = "No selection to convert".into();
                 return Ok(());
@@ -679,7 +679,6 @@ pub(crate) fn try_apply(
         }
         other => return Err(other),
     };
-    let _ = result;
     Ok(())
 }
 
@@ -727,8 +726,7 @@ fn bake_band_max(
         for i in 0..paint.width {
             let u = (i as f32 + 0.5) / paint.width as f32;
             let s = value_at(u, v);
-            let band =
-                ((s - min) / soft).clamp(0.0, 1.0) * ((max - s) / soft).clamp(0.0, 1.0);
+            let band = ((s - min) / soft).clamp(0.0, 1.0) * ((max - s) / soft).clamp(0.0, 1.0);
             let idx = (j * paint.width + i) as usize;
             paint.samples[idx] = paint.samples[idx].max(band);
         }

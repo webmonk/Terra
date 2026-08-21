@@ -150,11 +150,12 @@ fn selective_rebuild_clears_outdated() {
 
 #[test]
 fn live_preview_and_debounce() {
-    let mut prefs = RebuildPrefs::default();
-    prefs.live_preview = true;
-    prefs.edit_debounce_ms = 40;
-    prefs.automatic_rebuild_expensive = false;
-    prefs.physics_debounce_ms = 600;
+    let prefs = RebuildPrefs {
+        live_preview: true,
+        edit_debounce_ms: 40,
+        automatic_rebuild_expensive: false,
+        physics_debounce_ms: 600,
+    };
 
     let mut session = EditorSession::new();
     session.rebuild_feedback.prefs = prefs;

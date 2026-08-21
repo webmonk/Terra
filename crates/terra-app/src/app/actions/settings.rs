@@ -3,6 +3,8 @@ use crate::ui::{PanelAction, TerrainSettingsUpdate};
 use super::super::TerraApp;
 use super::ApplyCtx;
 
+// Err intentionally carries the unhandled action back to the router.
+#[allow(clippy::result_large_err)]
 pub(crate) fn try_apply(
     app: &mut TerraApp,
     action: PanelAction,
@@ -103,6 +105,8 @@ fn finite_clamped(value: Option<f32>, min: f32, max: f32) -> Option<f32> {
 
 #[cfg(test)]
 mod tests {
+    // Tests build fixtures by mutating Default instances; clearer than giant initializers.
+    #![allow(clippy::field_reassign_with_default)]
     use std::collections::HashMap;
 
     use terra_core::analyze::HighDetailMode;

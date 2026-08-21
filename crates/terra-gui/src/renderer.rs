@@ -828,6 +828,7 @@ fn pack_image_atlas(images: &[(u32, u32, Vec<u8>)]) -> (u32, u32, Vec<u8>, Vec<[
     (atlas_w, atlas_h, atlas, uvs)
 }
 
+#[allow(clippy::too_many_arguments)]
 fn push_quad(
     verts: &mut Vec<Vertex>,
     x0: f32,

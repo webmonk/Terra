@@ -16,7 +16,7 @@ pub enum EvolutionSolverMode {
 }
 
 /// How the tectonic uplift field is synthesised.
-#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize, Default)]
 pub enum UpliftMode {
     /// Constant uplift rate over the domain (boundary cells forced to 0).
     Uniform,
@@ -29,13 +29,8 @@ pub enum UpliftMode {
     /// Low-frequency procedural uplift with geological-scale smoothness.
     Procedural,
     /// Prefer shape-compiled aux uplift; fall back to LinearBelt if absent.
+    #[default]
     ShapeDerived,
-}
-
-impl Default for UpliftMode {
-    fn default() -> Self {
-        Self::ShapeDerived
-    }
 }
 
 /// Drainage outlet / base-level boundary behaviour.
@@ -386,15 +381,19 @@ mod tests {
 
     #[test]
     fn zero_artist_erosion_is_exact_no_incision() {
-        let mut p = LandscapeEvolutionParams::default();
-        p.erosion = 0.0;
+        let p = LandscapeEvolutionParams {
+            erosion: 0.0,
+            ..Default::default()
+        };
         assert_eq!(p.effective_k(), 0.0);
     }
 
     #[test]
     fn zero_artist_uplift_overrides_legacy_default() {
-        let mut p = LandscapeEvolutionParams::default();
-        p.uplift = 0.0;
+        let p = LandscapeEvolutionParams {
+            uplift: 0.0,
+            ..Default::default()
+        };
         assert!(
             p.uplift_rate > 0.0,
             "fixture must exercise the legacy alias"

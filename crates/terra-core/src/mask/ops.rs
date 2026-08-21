@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn blur_matches_naive_reference() {
         let m = HeightfieldMetrics::new(9, 7, 9.0, 7.0);
-        let mut f = MaskField::filled(m.clone(), 0.0);
+        let mut f = MaskField::filled(m, 0.0);
         // Deterministic non-uniform pattern.
         for j in 0..7u32 {
             for i in 0..9u32 {

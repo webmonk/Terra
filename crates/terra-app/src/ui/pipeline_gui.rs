@@ -50,7 +50,10 @@ pub fn draw_recipe_view(
 
     let world_building = ui_state.build_progress.is_some();
     if let Some(p) = ui_state.build_progress {
-        label(ui, &format!("Rebuild status: Building... {:.0}%", p * 100.0));
+        label(
+            ui,
+            &format!("Rebuild status: Building... {:.0}%", p * 100.0),
+        );
     } else if ui_state.draft_displayed {
         label(ui, "Rebuild status: Draft displayed");
     } else {

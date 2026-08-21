@@ -3,12 +3,14 @@ use crate::ui::PanelAction;
 use super::super::TerraApp;
 use super::ApplyCtx;
 
+// Err intentionally carries the unhandled action back to the router.
+#[allow(clippy::result_large_err)]
 pub(crate) fn try_apply(
     app: &mut TerraApp,
     action: PanelAction,
     ctx: &mut ApplyCtx,
 ) -> Result<(), PanelAction> {
-    let result = match action {
+    match action {
         PanelAction::AddSimulationScenario { name } => {
             let scenario = terra_core::simulation_scenario::SimulationScenario::new(name);
             let index = app.session.document.simulation_scenarios.scenarios.len();
@@ -277,6 +279,5 @@ pub(crate) fn try_apply(
         }
         other => return Err(other),
     };
-    let _ = result;
     Ok(())
 }

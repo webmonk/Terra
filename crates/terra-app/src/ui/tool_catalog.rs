@@ -34,6 +34,7 @@ const LAYER_EXPOSURE_REPLACEMENTS: &[LayerExposureReplacement] = &[LayerExposure
 
 /// What activating a catalog entry does.
 #[derive(Debug, Clone)]
+#[allow(clippy::large_enum_variant)] // catalog entries are built once; boxing adds churn
 pub enum ToolAction {
     /// Select a sculpt / navigation / paint editor tool.
     Sculpt(EditorTool),
@@ -216,6 +217,7 @@ fn add_mask(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn material_rule(
     name: &str,
     id: u32,
@@ -260,6 +262,7 @@ fn veg_with_coverage(mut params: VegetationParams, nodes: Vec<DistNode>) -> Vege
 }
 
 /// Full catalog for all modes. One canonical home per wired capability.
+#[allow(clippy::vec_init_then_push)] // long uniform push list reads better than a vec! literal
 pub fn all_tools() -> Vec<ToolDef> {
     let mut tools = Vec::new();
 

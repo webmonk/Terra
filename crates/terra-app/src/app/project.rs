@@ -155,7 +155,7 @@ impl TerraApp {
         }
     }
 
-    pub(crate) fn remember_recent(&mut self, path: &PathBuf) {
+    pub(crate) fn remember_recent(&mut self, path: &std::path::Path) {
         self.project_prefs
             .push_recent(path, &self.session.document.name);
         save_project_prefs(&self.project_prefs);
@@ -669,13 +669,14 @@ impl TerraApp {
             CommandId::SELECTION_INVERT if self.screen == AppScreen::Editor => {
                 self.apply_actions(vec![PanelAction::SelectionInvert]);
             }
-            CommandId::GROUP_SELECTED if self.screen == AppScreen::Editor => {
+            CommandId::GROUP_SELECTED
+                if self.screen == AppScreen::Editor
                 // Mirror the hierarchy context-menu batch grouping: only when the
                 // layer panel multi-selection holds more than one layer.
-                if self.layers_gui.multi_selection.len() > 1 {
-                    let ids: Vec<_> = self.layers_gui.multi_selection.iter().copied().collect();
-                    self.apply_actions(vec![PanelAction::BatchGroup(ids)]);
-                }
+                && self.layers_gui.multi_selection.len() > 1 =>
+            {
+                let ids: Vec<_> = self.layers_gui.multi_selection.iter().copied().collect();
+                self.apply_actions(vec![PanelAction::BatchGroup(ids)]);
             }
             _ => {}
         }
@@ -810,6 +811,8 @@ impl TerraApp {
 
 #[cfg(test)]
 mod tests {
+    // Tests build fixtures by mutating Default instances; clearer than giant initializers.
+    #![allow(clippy::field_reassign_with_default)]
     use super::*;
     use terra_core::{FieldId, Heightfield, HeightfieldMetrics, TerrainTileKey};
     use terra_gpu::GpuTileAtlas;

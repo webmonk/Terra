@@ -381,9 +381,11 @@ impl PlacementDefinition {
     }
 
     pub fn from_legacy_dist_node(node: DistNode) -> Self {
-        let mut p = Self::default();
-        p.source = PlacementSource::Custom;
-        p.custom_stack = Some(Distribution::from_nodes(vec![node]));
+        let mut p = Self {
+            source: PlacementSource::Custom,
+            custom_stack: Some(Distribution::from_nodes(vec![node])),
+            ..Default::default()
+        };
         p.recompute_hash();
         p
     }
@@ -809,11 +811,8 @@ fn decompile_group(node: &DistNode, coverage: &mut Vec<CoverageTerm>) -> Option<
     let mut refinements = Vec::new();
     let mut children = Vec::new();
     for c in &node.children {
-        if let Some(rn) = decompile_node(c, coverage, &mut refinements) {
-            children.push(rn);
-        } else {
-            return None;
-        }
+        let rn = decompile_node(c, coverage, &mut refinements)?;
+        children.push(rn);
     }
     if !refinements.is_empty() {
         return None;
@@ -943,30 +942,32 @@ mod tests {
     use std::collections::HashMap;
 
     fn sample_rules() -> PlacementDefinition {
-        let mut p = PlacementDefinition::default();
-        p.root = RuleGroup {
-            mode: RuleGroupMode::All,
-            invert: false,
-            children: vec![
-                RuleNode::Condition(Condition {
-                    channel: ConditionChannel::Height,
-                    op: CompareOp::Above,
-                    a: 1800.0,
-                    b: 0.0,
-                    falloff: 0.0,
-                    seed: 0,
-                    frequency: 0.02,
-                }),
-                RuleNode::Condition(Condition {
-                    channel: ConditionChannel::Slope,
-                    op: CompareOp::Below,
-                    a: 55.0,
-                    b: 0.0,
-                    falloff: 0.0,
-                    seed: 0,
-                    frequency: 0.02,
-                }),
-            ],
+        let mut p = PlacementDefinition {
+            root: RuleGroup {
+                mode: RuleGroupMode::All,
+                invert: false,
+                children: vec![
+                    RuleNode::Condition(Condition {
+                        channel: ConditionChannel::Height,
+                        op: CompareOp::Above,
+                        a: 1800.0,
+                        b: 0.0,
+                        falloff: 0.0,
+                        seed: 0,
+                        frequency: 0.02,
+                    }),
+                    RuleNode::Condition(Condition {
+                        channel: ConditionChannel::Slope,
+                        op: CompareOp::Below,
+                        a: 55.0,
+                        b: 0.0,
+                        falloff: 0.0,
+                        seed: 0,
+                        frequency: 0.02,
+                    }),
+                ],
+            },
+            ..Default::default()
         };
         p.recompute_hash();
         p

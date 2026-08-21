@@ -390,6 +390,7 @@ impl PathTracer {
         &self.outputs.normal_view
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn dispatch(
         &mut self,
         device: &wgpu::Device,
@@ -474,12 +475,11 @@ impl PathTracer {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("path-trace-pass"),
                 timestamp_writes,
-                ..Default::default()
             });
             pass.set_pipeline(&self.pipeline);
             pass.set_bind_group(0, &bind_group, &[]);
-            let wg_x = (self.width + 7) / 8;
-            let wg_y = (self.height + 7) / 8;
+            let wg_x = self.width.div_ceil(8);
+            let wg_y = self.height.div_ceil(8);
             pass.dispatch_workgroups(wg_x, wg_y, 1);
         }
 

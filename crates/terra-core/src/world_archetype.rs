@@ -117,12 +117,11 @@ impl WorldTemplate {
 
     fn blueprint(self, world_size_m: f32) -> LandscapeBlueprint {
         match self {
-            Self::Blank => {
-                let mut b = LandscapeBlueprint::default();
-                b.world_size_m = world_size_m;
-                b.metres_per_sample = (world_size_m / 2048.0).max(0.5);
-                b
-            }
+            Self::Blank => LandscapeBlueprint {
+                world_size_m,
+                metres_per_sample: (world_size_m / 2048.0).max(0.5),
+                ..Default::default()
+            },
             Self::TropicalIsland => LandscapeBlueprint::tropical_island(world_size_m),
             Self::Alpine => LandscapeBlueprint::alpine(world_size_m),
             Self::Desert => LandscapeBlueprint::desert(world_size_m),

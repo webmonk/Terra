@@ -183,6 +183,7 @@ impl BiomeLayer {
     }
 
     /// Stamp a circular brush into the active biome channel.
+    #[allow(clippy::too_many_arguments)]
     pub fn stamp(
         &mut self,
         biome_id: LayerId,

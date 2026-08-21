@@ -853,7 +853,12 @@ pub fn draw_layers_gui(
                 );
                 if frac > 0.0 {
                     ui.panel(
-                        Rect::from_pos_size(icon_r.min_x, icon_r.max_y - 2.0, icon_size * frac, 2.0),
+                        Rect::from_pos_size(
+                            icon_r.min_x,
+                            icon_r.max_y - 2.0,
+                            icon_size * frac,
+                            2.0,
+                        ),
                         style::ACCENT,
                     );
                 }
@@ -1083,8 +1088,7 @@ pub fn draw_layers_gui(
             let op_active = ui.state.is_active(op_id);
             let mut shown_opacity = row_data.opacity;
             if op_active {
-                if let (Some(drag), Some((px, _))) =
-                    (state.opacity_drag.as_ref(), ui.input.pointer)
+                if let (Some(drag), Some((px, _))) = (state.opacity_drag.as_ref(), ui.input.pointer)
                 {
                     if drag.id == row_data.id {
                         let v = (drag.start_opacity + (px - drag.start_x) * OPACITY_SCRUB_PER_PX)
@@ -1397,10 +1401,7 @@ pub fn draw_layers_gui(
                             let anchor = state.last_clicked.and_then(|a| {
                                 rows.iter().position(|r| {
                                     r.id == a
-                                        && matches!(
-                                            r.role,
-                                            TreeRole::Layer | TreeRole::Foundation
-                                        )
+                                        && matches!(r.role, TreeRole::Layer | TreeRole::Foundation)
                                 })
                             });
                             let here = rows
@@ -1465,9 +1466,7 @@ pub fn draw_layers_gui(
         } else {
             FONT_SCALE * TYPE_BODY
         };
-        let name_color = if dragging_this {
-            style::TEXT_MUTED
-        } else if is_section {
+        let name_color = if dragging_this || is_section {
             style::TEXT_MUTED
         } else if row_dimmed_for_workspace(ui_state, &row_data) {
             style::TEXT_DISABLED
@@ -1892,6 +1891,7 @@ fn collect_rows(
 // Folder order is driven by ArtistConcept::region_order / world_order.
 
 /// Emit stack nodes bucketed into WC terrain concept folders.
+#[allow(clippy::too_many_arguments)]
 fn emit_concept_stack(
     doc: &TerrainDocument,
     stack: &LayerStack,
@@ -2150,6 +2150,7 @@ fn emit_simulation_scenario_rows(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn walk_node_flat(
     nodes: &[StackNode],
     i: usize,
@@ -2260,6 +2261,7 @@ fn walk_node_flat(
 }
 
 /// Emit biome section groups in artist/eval order (not raw document order).
+#[allow(clippy::too_many_arguments)]
 fn emit_biome_sections_ordered(
     biome: &terra_core::layer::LayerGroup,
     root_idx: usize,
@@ -2620,6 +2622,7 @@ fn resolve_biome_swatch_color(
     }
     terra_core::layer::palette_preview_color(g.id.0.as_u128())
 }
+#[allow(clippy::too_many_arguments)]
 fn draw_layer_context_menu(
     ui: &mut GuiContext<'_>,
     doc: &TerrainDocument,
@@ -2722,7 +2725,7 @@ fn draw_layer_context_menu(
         items.push(("batch_enable", format!("Enable / Disable {n} Layers")));
         items.push(("batch_group", format!("Group {n} Layers")));
     }
-    if is_mask
+    if (is_mask
         || group.is_some_and(|g| {
             !g.is_biome()
                 && !matches!(
@@ -2730,11 +2733,10 @@ fn draw_layer_context_menu(
                     terra_core::layer::GroupKind::BiomeSection(_)
                         | terra_core::layer::GroupKind::CategoryFolder
                 )
-        })
+        }))
+        && !items.iter().any(|(k, _)| *k == "del")
     {
-        if !items.iter().any(|(k, _)| *k == "del") {
-            items.push(("del", "Delete".into()));
-        }
+        items.push(("del", "Delete".into()));
     }
     items.push(("close", "Close".into()));
 

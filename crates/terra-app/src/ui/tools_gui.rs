@@ -404,6 +404,7 @@ fn draw_card_grid_prioritized(
     }
 }
 
+#[allow(clippy::too_many_arguments)]
 fn tool_card_suggested(
     ui: &mut GuiContext<'_>,
     ui_state: &mut UiState,
@@ -679,14 +680,12 @@ fn apply_sculpt_tool(
             ui_state.shape_session_layer = None;
         }
         actions.push(PanelAction::SetEditorTool(tool));
-        return;
     } else if tool == EditorTool::SelectPaint {
         // Transient selection paint: disarm mask paint so the amber selection
         // tint owns the shared overlay slot while brushing.
         ui_state.paint_mask = None;
         ui_state.viewport_overlays.brush_preview = true;
         actions.push(PanelAction::SetEditorTool(tool));
-        return;
     } else if tool == EditorTool::PaintMask {
         let is_painted = |id: MaskId| {
             doc.masks

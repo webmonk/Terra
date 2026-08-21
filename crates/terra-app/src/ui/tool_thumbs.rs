@@ -285,10 +285,7 @@ thumb!(
     mask_painted,
     "../../../../assets/tools/tool_mask_painted.png"
 );
-thumb!(
-    mask_select,
-    "../../../../assets/tools/tool_mask_select.png"
-);
+thumb!(mask_select, "../../../../assets/tools/tool_mask_select.png");
 thumb!(
     mask_combined,
     "../../../../assets/tools/tool_mask_combined.png"

@@ -8,12 +8,14 @@ use super::super::{
 };
 use super::ApplyCtx;
 
+// Err intentionally carries the unhandled action back to the router.
+#[allow(clippy::result_large_err)]
 pub(crate) fn try_apply(
     app: &mut TerraApp,
     action: PanelAction,
     ctx: &mut ApplyCtx,
 ) -> Result<(), PanelAction> {
-    let result = match action {
+    match action {
         PanelAction::AddLayer(layer) => {
             let kind = layer.kind.clone();
             if layer.kind.is_sculpt_base() {
@@ -390,15 +392,13 @@ pub(crate) fn try_apply(
                 if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
                     (from, app.session.document.stack.sibling_location(id))
                 {
-                    app.session
-                        .history
-                        .push_executed(EditorCommand::MoveNode {
-                            id,
-                            from_parent,
-                            from_index,
-                            to_parent,
-                            to_index,
-                        });
+                    app.session.history.push_executed(EditorCommand::MoveNode {
+                        id,
+                        from_parent,
+                        from_index,
+                        to_parent,
+                        to_index,
+                    });
                 }
                 app.session.document.active_biome = Some(biome);
                 app.session.document.selected = Some(id);
@@ -578,12 +578,14 @@ pub(crate) fn try_apply(
                 let loc = app.session.document.stack.sibling_location(id);
                 if let Some(node) = app.session.document.stack.remove(id) {
                     let (parent, index) = loc.unwrap_or((None, 0));
-                    app.session.history.push_executed(EditorCommand::RemoveLayer {
-                        id,
-                        node,
-                        index,
-                        parent,
-                    });
+                    app.session
+                        .history
+                        .push_executed(EditorCommand::RemoveLayer {
+                            id,
+                            node,
+                            index,
+                            parent,
+                        });
                     removed_any = true;
                 }
             }
@@ -661,15 +663,13 @@ pub(crate) fn try_apply(
                         if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
                             (from, app.session.document.stack.sibling_location(id))
                         {
-                            app.session
-                                .history
-                                .push_executed(EditorCommand::MoveNode {
-                                    id,
-                                    from_parent,
-                                    from_index,
-                                    to_parent,
-                                    to_index,
-                                });
+                            app.session.history.push_executed(EditorCommand::MoveNode {
+                                id,
+                                from_parent,
+                                from_index,
+                                to_parent,
+                                to_index,
+                            });
                         }
                     }
                 }
@@ -762,15 +762,13 @@ pub(crate) fn try_apply(
                 if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
                     (from, app.session.document.stack.sibling_location(child))
                 {
-                    app.session
-                        .history
-                        .push_executed(EditorCommand::MoveNode {
-                            id: child,
-                            from_parent,
-                            from_index,
-                            to_parent,
-                            to_index,
-                        });
+                    app.session.history.push_executed(EditorCommand::MoveNode {
+                        id: child,
+                        from_parent,
+                        from_index,
+                        to_parent,
+                        to_index,
+                    });
                 }
                 app.mark_all_layers_dirty();
                 app.request_rebuild();
@@ -785,15 +783,13 @@ pub(crate) fn try_apply(
                     if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
                         (from, app.session.document.stack.sibling_location(id))
                     {
-                        app.session
-                            .history
-                            .push_executed(EditorCommand::MoveNode {
-                                id,
-                                from_parent,
-                                from_index,
-                                to_parent,
-                                to_index,
-                            });
+                        app.session.history.push_executed(EditorCommand::MoveNode {
+                            id,
+                            from_parent,
+                            from_index,
+                            to_parent,
+                            to_index,
+                        });
                     }
                 }
                 app.mark_all_layers_dirty();
@@ -1093,15 +1089,13 @@ pub(crate) fn try_apply(
                 if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
                     (from, app.session.document.stack.sibling_location(moving))
                 {
-                    app.session
-                        .history
-                        .push_executed(EditorCommand::MoveNode {
-                            id: moving,
-                            from_parent,
-                            from_index,
-                            to_parent,
-                            to_index,
-                        });
+                    app.session.history.push_executed(EditorCommand::MoveNode {
+                        id: moving,
+                        from_parent,
+                        from_index,
+                        to_parent,
+                        to_index,
+                    });
                 }
                 app.mark_all_layers_dirty();
                 app.request_rebuild();
@@ -1179,10 +1173,8 @@ pub(crate) fn try_apply(
                 app.ui_state.auto_switch_workspace_on_create,
             )
             .with_cursor(uv);
-            if let Some(o) = owner {
-                if let terra_core::contextual_create::CreateOwner::Biome(id) = o {
-                    create_ctx.active_biome = Some(id);
-                }
+            if let Some(terra_core::contextual_create::CreateOwner::Biome(id)) = owner {
+                create_ctx.active_biome = Some(id);
             }
             match execute_create(&mut app.session, kind, &create_ctx, owner, None) {
                 Ok(out) => {
@@ -1315,6 +1307,5 @@ pub(crate) fn try_apply(
         }
         other => return Err(other),
     };
-    let _ = result;
     Ok(())
 }

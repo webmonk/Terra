@@ -1137,6 +1137,7 @@ pub fn draw_new_project_templates(
     choice
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_template_strip(
     ui: &mut GuiContext<'_>,
     strip_id: Id,
@@ -1380,6 +1381,7 @@ fn paint_design_thumb(ui: &mut GuiContext<'_>, template_id: &str, thumb: Rect) {
     );
 }
 
+#[allow(clippy::too_many_arguments)]
 fn draw_setting_row(
     ui: &mut GuiContext<'_>,
     id: Id,

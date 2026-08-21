@@ -147,19 +147,25 @@ pub struct LandscapeStyleParams {
 
 impl LandscapeStyleParams {
     pub fn alpine() -> Self {
-        let mut evolution = LandscapeEvolutionParams::default();
-        evolution.geological_age = 0.35;
-        evolution.rainfall = 1.2;
-        evolution.drainage_scale = 0.65;
-        evolution.iterations = 22;
-        evolution.solver = EvolutionSolverMode::Fast;
+        let evolution = LandscapeEvolutionParams {
+            geological_age: 0.35,
+            rainfall: 1.2,
+            drainage_scale: 0.65,
+            iterations: 22,
+            solver: EvolutionSolverMode::Fast,
+            ..Default::default()
+        };
 
-        let mut thermal = ThermalErosionParams::default();
-        thermal.iterations = 18;
-        thermal.talus_angle_deg = 36.0;
+        let thermal = ThermalErosionParams {
+            iterations: 18,
+            talus_angle_deg: 36.0,
+            ..Default::default()
+        };
 
-        let mut debris = DebrisFlowParams::default();
-        debris.iterations = 12;
+        let debris = DebrisFlowParams {
+            iterations: 12,
+            ..Default::default()
+        };
 
         Self {
             geological_age: 0.35,
@@ -215,11 +221,13 @@ impl LandscapeStyleParams {
     }
 
     pub fn mesa() -> Self {
-        let mut evolution = LandscapeEvolutionParams::default();
-        evolution.geological_age = 0.7;
-        evolution.rainfall = 0.25;
-        evolution.drainage_scale = 0.3;
-        evolution.iterations = 18;
+        let evolution = LandscapeEvolutionParams {
+            geological_age: 0.7,
+            rainfall: 0.25,
+            drainage_scale: 0.3,
+            iterations: 18,
+            ..Default::default()
+        };
 
         Self {
             geological_age: 0.7,
@@ -294,12 +302,14 @@ impl LandscapeStyleParams {
     }
 
     pub fn young_mountains() -> Self {
-        let mut evolution = LandscapeEvolutionParams::default();
-        evolution.geological_age = 0.18;
-        evolution.rainfall = 1.35;
-        evolution.drainage_scale = 0.45;
-        evolution.iterations = 16;
-        evolution.solver = EvolutionSolverMode::Fast;
+        let evolution = LandscapeEvolutionParams {
+            geological_age: 0.18,
+            rainfall: 1.35,
+            drainage_scale: 0.45,
+            iterations: 16,
+            solver: EvolutionSolverMode::Fast,
+            ..Default::default()
+        };
 
         Self {
             geological_age: 0.18,
@@ -336,12 +346,14 @@ impl LandscapeStyleParams {
     }
 
     pub fn old_mountains() -> Self {
-        let mut evolution = LandscapeEvolutionParams::default();
-        evolution.geological_age = 0.88;
-        evolution.rainfall = 1.05;
-        evolution.drainage_scale = 0.7;
-        evolution.iterations = 36;
-        evolution.solver = EvolutionSolverMode::Fast;
+        let evolution = LandscapeEvolutionParams {
+            geological_age: 0.88,
+            rainfall: 1.05,
+            drainage_scale: 0.7,
+            iterations: 36,
+            solver: EvolutionSolverMode::Fast,
+            ..Default::default()
+        };
 
         Self {
             geological_age: 0.88,
@@ -390,11 +402,13 @@ impl LandscapeStyleParams {
     }
 
     pub fn coastal() -> Self {
-        let mut evolution = LandscapeEvolutionParams::default();
-        evolution.geological_age = 0.5;
-        evolution.rainfall = 1.4;
-        evolution.drainage_scale = 0.75;
-        evolution.iterations = 20;
+        let evolution = LandscapeEvolutionParams {
+            geological_age: 0.5,
+            rainfall: 1.4,
+            drainage_scale: 0.75,
+            iterations: 20,
+            ..Default::default()
+        };
 
         Self {
             geological_age: 0.5,

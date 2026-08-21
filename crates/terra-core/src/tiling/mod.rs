@@ -51,7 +51,7 @@ pub fn dirty_class_for(kind: &LayerKind) -> DirtyClass {
 /// evaluated. [`map_tiles_batched`] therefore refreshes halos after every pass.
 pub fn recommended_halo(stencil_radius: u32, iters_per_batch: u32) -> u32 {
     let need = stencil_radius.saturating_mul(iters_per_batch.max(1));
-    need.max(crate::heightfield::DEFAULT_HALO).min(16)
+    need.clamp(crate::heightfield::DEFAULT_HALO, 16)
 }
 
 /// Tile Chebyshev expand radius for a dirty class (not sample halo).
@@ -60,12 +60,12 @@ pub fn expand_radius_for(class: DirtyClass, stencil: u32, iterations: u32) -> u3
         DirtyClass::Local => stencil.max(1).saturating_sub(1).max(1),
         DirtyClass::Expanding => {
             // Grow ~1 tile per ~8 iters (halo refresh between batches assumed).
-            let batches = (iterations.max(1) + 7) / 8;
-            batches.max(1).min(4)
+            let batches = iterations.max(1).div_ceil(8);
+            batches.clamp(1, 4)
         }
         DirtyClass::BasinDependent => {
             // Conservative: expand several rings; callers may still mark_all.
-            ((iterations.max(1) + 3) / 4).max(2).min(8)
+            iterations.max(1).div_ceil(4).clamp(2, 8)
         }
     }
 }

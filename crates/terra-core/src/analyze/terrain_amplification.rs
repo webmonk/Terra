@@ -702,10 +702,12 @@ mod tests {
     #[test]
     fn silhouette_lock_limits_low_frequency_rewrite() {
         let hf = noisy_mountain(metrics());
-        let mut unlocked = TerrainAmplificationParams::default();
-        unlocked.silhouette_lock = 0.0;
-        unlocked.meso_amplitude_m = 12.0;
-        unlocked.micro_amplitude_m = 3.0;
+        let unlocked = TerrainAmplificationParams {
+            silhouette_lock: 0.0,
+            meso_amplitude_m: 12.0,
+            micro_amplitude_m: 3.0,
+            ..Default::default()
+        };
         let mut locked = unlocked.clone();
         locked.silhouette_lock = 1.0;
 

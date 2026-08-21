@@ -9,6 +9,9 @@ impl TerraApp {
         if !self.pending_eval {
             return;
         }
+        // PAINT_DEBOUNCE_MS is deliberately 0 today (no paint debounce), which makes this
+        // comparison trivially false; keep it generic so the constant stays tunable.
+        #[allow(clippy::absurd_extreme_comparisons)]
         if self.last_refine.elapsed().as_millis() < PAINT_DEBOUNCE_MS {
             return;
         }
@@ -115,7 +118,7 @@ impl TerraApp {
             self.placement_tint_dirty = false;
             return;
         }
-        let res = doc.preview_resolution.min(512).max(64);
+        let res = doc.preview_resolution.clamp(64, 512);
         let isolate = if layer.isolate_active {
             doc.active_biome
         } else {

@@ -156,9 +156,9 @@ impl TerrainHydroState {
         let height = input.to_dense();
         let (bedrock, loose_sediment, resistance) = if let Some(m) = materials {
             let mut res = vec![m.bedrock_hardness; n];
-            for i in 0..n {
-                if m.loose_sediment[i] > 1e-5 {
-                    res[i] = m.sediment_hardness;
+            for (r, &loose) in res.iter_mut().zip(&m.loose_sediment) {
+                if loose > 1e-5 {
+                    *r = m.sediment_hardness;
                 }
             }
             (m.bedrock.clone(), m.loose_sediment.clone(), res)
@@ -313,10 +313,7 @@ pub fn clamp_timestep_cfl(timestep: f32, dx: f32, max_speed: f32) -> f32 {
 pub fn sanitize_field(data: &mut [f32]) -> u32 {
     let mut hits = 0u32;
     for v in data.iter_mut() {
-        if !v.is_finite() {
-            *v = 0.0;
-            hits += 1;
-        } else if *v < 0.0 {
+        if !v.is_finite() || *v < 0.0 {
             *v = 0.0;
             hits += 1;
         }
@@ -407,7 +404,7 @@ pub fn apply_transport_model(
             p.rainfall = (p.rainfall * 1.15).max(0.022);
             p.floodplain_bias = p.floodplain_bias.max(0.85);
             p.fan_boost = p.fan_boost.max(0.55);
-            p.bank_slip = p.bank_slip.max(0.2).min(0.35);
+            p.bank_slip = p.bank_slip.clamp(0.2, 0.35);
             p.sediment_softness = p.sediment_softness.max(0.35);
             p.particle_density *= 0.45;
             p.particle_radius = p.particle_radius.max(3);
@@ -666,9 +663,9 @@ impl HydraulicErosionCore {
         );
         // Flux / velocity proxies from wetness + water depth.
         let wet = result.wetness.data();
-        for i in 0..state.water_flux.len() {
+        for (i, &wet_i) in wet.iter().enumerate() {
             let w = result.water_raw.data()[i].max(0.0);
-            let flux = wet[i].max(0.0);
+            let flux = wet_i.max(0.0);
             state.water_flux[i] = flux;
             state.water_velocity[i] = flux / w.max(1e-4);
             state.suspended_sediment[i] = result.sediment_raw.data()[i].max(0.0);

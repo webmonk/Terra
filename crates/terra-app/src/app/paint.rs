@@ -106,8 +106,7 @@ impl TerraApp {
                 self.sculpt_gesture_base =
                     self.session.document.stack.find(layer_id).and_then(|l| {
                         if let terra_core::layer::LayerKind::SculptStrokes(p) = &l.kind {
-                            let last_points =
-                                p.strokes.last().map(|s| s.points.len()).unwrap_or(0);
+                            let last_points = p.strokes.last().map(|s| s.points.len()).unwrap_or(0);
                             Some((layer_id, p.strokes.len(), last_points))
                         } else {
                             None
@@ -209,8 +208,7 @@ impl TerraApp {
             self.sculpt_stroke_active = true;
             let strength = self.ui_state.sculpt_strength.clamp(0.05, 1.0);
             let radius = self.ui_state.sculpt_radius;
-            let mut actions = Vec::new();
-            actions.push(PanelAction::PaintSculptStamp {
+            let actions = vec![PanelAction::PaintSculptStamp {
                 layer: layer_id,
                 u,
                 v,
@@ -218,7 +216,7 @@ impl TerraApp {
                 strength,
                 stroke_kind,
                 target_height: 0.0,
-            });
+            }];
             self.apply_actions(actions);
             self.last_paint_uv = Some((u, v));
             self.force_draft = true;
@@ -320,7 +318,7 @@ impl TerraApp {
                     if (fu - u).hypot(fv - v) < 0.025 && self.biome_polygon_points.len() >= 3 {
                         let pts = std::mem::take(&mut self.biome_polygon_points);
                         actions.push(PanelAction::BeginBiomePaintStroke { biome });
-                        let res = self.session.document.preview_resolution.min(8192).max(64);
+                        let res = self.session.document.preview_resolution.clamp(64, 8192);
                         if let Some(layer) = self.session.document.selected_placement_layer_mut() {
                             layer.fill_polygon(
                                 biome,
@@ -516,8 +514,8 @@ impl TerraApp {
         self.last_paint_uv = Some((u, v));
     }
 
-    /// Push Draft heights to the GPU while a brush stroke is active.
-    /// Call at most once per frame - stamps coalesce via `pending_eval`.
+    // Push Draft heights to the GPU while a brush stroke is active.
+    // Call at most once per frame - stamps coalesce via `pending_eval`.
 
     pub(crate) fn commit_biome_polygon_fill(&mut self) {
         let Some(biome) = self.session.document.active_biome else {
@@ -529,7 +527,7 @@ impl TerraApp {
         let pts = std::mem::take(&mut self.biome_polygon_points);
         let strength = self.ui_state.sculpt_strength.clamp(0.05, 1.0);
         let erase = self.modifiers_alt;
-        let res = self.session.document.preview_resolution.min(8192).max(64);
+        let res = self.session.document.preview_resolution.clamp(64, 8192);
         self.session.document.ensure_placement_layer();
         self.apply_actions(vec![PanelAction::BeginBiomePaintStroke { biome }]);
         if let Some(layer) = self.session.document.selected_placement_layer_mut() {
@@ -594,8 +592,8 @@ impl TerraApp {
         }
     }
 
-    /// Click empty terrain to add a node. Existing Path/Polygon nodes can be
-    /// dragged, Shift-dragged vertically, or Ctrl-clicked to delete.
+    // Click empty terrain to add a node. Existing Path/Polygon nodes can be
+    // dragged, Shift-dragged vertically, or Ctrl-clicked to delete.
 
     pub(crate) fn update_brush_gizmo(&mut self) {
         let show = self.viewport_paint_tool_armed()
@@ -658,7 +656,7 @@ impl TerraApp {
             || self.ui_state.editor_tool == crate::ui::EditorTool::PaintBiome
     }
 
-    /// Execute keyboard bindings through the shared command IDs.
+    // Execute keyboard bindings through the shared command IDs.
 
     pub(crate) fn commit_mask_paint_stroke(&mut self) {
         let Some((mask_id, mut before, w, h)) = self.mask_paint_stroke_before.take() else {
@@ -797,7 +795,10 @@ impl TerraApp {
         let Some(r) = self.renderer.as_mut() else {
             return;
         };
-        let paint = self.selection.as_ref().and_then(|asset| asset.paint.as_ref());
+        let paint = self
+            .selection
+            .as_ref()
+            .and_then(|asset| asset.paint.as_ref());
         if let Some(paint) = paint {
             if paint.width > 0 && paint.height > 0 && !paint.samples.is_empty() {
                 let rgba = paint.bake_overlay_rgba(Self::SELECTION_TINT);

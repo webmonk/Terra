@@ -202,7 +202,8 @@ const SAVE_AS: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyS, 
 const CLOSE: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyW, CTRL)];
 const EXPORT: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyE, CTRL)];
 const SELECTION_CLEAR: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyD, CTRL)];
-const SELECTION_INVERT: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyI, CTRL_SHIFT)];
+const SELECTION_INVERT: &[ShortcutBinding] =
+    &[ShortcutBinding::displayed(KeyCode::KeyI, CTRL_SHIFT)];
 const GROUP_SELECTED: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyG, CTRL)];
 fn digit_bindings(digit: u8) -> &'static [ShortcutBinding] {
     match digit {

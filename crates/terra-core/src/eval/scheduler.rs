@@ -50,6 +50,7 @@ impl EvalScheduler {
         self.current_token
     }
 
+    #[allow(clippy::too_many_arguments)]
     pub fn run_step(
         &mut self,
         stack: &LayerStack,

@@ -956,6 +956,8 @@ fn merge_overlay_suggestions(dst: &mut ViewportOverlayFlags, src: ViewportOverla
 
 #[cfg(test)]
 mod tests {
+    // Tests build fixtures by mutating Default instances; clearer than giant initializers.
+    #![allow(clippy::field_reassign_with_default)]
     use super::*;
 
     #[test]
