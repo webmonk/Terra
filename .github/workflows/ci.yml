@@ -1,0 +1,96 @@
+# Main CI: build + test on Linux and Windows, plus a clippy lint job.
+#
+# GPU test policy
+# ---------------
+# Hosted runners have no usable GPU adapter, so GPU coverage is split:
+#
+# * Tests that use `terra_test_gpu::headless()` (terra-render, terra-gui,
+#   terra-app, terra-test-gpu's own tests) skip gracefully when no adapter
+#   exists, so they are safe to run everywhere and are NOT excluded. On the
+#   ubuntu leg they will typically skip (no Vulkan ICD installed here); on
+#   Windows they may run against DX12/WARP when the runner exposes it.
+#
+# * Tests that use `terra_test_gpu::headless_required()` PANIC without an
+#   adapter. Today those are exactly the `gpu_required_*` tests in
+#   crates/terra-gpu/tests/parity_matrix.rs. They are excluded here via the
+#   libtest name filter `--skip gpu_required_`. They are covered instead by
+#   .github/workflows/gpu-parity.yml, which installs Mesa lavapipe (a software
+#   Vulkan adapter) and runs the full parity matrix.
+#
+# Toolchain: stable only. No rustfmt job (not part of this repo's workflow).
+
+name: CI
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest]
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      # Build-time system dependencies for winit/wgpu on Linux. These are
+      # build/link deps only; no display server is required because every
+      # windowed path is behind the excluded-or-skipping GPU tests above.
+      - name: Install Linux build dependencies (winit/wgpu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxrandr-dev libxi-dev libxcursor-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libgl1-mesa-dev libvulkan-dev
+
+      - name: Build workspace
+        run: cargo build --workspace --locked
+
+      # `--skip gpu_required_` excludes only the adapter-mandatory parity
+      # tests (see header comment); everything else runs, and GPU-optional
+      # tests self-skip when the runner has no adapter.
+      - name: Test workspace (GPU-required tests excluded)
+        run: cargo test --workspace --locked --no-fail-fast -- --skip gpu_required_
+
+  # ADVISORY ONLY until the codebase is clippy-clean: as of 2026-08 the
+  # workspace has ~280 clippy warnings plus a handful of deny-by-default
+  # correctness lints (clippy::approx_constant, clippy::absurd_extreme_comparisons),
+  # so even plain `cargo clippy` exits non-zero. `continue-on-error` keeps the
+  # results visible in the job log without blocking merges. Once the workspace
+  # is clean, drop `continue-on-error` and add `-- -D warnings`.
+  lint:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: clippy
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux build dependencies (winit/wgpu)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxrandr-dev libxi-dev libxcursor-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libgl1-mesa-dev libvulkan-dev
+
+      - name: Clippy (advisory)
+        run: cargo clippy --workspace --all-targets --locked
