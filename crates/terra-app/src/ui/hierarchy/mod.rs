@@ -1022,8 +1022,7 @@ pub fn draw_layers_gui(
         let show_opacity = matches!(
             row_data.role,
             TreeRole::Layer | TreeRole::Foundation | TreeRole::Group | TreeRole::Biome
-        ) && show_secondary
-            && !compact;
+        ) && show_secondary;
         if show_opacity {
             rx -= OPACITY_COL;
             let scrub = Rect::from_pos_size(
@@ -1103,7 +1102,6 @@ pub fn draw_layers_gui(
         // Blend-mode badge on the selected row: click cycles forward through
         // BLEND_MODES, right-click cycles backward. Skipped on narrow rows.
         let show_blend = selected
-            && !compact
             && row.width() > BLEND_BADGE_MIN_ROW_W
             && matches!(
                 row_data.role,
