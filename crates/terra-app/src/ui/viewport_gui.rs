@@ -1222,6 +1222,7 @@ fn draw_viewport_render_menu(ui: &mut GuiContext<'_>, state: &mut UiState, ancho
         lighting_edited |= slider_f32(ui, "Ambient", &mut vr.ambient_strength, 0.0, 2.0);
         lighting_edited |= slider_f32(ui, "Shadow", &mut vr.shadow_strength, 0.0, 1.0);
         lighting_edited |= slider_f32(ui, "Fog", &mut vr.fog_strength, 0.0, 2.0);
+        lighting_edited |= slider_f32(ui, "AO", &mut vr.ao_strength, 0.0, 1.0);
         if lighting_edited {
             // Any lighting edit detaches from the named preset (blank preset field).
             state.lighting_customized = true;

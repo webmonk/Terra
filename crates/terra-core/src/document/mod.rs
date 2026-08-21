@@ -29,6 +29,10 @@ use std::collections::HashMap;
 /// full destructive normalization once ([`TerrainDocument::normalize_wc_tree`]).
 pub const DOCUMENT_VERSION: u32 = 3;
 
+fn default_ao_strength() -> f32 {
+    0.6
+}
+
 /// Presentation lighting for the 3D viewport, saved with the project so a custom
 /// look is restored on load. Angles are degrees; strengths are renderer multipliers.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -41,6 +45,9 @@ pub struct ViewportLighting {
     pub ambient_strength: f32,
     pub shadow_strength: f32,
     pub fog_strength: f32,
+    /// Ambient-occlusion strength for the lit viewport.
+    #[serde(default = "default_ao_strength")]
+    pub ao_strength: f32,
     /// UI preset chip label; empty when the values were customized (blank chip).
     #[serde(default)]
     pub preset: String,
@@ -58,6 +65,7 @@ impl Default for ViewportLighting {
             ambient_strength: 1.0,
             shadow_strength: 0.0,
             fog_strength: 1.0,
+            ao_strength: default_ao_strength(),
             preset: String::from("Studio"),
         }
     }

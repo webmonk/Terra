@@ -266,6 +266,7 @@ impl TerraApp {
                 renderer.lighting.ambient_strength = self.ui_state.viewport_render.ambient_strength;
                 renderer.lighting.shadow_strength = self.ui_state.viewport_render.shadow_strength;
                 renderer.lighting.fog_strength = self.ui_state.viewport_render.fog_strength;
+                renderer.lighting.ao_strength = self.ui_state.viewport_render.ao_strength;
 
                 let vr = &mut self.ui_state.viewport_render;
                 renderer.set_renderer_mode(vr.mode);

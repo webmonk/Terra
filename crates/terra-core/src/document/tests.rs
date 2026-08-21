@@ -12,6 +12,7 @@ fn viewport_lighting_round_trips_through_json() {
         ambient_strength: 0.4,
         shadow_strength: 0.9,
         fog_strength: 0.25,
+        ao_strength: 0.4,
         preset: String::new(),
     };
     let json = doc.to_json().expect("serialize");

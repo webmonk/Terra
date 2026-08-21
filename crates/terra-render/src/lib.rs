@@ -121,7 +121,7 @@ struct FrameUniforms {
     fog: [f32; 4],
     /// x=shadow_enabled, y=depth_bias, z=stream_level, w=soft_scale
     shadow: [f32; 4],
-    /// Raster shading controls: x=ambient_strength, y=shadow_strength, z=fog_strength, w=unused
+    /// Raster shading controls: x=ambient_strength, y=shadow_strength, z=fog_strength, w=ao_strength
     raster: [f32; 4],
 }
 
@@ -332,6 +332,15 @@ pub struct EnvironmentLighting {
     pub shadow_strength: f32,
     /// Raster aerial-perspective fog multiplier (1.0 = current look).
     pub fog_strength: f32,
+    /// Terrain-space ambient-occlusion strength in [0, 1]; 0 disables the
+    /// horizon scan entirely (uniform branch in the shader, so it costs nothing
+    /// when off) and restores the previous flat lambert+fog look.
+    ///
+    /// Drives both the AO fill term and the soft terrain-on-terrain contact
+    /// shadow, which share one heightfield horizon scan. Needs no extra GPU
+    /// feature, limit, binding, or pass, so there is nothing to fall back from:
+    /// setting it to 0 *is* the fallback.
+    pub ao_strength: f32,
 }
 
 impl Default for EnvironmentLighting {
@@ -343,6 +352,7 @@ impl Default for EnvironmentLighting {
             ambient_strength: 1.0,
             shadow_strength: 0.0,
             fog_strength: 1.0,
+            ao_strength: 0.6,
         }
     }
 }
@@ -1957,7 +1967,7 @@ impl TerrainRenderer {
                 self.lighting.ambient_strength,
                 self.lighting.shadow_strength,
                 self.lighting.fog_strength,
-                0.0,
+                self.lighting.ao_strength.clamp(0.0, 1.0),
             ],
         };
         let world_x = self.heights.world_size.0;

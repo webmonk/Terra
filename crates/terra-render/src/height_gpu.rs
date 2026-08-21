@@ -25,6 +25,31 @@ struct NormalUniforms {
     region_h: u32,
 }
 
+/// Grow a normals-pass region by the baked-AO horizon radius.
+///
+/// The normals kernel also bakes ambient occlusion (see `normals.wgsl`), and a
+/// texel's AO depends on heights up to `ao_world_radius()` metres away. A dirty
+/// rect that only covers the edited texels would therefore leave a stale AO ring
+/// around every brush stroke, so dilate by that radius in texels. Normals are
+/// recomputed over the halo too, which is idempotent and harmless.
+fn dilate_region_for_ao(region: SampleRect, w: u32, h: u32, dx: f32, dz: f32) -> SampleRect {
+    // Must match `ao_world_radius()` in shaders/normals.wgsl.
+    let extent = (w as f32 * dx).max(h as f32 * dz);
+    let radius = (extent * 0.045).max(dx.max(dz) * 8.0);
+    let pad_x = (radius / dx.max(1e-6)).ceil().max(1.0) as u32;
+    let pad_y = (radius / dz.max(1e-6)).ceil().max(1.0) as u32;
+    let x0 = region.x.saturating_sub(pad_x);
+    let y0 = region.y.saturating_sub(pad_y);
+    let x1 = region.x.saturating_add(region.w).saturating_add(pad_x).min(w);
+    let y1 = region.y.saturating_add(region.h).saturating_add(pad_y).min(h);
+    SampleRect {
+        x: x0,
+        y: y0,
+        w: x1.saturating_sub(x0).max(1),
+        h: y1.saturating_sub(y0).max(1),
+    }
+}
+
 struct HeightSlot {
     height: wgpu::Texture,
     height_view: wgpu::TextureView,
@@ -646,6 +671,7 @@ impl HeightGpu {
         dz: f32,
         region: SampleRect,
     ) {
+        let region = dilate_region_for_ao(region, w, h, dx, dz);
         let uniforms = NormalUniforms {
             width: w,
             height: h,
@@ -747,6 +773,7 @@ impl HeightGpu {
         dz: f32,
         region: SampleRect,
     ) {
+        let region = dilate_region_for_ao(region, w, h, dx, dz);
         let uniforms = NormalUniforms {
             width: w,
             height: h,

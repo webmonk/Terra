@@ -588,6 +588,11 @@ pub struct ViewportRenderSettings {
     pub ambient_strength: f32,
     pub shadow_strength: f32,
     pub fog_strength: f32,
+    /// Terrain-space ambient-occlusion strength in [0, 1]; 0 turns the horizon
+    /// scan (and its soft contact shadowing) off and restores the flat look.
+    /// Defaults to the renderer's own default so the viewport and this control
+    /// agree before anything is edited.
+    pub ao_strength: f32,
 }
 
 impl Default for ViewportRenderSettings {
@@ -626,6 +631,7 @@ impl Default for ViewportRenderSettings {
             ambient_strength: 1.0,
             shadow_strength: 0.0,
             fog_strength: 1.0,
+            ao_strength: terra_render::EnvironmentLighting::default().ao_strength,
         }
     }
 }

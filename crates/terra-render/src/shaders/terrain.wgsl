@@ -23,7 +23,7 @@ struct FrameUniforms {
     fog: vec4<f32>,
     // x=shadow_enabled, y=depth_bias, z=stream_level, w=soft_scale
     shadow: vec4<f32>,
-    // Raster shading: x=ambient_strength, y=shadow_strength, z=fog_strength, w=unused
+    // Raster shading: x=ambient_strength, y=shadow_strength, z=fog_strength, w=ao_strength
     raster: vec4<f32>,
 };
 
@@ -279,22 +279,61 @@ fn hash21(p: vec2<f32>) -> f32 {
     return fract(sin(dot(p, vec2<f32>(127.1, 311.7))) * 43758.5453);
 }
 
-/// Local height-field AO — samples a few texels as a cheap GI occlusion term.
-/// Offsets are unrolled (no WGSL array ctors — some NVIDIA drivers crash on those).
-fn height_ao(uv: vec2<f32>, h: f32) -> f32 {
-    let dim = textureDimensions(height_tex);
-    let texel = vec2<f32>(1.0 / f32(dim.x), 1.0 / f32(dim.y));
-    var occl = 0.0;
-    occl += max(sample_height_uv(clamp(uv + vec2<f32>( 2.0,  0.0) * texel, vec2<f32>(0.0), vec2<f32>(1.0))) - h, 0.0);
-    occl += max(sample_height_uv(clamp(uv + vec2<f32>(-2.0,  0.0) * texel, vec2<f32>(0.0), vec2<f32>(1.0))) - h, 0.0);
-    occl += max(sample_height_uv(clamp(uv + vec2<f32>( 0.0,  2.0) * texel, vec2<f32>(0.0), vec2<f32>(1.0))) - h, 0.0);
-    occl += max(sample_height_uv(clamp(uv + vec2<f32>( 0.0, -2.0) * texel, vec2<f32>(0.0), vec2<f32>(1.0))) - h, 0.0);
-    occl += max(sample_height_uv(clamp(uv + vec2<f32>( 4.0,  4.0) * texel, vec2<f32>(0.0), vec2<f32>(1.0))) - h, 0.0);
-    occl += max(sample_height_uv(clamp(uv + vec2<f32>(-4.0,  4.0) * texel, vec2<f32>(0.0), vec2<f32>(1.0))) - h, 0.0);
-    occl += max(sample_height_uv(clamp(uv + vec2<f32>( 4.0, -4.0) * texel, vec2<f32>(0.0), vec2<f32>(1.0))) - h, 0.0);
-    occl += max(sample_height_uv(clamp(uv + vec2<f32>(-4.0, -4.0) * texel, vec2<f32>(0.0), vec2<f32>(1.0))) - h, 0.0);
-    let span = max(u.world.w - u.world.z, 1.0);
-    return clamp(1.0 - (occl / 8.0) / (span * 0.08), 0.35, 1.0);
+/// Horizon-scan radius in world metres. Must match `ao_world_radius()` in
+/// `shaders/normals.wgsl`, which bakes the AO this radius belongs to.
+fn ao_world_radius() -> f32 {
+    let texel_world = max(
+        u.world.x / max(u.grid.x, 1.0),
+        u.world.y / max(u.grid.y, 1.0),
+    );
+    return max(max(u.world.x, u.world.y) * 0.045, texel_world * 8.0);
+}
+
+/// Apply the AO strength control to the sky visibility baked into `normal_tex.w`.
+///
+/// The occlusion itself is computed in terrain space by the normals compute pass
+/// (see `shaders/normals.wgsl` for the choice of space and the horizon math). It
+/// depends only on the heightfield, so it is baked once per height change rather
+/// than re-derived every frame, and arrives here for free: the fragment shader
+/// already samples `normal_tex` for the per-pixel normal, and alpha was an unused
+/// constant 1.0. Strength 0 (or an unbaked texel) yields 1.0 — the old flat look.
+fn terrain_ao(baked_visibility: f32) -> f32 {
+    let strength = clamp(u.raster.w, 0.0, 1.0);
+    return mix(1.0, clamp(baked_visibility, 0.0, 1.0), strength);
+}
+
+/// Soft contact shadowing of terrain by terrain, from a sun-aligned horizon scan.
+///
+/// Marches the heightfield along the sun's horizontal bearing and compares the
+/// horizon tangent against the sun's elevation tangent; `smoothstep` across that
+/// crossing gives a penumbra instead of a hard edge. Unlike the AO this depends
+/// on the sun, so it cannot be baked alongside the normals — but it is only a
+/// short 6-tap 1D march, and it gives near-field self-shadowing (crevices, ridge
+/// feet, gully walls) even when the cascade shadow map is switched off.
+fn terrain_contact_shadow(uv: vec2<f32>, world_pos: vec3<f32>, sun_dir: vec3<f32>) -> f32 {
+    let strength = clamp(u.raster.w, 0.0, 1.0);
+    let horizontal = length(sun_dir.xz);
+    if (strength <= 1e-3 || sun_dir.y <= 0.02 || horizontal < 1e-3) {
+        return 1.0;
+    }
+    let dir = sun_dir.xz / horizontal;
+    let sun_tan = sun_dir.y / horizontal;
+    // Deliberately short reach: these are *contact* shadows. Long marches cost
+    // cache misses for occluders the shadow map already resolves.
+    let radius = ao_world_radius() * 1.5;
+    let inv_world = vec2<f32>(1.0 / max(u.world.x, 1e-3), 1.0 / max(u.world.y, 1e-3));
+    let h0 = world_pos.y;
+    var max_tan = -8.0;
+    for (var s = 0u; s < 5u; s = s + 1u) {
+        // Quadratic spacing: dense near the shading point, sparse far out.
+        let t = (f32(s) + 1.0) / 5.0;
+        let dist = radius * t * t;
+        let suv = clamp(uv + dir * dist * inv_world, vec2<f32>(0.0), vec2<f32>(1.0));
+        max_tan = max(max_tan, (sample_height_uv(suv) - h0) / dist);
+    }
+    // ~3 degrees of penumbra either side of the sun's elevation.
+    let occluded = smoothstep(sun_tan - 0.055, sun_tan + 0.055, max_tan);
+    return mix(1.0, 1.0 - 0.55 * strength, occluded);
 }
 
 fn sample_height_bilinear(uv: vec2<f32>) -> f32 {
@@ -479,8 +518,9 @@ fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
         discard;
     }
 
-    let pixel_normal = textureSample(normal_tex, normal_samp, clamp(i.terrain_uv, vec2<f32>(0.0), vec2<f32>(1.0))).xyz;
-    var n = mix(i.normal, pixel_normal, 0.92);
+    // xyz = per-pixel normal, w = baked terrain-space sky visibility (see terrain_ao).
+    let normal_sample = textureSample(normal_tex, normal_samp, clamp(i.terrain_uv, vec2<f32>(0.0), vec2<f32>(1.0)));
+    var n = mix(i.normal, normal_sample.xyz, 0.92);
     if (dot(n, n) < 1e-6) {
         n = vec3<f32>(0.0, 1.0, 0.0);
     } else {
@@ -635,10 +675,14 @@ fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
     // Single-bounce fill: albedo bleeds into ambient (terrain radiosity approx).
     let bounce = albedo * 0.22 * (0.40 + 0.60 * h_norm);
 
-    let ao = height_ao(i.terrain_uv, i.world_pos.y);
+    let ao = terrain_ao(normal_sample.w);
     let map_shadow = sample_shadow_map(i.world_pos, n, sun_dir);
-    // Keep ambient occlusion as fill; shadow map only darkens direct sun.
-    var shadow_visibility = mix(ao, ao * map_shadow, 0.85);
+    let contact = terrain_contact_shadow(i.terrain_uv, i.world_pos, sun_dir);
+    // AO modulates ambient/sky fill only — never direct sun, which would double
+    // up with the shadow map and flatten lit faces. Direct sun is gated by the
+    // shadow map and the contact scan, combined with min() so the two agree
+    // rather than compounding into black.
+    var shadow_visibility = min(map_shadow, contact);
     var sky_visibility = ao;
     if (u.render.y > 0.5) {
         let origin = i.world_pos + n * max(h_span * 0.00035, 0.35);
@@ -649,9 +693,12 @@ fn fs_main(i: VsOut) -> @location(0) vec4<f32> {
             max(u.world.x, u.world.y) * 1.35,
             u.render.x,
         );
-        // Combine stable shadow map with stochastic contact/softening.
-        shadow_visibility = min(shadow_visibility, mix(ray_vis, ray_vis * ao, 0.35));
-        sky_visibility = mix(0.28, 1.0, stochastic_sky_visibility(origin, n, i.position.xy));
+        // Combine stable shadow map with stochastic contact/softening. Direct sun
+        // stays free of the AO term here too.
+        shadow_visibility = min(shadow_visibility, ray_vis);
+        // The stochastic sky probe is one noisy sample per frame; min() with the
+        // deterministic horizon AO keeps a stable floor while it converges.
+        sky_visibility = min(ao, mix(0.28, 1.0, stochastic_sky_visibility(origin, n, i.position.xy)));
     }
     let ambient = (hemi * 0.38 + bounce * mix(0.65, 1.25, sky_visibility)) * sky_visibility * u.raster.x;
     // Cook-Torrance GGX using authored roughness and metalness.

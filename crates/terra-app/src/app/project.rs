@@ -90,6 +90,7 @@ impl TerraApp {
             ambient_strength: vr.ambient_strength,
             shadow_strength: vr.shadow_strength,
             fog_strength: vr.fog_strength,
+            ao_strength: vr.ao_strength,
             preset,
         };
     }
@@ -107,6 +108,7 @@ impl TerraApp {
             vr.ambient_strength = l.ambient_strength;
             vr.shadow_strength = l.shadow_strength;
             vr.fog_strength = l.fog_strength;
+            vr.ao_strength = l.ao_strength;
         }
         match crate::ui::LightingPreset::ALL
             .iter()
