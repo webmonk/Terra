@@ -65,10 +65,69 @@ impl ThumbnailCache {
     }
 
     /// Drop thumbs for layers that no longer exist (project switch / delete).
+    /// Mask chips are content-fingerprinted and cheap; they persist here.
     pub fn retain_layers(&mut self, live: &[LayerId]) {
         let keys: std::collections::HashSet<String> =
             live.iter().map(|id| layer_key(*id)).collect();
-        self.map.retain(|k, _| keys.contains(k));
+        self.map
+            .retain(|k, _| !k.starts_with("layer:") || keys.contains(k));
+    }
+
+    /// Grayscale chip for a painted mask, re-rendered when its content
+    /// fingerprint changes (strided sample hash — cheap per frame).
+    pub fn mask_chip(
+        &mut self,
+        mask_id: terra_core::mask::MaskId,
+        paint: &terra_core::mask::PaintBuffer,
+    ) -> &Thumbnail {
+        let key = format!("mask:{}", mask_id.0);
+        let fp = paint_fingerprint(paint);
+        let entry = self.map.entry(key).or_insert_with(|| Entry {
+            thumb: render_mask_chip(paint, MASK_CHIP_RES),
+            generation: Some(fp),
+        });
+        if entry.generation != Some(fp) {
+            entry.thumb = render_mask_chip(paint, MASK_CHIP_RES);
+            entry.generation = Some(fp);
+        }
+        &entry.thumb
+    }
+}
+
+pub const MASK_CHIP_RES: u32 = 32;
+
+fn paint_fingerprint(paint: &terra_core::mask::PaintBuffer) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    let mut mix = |v: u64| {
+        hash ^= v;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    };
+    mix(paint.width as u64);
+    mix(paint.height as u64);
+    mix(paint.samples.len() as u64);
+    let stride = (paint.samples.len() / 512).max(1);
+    for &s in paint.samples.iter().step_by(stride) {
+        mix(s.to_bits() as u64);
+    }
+    hash
+}
+
+fn render_mask_chip(paint: &terra_core::mask::PaintBuffer, res: u32) -> Thumbnail {
+    let (w, h) = (paint.width.max(1), paint.height.max(1));
+    let mut rgba = Vec::with_capacity((res * res * 4) as usize);
+    for ty in 0..res {
+        for tx in 0..res {
+            let i = (tx as u64 * (w as u64 - 1) / (res as u64 - 1).max(1)) as u32;
+            let j = (ty as u64 * (h as u64 - 1) / (res as u64 - 1).max(1)) as u32;
+            let v = paint.samples[(j.min(h - 1) * w + i.min(w - 1)) as usize];
+            let g = (v.clamp(0.0, 1.0) * 255.0) as u8;
+            rgba.extend_from_slice(&[g, g, g, 255]);
+        }
+    }
+    Thumbnail {
+        width: res,
+        height: res,
+        rgba,
     }
 }
 
@@ -210,6 +269,29 @@ mod tests {
         assert!(!cache.needs_refresh(id, 1));
         assert!(cache.needs_refresh(id, 2));
         assert_ne!(cache.request_or_get(id).rgba, placeholder);
+    }
+
+    #[test]
+    fn mask_chip_refreshes_on_paint_change() {
+        use terra_core::mask::{MaskId, MaskPaintTool, PaintBuffer};
+        let mut cache = ThumbnailCache::default();
+        let id = MaskId::new();
+        let mut paint = PaintBuffer::new(64, 64);
+        paint.fill();
+        let before = cache.mask_chip(id, &paint).rgba.clone();
+        assert!(before.iter().step_by(4).all(|&g| g == 255));
+
+        paint.edit_circle(0.5, 0.5, 0.3, 1.0, 0.5, MaskPaintTool::Erase);
+        let after = cache.mask_chip(id, &paint).rgba.clone();
+        assert_ne!(before, after, "chip must re-render when paint changes");
+
+        // Unchanged paint reuses the cached render.
+        let again = cache.mask_chip(id, &paint).rgba.clone();
+        assert_eq!(after, again);
+
+        // Mask chips survive layer retention sweeps.
+        cache.retain_layers(&[]);
+        assert_eq!(cache.mask_chip(id, &paint).rgba, again);
     }
 
     #[test]

@@ -814,7 +814,57 @@ pub fn draw_layers_gui(
                 );
             }
 
-            cursor_x = icon_r.max_x + 8.0;
+            // Mask chip (Photoshop-style layer+mask pair): grayscale
+            // preview of the first painted mask, or a mask badge for
+            // procedural stacks. Click selects the mask (arming painting
+            // for painted masks).
+            let mut chip_advance = 0.0;
+            if row_data.mask_count > 0
+                && matches!(
+                    row_data.role,
+                    TreeRole::Layer | TreeRole::Foundation | TreeRole::Group | TreeRole::Biome
+                )
+            {
+                let chip_size = icon_size * 0.72;
+                let chip_r = Rect::from_pos_size(
+                    icon_r.max_x + 4.0,
+                    row.min_y + (row_h - chip_size) * 0.5,
+                    chip_size,
+                    chip_size,
+                );
+                let painted = row_data
+                    .first_mask
+                    .and_then(|mid| doc.masks.iter().find(|m| m.id == mid))
+                    .filter(|m| m.paint.is_some());
+                if let Some(asset) = painted {
+                    if let Some(paint) = asset.paint.as_ref() {
+                        let chip = state.thumbnails.mask_chip(asset.id, paint);
+                        ui.image(chip_r, chip.width, chip.height, &chip.rgba);
+                    }
+                } else {
+                    // Procedural mask stack: white frame with dark core.
+                    ui.panel_rounded(chip_r, Color::rgba(0.82, 0.84, 0.86, 0.9), 3.0);
+                    let inset = chip_size * 0.28;
+                    ui.panel_rounded(
+                        Rect::from_pos_size(
+                            chip_r.min_x + inset,
+                            chip_r.min_y + inset,
+                            chip_size - inset * 2.0,
+                            chip_size - inset * 2.0,
+                        ),
+                        style::SURFACE,
+                        (chip_size - inset * 2.0) * 0.5,
+                    );
+                }
+                if let Some(mid) = row_data.first_mask {
+                    if ui.pointer_in(chip_r) && ui.input.primary_released {
+                        actions.push(PanelAction::SelectMask(mid));
+                    }
+                }
+                chip_advance = chip_size + 4.0;
+            }
+
+            cursor_x = icon_r.max_x + 8.0 + chip_advance;
         }
 
         // Right-side controls.
