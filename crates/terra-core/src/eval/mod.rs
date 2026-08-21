@@ -149,6 +149,45 @@ impl EvalContext {
 pub struct StackEvaluator {
     pub registry: ProcessorRegistry,
     pub cache: LayerCache,
+    /// Checkpoints of scrubbed simulation outputs keyed by progress bucket,
+    /// validated by input + param fingerprints. Revisiting a scrub position
+    /// replays the stored result instead of re-running the sim.
+    scrub_cache: HashMap<LayerId, Vec<ScrubEntry>>,
+    /// Scrub-checkpoint reuse count (observable for tests / diagnostics).
+    pub scrub_hits: u64,
+}
+
+struct ScrubEntry {
+    bucket: u8,
+    input_fp: u64,
+    params_fp: u64,
+    height: Heightfield,
+    aux: HashMap<String, MaskField>,
+    strata: Option<Vec<crate::layer::Stratum>>,
+    /// Aux keys this sim actually rewrote (runtime CoW diff at capture time).
+    wrote: HashSet<String>,
+}
+
+const SCRUB_ENTRIES_PER_LAYER: usize = 16;
+
+/// Cheap parameter identity for scrub-checkpoint validation: any edit beyond
+/// the progress scrub itself changes the fingerprint and misses the cache.
+fn scrub_params_fingerprint(layer: &Layer) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64;
+    let mut mix = |v: u64| {
+        hash ^= v;
+        hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+    };
+    if let Ok(json) = serde_json::to_string(&layer.kind) {
+        for b in json.as_bytes() {
+            mix(*b as u64);
+        }
+    }
+    mix(layer.common.opacity.to_bits() as u64);
+    mix(layer.common.blend as u64);
+    mix(layer.common.masks.len() as u64);
+    mix(layer.common.clip_to_below as u64);
+    hash
 }
 
 impl Default for StackEvaluator {
@@ -162,6 +201,8 @@ impl StackEvaluator {
         Self {
             registry: ProcessorRegistry::builtin(),
             cache: LayerCache::new(),
+            scrub_cache: HashMap::new(),
+            scrub_hits: 0,
         }
     }
 
@@ -253,6 +294,7 @@ impl StackEvaluator {
     /// Discard every layer cache entry (project switch / hard reset).
     pub fn clear_project_caches(&mut self) {
         self.cache.clear();
+        self.scrub_cache.clear();
     }
 
     /// Full rebuild (Phase 1 path) - tree walk so scoped groups compose correctly.
@@ -618,6 +660,55 @@ impl StackEvaluator {
             }
         }
 
+        // Scrub checkpoints: a revisited progress position replays the
+        // stored result instead of re-running the sim, validated against the
+        // exact input and parameter state it was captured from.
+        let scrubbing = layer.common.sim_progress < 0.999
+            && matches!(
+                layer.kind.category(),
+                crate::layer::OperationCategory::Simulation
+            );
+        let scrub_key = scrubbing.then(|| {
+            (
+                (layer.common.sim_progress.clamp(0.0, 1.0) * 100.0).round() as u8,
+                height_fingerprint(input),
+                scrub_params_fingerprint(layer),
+            )
+        });
+        if let Some((bucket, input_fp, params_fp)) = scrub_key {
+            if let Some(entry) = self.scrub_cache.get(&layer.id()).and_then(|entries| {
+                entries.iter().find(|e| {
+                    e.bucket == bucket && e.input_fp == input_fp && e.params_fp == params_fp
+                })
+            }) {
+                if ctx.pass_changed.is_empty() {
+                    for (key, field) in &entry.aux {
+                        ctx.aux_maps.insert(key.clone(), field.clone());
+                    }
+                } else {
+                    for (key, field) in &entry.aux {
+                        if !ctx.pass_changed.contains(key) {
+                            ctx.aux_maps.insert(key.clone(), field.clone());
+                        }
+                    }
+                }
+                if entry.strata.is_some() {
+                    ctx.aux_maps.strata = entry.strata.clone();
+                }
+                ctx.sync_aux_hashmap();
+                ctx.pass_changed.extend(entry.wrote.iter().cloned());
+                publish_layer_outputs(ctx, layer, &entry.height);
+                record_layer_timing(ctx, layer, timing_started, LayerEvalStatus::CacheHit);
+                self.scrub_hits += 1;
+                let mask =
+                    want_mask.then(|| effective_layer_mask(ctx, &layer.common.masks, input));
+                return Ok((entry.height.clone(), mask));
+            }
+        }
+        let pass_changed_before = scrub_key
+            .is_some()
+            .then(|| ctx.pass_changed.clone());
+
         let scaled_layer = layer_with_world_scale(layer, ctx.level_steps.world_scale);
         let mut bound_layer = apply_param_bindings(ctx, &scaled_layer);
         // Simulation timeline scrub: scale the iteration budget through
@@ -687,6 +778,31 @@ impl StackEvaluator {
         );
         publish_layer_outputs(ctx, layer, &out);
         record_layer_timing(ctx, layer, timing_started, LayerEvalStatus::Computed);
+        if let (Some((bucket, input_fp, params_fp)), Some(before)) =
+            (scrub_key, pass_changed_before)
+        {
+            let wrote: HashSet<String> = ctx
+                .pass_changed
+                .difference(&before)
+                .cloned()
+                .collect();
+            let entries = self.scrub_cache.entry(layer.id()).or_default();
+            entries.retain(|e| {
+                !(e.bucket == bucket && e.input_fp == input_fp && e.params_fp == params_fp)
+            });
+            if entries.len() >= SCRUB_ENTRIES_PER_LAYER {
+                entries.remove(0);
+            }
+            entries.push(ScrubEntry {
+                bucket,
+                input_fp,
+                params_fp,
+                height: out.clone(),
+                aux: ctx.aux_maps.to_hashmap(),
+                strata: ctx.aux_maps.strata.clone(),
+                wrote,
+            });
+        }
         Ok((out, want_mask.then_some(mask)))
     }
 
@@ -1328,6 +1444,61 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn scrub_checkpoints_replay_visited_positions() {
+        use crate::layer::{FbmParams, ThermalErosionParams};
+
+        let mut stack = LayerStack::new();
+        let mut fbm = Layer::new("Fbm", LayerKind::Fbm(FbmParams::default()));
+        fbm.common.blend = BlendMode::Add;
+        stack.push(fbm);
+        let mut thermal = Layer::new(
+            "Thermal",
+            LayerKind::ThermalErosion(ThermalErosionParams::default()),
+        );
+        thermal.common.sim_progress = 0.5;
+        let thermal_id = thermal.id();
+        stack.push(thermal);
+
+        let metrics = HeightfieldMetrics::new(48, 48, 96.0, 96.0);
+        let mut eval = StackEvaluator::new();
+        let mut ctx = EvalContext::new(metrics);
+        let first = eval.rebuild_all(&stack, &mut ctx).unwrap();
+        assert_eq!(eval.scrub_hits, 0);
+
+        // Revisit the same position: replayed from the checkpoint.
+        eval.mark_dirty_from(&stack, thermal_id);
+        let replay = eval.rebuild_incremental(&stack, &mut ctx).unwrap();
+        assert_eq!(eval.scrub_hits, 1);
+        for j in (0..48).step_by(9) {
+            for i in (0..48).step_by(9) {
+                assert_eq!(first.get(i, j), replay.get(i, j));
+            }
+        }
+
+        // A new position computes fresh...
+        stack.find_mut(thermal_id).unwrap().common.sim_progress = 0.7;
+        eval.mark_dirty_from(&stack, thermal_id);
+        eval.rebuild_incremental(&stack, &mut ctx).unwrap();
+        assert_eq!(eval.scrub_hits, 1);
+
+        // ...and scrubbing back replays instantly again.
+        stack.find_mut(thermal_id).unwrap().common.sim_progress = 0.5;
+        eval.mark_dirty_from(&stack, thermal_id);
+        eval.rebuild_incremental(&stack, &mut ctx).unwrap();
+        assert_eq!(eval.scrub_hits, 2);
+
+        // A parameter edit invalidates checkpoints for that state.
+        if let Some(l) = stack.find_mut(thermal_id) {
+            if let LayerKind::ThermalErosion(p) = &mut l.kind {
+                p.strength *= 1.5;
+            }
+        }
+        eval.mark_dirty_from(&stack, thermal_id);
+        eval.rebuild_incremental(&stack, &mut ctx).unwrap();
+        assert_eq!(eval.scrub_hits, 2, "changed params must miss the checkpoint");
     }
 
     #[test]
