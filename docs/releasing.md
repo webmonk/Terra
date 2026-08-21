@@ -56,5 +56,6 @@ on the export options, the package contains:
   Vulkan adapter. CPU determinism and simulation contracts are covered by
   the terra-core suites inside the main CI workflow.
 
-CI does not build release binaries; run the release build locally (or add a
-tag-triggered workflow) when cutting a release.
+- `.github/workflows/release.yml` — pushing a `v*` tag builds optimized
+  Windows and Linux binaries and attaches them to a GitHub release with
+  generated notes.

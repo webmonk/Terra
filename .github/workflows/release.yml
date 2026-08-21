@@ -1,0 +1,84 @@
+# Tag-triggered release builds: push a `v*` tag to produce optimized
+# binaries for Windows and Linux and attach them to a GitHub release.
+#
+# The exe embeds fonts, shaders, and tool thumbnails (include_bytes!),
+# so the archive needs nothing beyond the binary and the release notes
+# pointer (see docs/releasing.md).
+
+name: Release
+
+on:
+  push:
+    tags: ["v*"]
+
+env:
+  CARGO_TERM_COLOR: always
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            artifact: terra-windows-x86_64
+            binary: target/release/terra.exe
+          - os: ubuntu-latest
+            artifact: terra-linux-x86_64
+            binary: target/release/terra
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+
+      - name: Install Linux build dependencies (winit/wgpu)
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y \
+            libx11-dev libxrandr-dev libxi-dev libxcursor-dev \
+            libxkbcommon-dev libxkbcommon-x11-dev \
+            libwayland-dev libgl1-mesa-dev libvulkan-dev
+
+      - name: Build release binary
+        run: cargo build --release -p terra-app --locked
+
+      - name: Package (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Compress-Archive -Path ${{ matrix.binary }}, README.md, LICENSE -DestinationPath "dist/${{ matrix.artifact }}.zip"
+
+      - name: Package (Linux)
+        if: runner.os == 'Linux'
+        run: |
+          mkdir -p dist
+          tar czf "dist/${{ matrix.artifact }}.tar.gz" -C target/release terra -C ../.. README.md LICENSE
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ matrix.artifact }}
+          path: dist/*
+
+  release:
+    needs: build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+
+      - uses: softprops/action-gh-release@v2
+        with:
+          files: dist/*
+          generate_release_notes: true
+          draft: false

@@ -65,16 +65,11 @@ jobs:
       - name: Test workspace (GPU-required tests excluded)
         run: cargo test --workspace --locked --no-fail-fast -- --skip gpu_required_
 
-  # ADVISORY ONLY until the codebase is clippy-clean: as of 2026-08 the
-  # workspace has ~280 clippy warnings plus a handful of deny-by-default
-  # correctness lints (clippy::approx_constant, clippy::absurd_extreme_comparisons),
-  # so even plain `cargo clippy` exits non-zero. `continue-on-error` keeps the
-  # results visible in the job log without blocking merges. Once the workspace
-  # is clean, drop `continue-on-error` and add `-- -D warnings`.
+  # Enforcing: the workspace is clippy-clean (swept 2026-08); regressions
+  # fail the job.
   lint:
     runs-on: ubuntu-latest
     timeout-minutes: 30
-    continue-on-error: true
     steps:
       - uses: actions/checkout@v4
 
@@ -92,5 +87,5 @@ jobs:
             libxkbcommon-dev libxkbcommon-x11-dev \
             libwayland-dev libgl1-mesa-dev libvulkan-dev
 
-      - name: Clippy (advisory)
-        run: cargo clippy --workspace --all-targets --locked
+      - name: Clippy
+        run: cargo clippy --workspace --all-targets --locked -- -D warnings
