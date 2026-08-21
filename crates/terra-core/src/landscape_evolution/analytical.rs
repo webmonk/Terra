@@ -22,6 +22,35 @@ use super::BoundaryMasks;
 /// reliably by the f32 path integrals and is treated as the no-advection limit.
 const MIN_CHARACTERISTIC_CELL_FRACTION: f32 = 1e-4;
 
+/// Steady-state stream-power gradient cap (ridge-singularity regularisation).
+///
+/// The characteristic solution accumulates `U / (K A^m)` along drainage paths;
+/// that term diverges as drainage area `A -> 0` on ridges and peaks, blowing
+/// low-drainage cells far past any physically attainable relief. Real
+/// landscapes never sustain fluvial steady-state gradients beyond the angle of
+/// repose - above it hillslope processes (mass wasting / talus) take over - so
+/// the gradient is capped at `tan(talus_angle)`. Well-drained cells sit far
+/// below the cap (`U/(K A^m) << tan(talus)`) and are unaffected.
+fn max_steady_state_gradient(p: &LandscapeEvolutionParams) -> f32 {
+    p.talus_angle_deg.clamp(5.0, 60.0).to_radians().tan()
+}
+
+/// Soft cap for the steady-state gradient: `max_grad * tanh(g / max_grad)`.
+///
+/// A hard `min()` truncates every over-threshold gradient to the same value,
+/// erasing the ordering of `U/(K A^m)` between low-drainage cells - on young /
+/// flat terrain that ordering is exactly what organises valleys, so drainage
+/// coherence degraded. `tanh` is strictly increasing, so the ordering (and
+/// thus drainage organisation) is preserved, while the result stays strictly
+/// below `max_grad` - the same divergence bound as the hard cap. Well-drained
+/// cells sit at `g << max_grad`, where `tanh` is identity to first order.
+fn soft_cap_gradient(g: f32, max_grad: f32) -> f32 {
+    if !g.is_finite() {
+        return max_grad;
+    }
+    max_grad * (g.max(0.0) / max_grad).tanh()
+}
+
 #[derive(Clone, Copy)]
 struct FiniteHorizonBounds {
     min: f32,
@@ -52,6 +81,7 @@ pub fn evolve_analytical(
     let cell_area = (dx * dz).max(1e-6);
     // Drainage-scale modulates effective area (Hack-like organisation).
     let area_scale = (0.35 + 1.3 * p.drainage_scale.clamp(0.0, 1.0)) * rain;
+    let max_grad = max_steady_state_gradient(p);
     let bounds = finite_horizon_bounds(initial, tectonic_base, uplift, t);
 
     let mut z = initial.clone();
@@ -94,6 +124,7 @@ pub fn evolve_analytical(
                 area_scale,
                 cell_len,
                 cell_area,
+                max_grad,
                 stride,
             );
             // EMA toward predicted elevations (stabilises small-t oscillations).
@@ -142,6 +173,7 @@ pub fn evolve_analytical(
         area_scale,
         cell_len,
         cell_area,
+        max_grad,
         1,
     );
     let mut rejected = 0usize;
@@ -182,6 +214,7 @@ fn analytical_on_tree(
     area_scale: f32,
     cell_len: f32,
     cell_area: f32,
+    max_grad: f32,
     stride: usize,
 ) -> Vec<f32> {
     let w = z.metrics.width as usize;
@@ -252,7 +285,10 @@ fn analytical_on_tree(
         let r = transport_receiver[idx];
         let dist = receiver_distance(i, j, r, w, cell_len);
         travel[idx] = travel[r] + dist / a[idx];
-        s_uplift[idx] = s_uplift[r] + dist * uplift.get(i as u32, j as u32) / a[idx];
+        // Steady-state gradient U / (K A^m), soft-capped at the talus gradient
+        // so vanishing drainage area cannot diverge the path integral.
+        let grad = soft_cap_gradient(uplift.get(i as u32, j as u32) / a[idx], max_grad);
+        s_uplift[idx] = s_uplift[r] + dist * grad;
     }
 
     for &idx in &cache.topo_down_to_up {
@@ -281,13 +317,18 @@ fn analytical_on_tree(
             uplift,
             w,
             cell_len,
+            max_grad,
         );
         out[idx] = z_d + s_from_d;
 
         // Enforce downhill consistency toward receiver (removes basin-boundary cliffs).
         if transport_receiver[idx] != usize::MAX {
             let r = transport_receiver[idx];
-            let min_drop = (uplift.get(i as u32, j as u32) / a[idx]) * cell_len * 0.15;
+            // Same talus-gradient soft cap as the path integral: the consistency
+            // floor otherwise cascades an unbounded U/(K A^m) drop upstream.
+            let min_drop = soft_cap_gradient(uplift.get(i as u32, j as u32) / a[idx], max_grad)
+                * cell_len
+                * 0.15;
             let floor = out[r] + min_drop.max(1e-4);
             if out[idx] < floor {
                 out[idx] = floor;
@@ -309,6 +350,7 @@ fn characteristic_elevation(
     uplift: &MaskField,
     w: usize,
     cell_len: f32,
+    max_grad: f32,
 ) -> (f32, f32) {
     // If travel time from outlet already <= t, steady-state: D = 0.
     if travel[idx] <= t {
@@ -352,7 +394,8 @@ fn characteristic_elevation(
             let (ui, uj) = (upstream % w, upstream / w);
             let z_blend =
                 z0.get(li as u32, lj as u32) * (1.0 - f) + z0.get(ui as u32, uj as u32) * f;
-            let s_edge = cell_len * uplift.get(ui as u32, uj as u32) / a[upstream];
+            let s_edge = cell_len
+                * soft_cap_gradient(uplift.get(ui as u32, uj as u32) / a[upstream], max_grad);
             let s_blend = (s_uplift[idx] - s_uplift[upstream]) + s_edge * (1.0 - f);
             return (z_blend, s_blend.max(0.0));
         }
