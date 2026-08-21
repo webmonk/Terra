@@ -16,7 +16,7 @@
 > Large parts of the editor are incomplete or only sketched in:
 >
 > - **Real-time terrain visualization** — progressive Draft→Full preview with a hybrid GPU+CPU path exists, but live feedback still needs major refinement; expect laggy, approximate, or stale results
-> - **Export pipeline** — a heightmap-oriented export package writer exists, but it is not production-ready and the main Export CTA is still blocked
+> - **Export pipeline** — the Export button re-evaluates at export resolution on a background worker and writes a package (16-bit PNG + 32-bit float TIFF heights, selectable 16-bit aux maps, `manifest.json` with de-normalization metadata); formats are still unstable
 > - **Objects** — vegetation scatter exists; general prop/object placement is largely placeholder
 > - **Materials** — material IDs / strata / hardness and viewport tinting exist; this is not a full shading or surface-authoring pipeline
 >

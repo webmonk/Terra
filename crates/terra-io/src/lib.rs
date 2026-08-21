@@ -5,8 +5,8 @@ mod geotiff;
 mod import;
 
 pub use export::{
-    build_tile_manifest, changed_tiles, export_package, ExportRequest, ExportResult, TileManifest,
-    TileManifestEntry,
+    build_tile_manifest, changed_tiles, export_package, ExportRequest, ExportResult,
+    PackageChannel, PackageManifest, TileManifest, TileManifestEntry,
 };
 pub use geotiff::{read_geotiff_heights, GeoTiffInfo};
 pub use import::{import_heightmap_png, import_heightmap_raw};
@@ -63,7 +63,7 @@ impl BackgroundExporter {
         }
     }
 
-    pub fn start(&mut self, doc: TerrainDocument, out_dir: PathBuf) {
+    pub fn start(&mut self, doc: TerrainDocument, out_dir: PathBuf, exclude_aux: Vec<String>) {
         let (tx, rx) = mpsc::channel();
         self.rx = rx;
         self.tx = Some(tx.clone());
@@ -83,6 +83,7 @@ impl BackgroundExporter {
                     let _ = tx.send(JobMsg::Progress(0.7));
                     let req = ExportRequest {
                         out_dir,
+                        exclude_aux,
                         ..ExportRequest::default()
                     };
                     let result = export_package(&hf, &ctx, &req).map_err(|e| e.to_string());

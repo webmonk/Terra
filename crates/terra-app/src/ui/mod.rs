@@ -44,8 +44,7 @@ pub fn prefetch_tool_thumbnails() {
 
 pub use actions::{MaskEditAction, PanelAction, TerrainSettingsUpdate};
 pub use chrome_gui::{
-    apply_borderless_window_frame, caption_controls_width, draw_caption_controls,
-    draw_export_unsupported_modal, ChromeGuiState,
+    apply_borderless_window_frame, caption_controls_width, draw_caption_controls, ChromeGuiState,
 };
 pub use command_palette::{draw_command_palette, CommandPaletteState, PaletteAction};
 pub(crate) use command_registry::resolve_workspace_command;
@@ -111,8 +110,6 @@ pub struct UiState {
     pub pending_close_mask_editor: bool,
     pub show_content_browser: bool,
     pub show_export: bool,
-    /// Stub dialog when Export is clicked (feature not ready).
-    pub show_export_unsupported: bool,
     pub show_2d_preview: bool,
     pub show_profiler: bool,
     pub show_widget_lab: bool,
@@ -149,6 +146,12 @@ pub struct UiState {
     pub export_path: Option<String>,
     /// `Some(0..=1)` while a background export is running.
     pub export_progress: Option<f32>,
+    /// Aux channel names from the latest evaluation (export panel checkboxes).
+    pub export_available_aux: Vec<String>,
+    /// Aux channels the user unchecked in the export panel.
+    pub export_excluded_aux: std::collections::BTreeSet<String>,
+    /// Result line for the export panel: output path on success, error otherwise.
+    pub export_status: Option<String>,
     pub status: String,
     pub refining: bool,
     /// Best-effort progressive-build completion, from 0.0 through 1.0.
@@ -1506,7 +1509,6 @@ pub fn draw_editor_gui(
     // Open menus/popups must not leak press/release into chrome underneath.
     if chrome.blocks_background_input()
         || ui_state.show_quick_add
-        || ui_state.show_export_unsupported
         || layers.context_menu.is_some()
         || layers.add_menu_open
         || inspector.more_menu_open
@@ -1584,7 +1586,6 @@ pub fn draw_editor_gui(
         }
     }
     ui_state.command_palette = command_palette;
-    draw_export_unsupported_modal(ui, &mut ui_state.show_export_unsupported);
     out.selected = doc.selected;
     out
 }

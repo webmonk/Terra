@@ -414,10 +414,11 @@ fn export_panel(
     out: &mut FrameUiOutput,
 ) {
     label(ui, "What you'll get");
-    label(ui, "- height.png / height.r32 - heightmap");
-    label(ui, "- height_meta.json - size / world extents");
-    label(ui, "- mask_*.png - baked aux masks");
+    label(ui, "- height.png (16-bit) + height_f32.tif + height.r32");
+    label(ui, "- manifest.json - channels, world size, height range");
+    label(ui, "- aux_*.png - selected aux maps (16-bit)");
     label(ui, "- splat.png + splat_ids.json - material IDs");
+    label(ui, "- color.png / normal.png - baked maps");
     label(ui, "- vegetation_instances.json - foliage points");
     label(ui, "- terrain_collision.obj - coarse mesh");
     label(ui, "- tile_manifest.json - streaming tiles");
@@ -451,13 +452,22 @@ fn export_panel(
     }
     ui.separator();
 
-    label(ui, "Outputs (per Start Export)");
-    label(ui, "- height.png (16-bit) + height.r32");
-    label(ui, "- splat.png (RGBA material weights)");
-    label(ui, "- color.png (baked albedo tint)");
-    label(ui, "- normal.png (from height derivatives)");
-    label(ui, "- mask_*.png aux fields");
-    label(ui, "Meta JSON carries world size for DCC handoff.");
+    label(ui, "Aux maps (aux_<name>.png, 16-bit)");
+    if ui_state.export_available_aux.is_empty() {
+        label_dim(ui, "No aux maps yet - evaluate the terrain first.");
+    } else {
+        let aux_names = ui_state.export_available_aux.clone();
+        for name in &aux_names {
+            let mut included = !ui_state.export_excluded_aux.contains(name);
+            if checkbox(ui, name, &mut included) {
+                if included {
+                    ui_state.export_excluded_aux.remove(name);
+                } else {
+                    ui_state.export_excluded_aux.insert(name.clone());
+                }
+            }
+        }
+    }
     ui.separator();
 
     label(
@@ -476,6 +486,8 @@ fn export_panel(
 
     if let Some(progress) = ui_state.export_progress {
         label(ui, &format!("Exporting... {:.0}%", progress * 100.0));
+    } else if let Some(status) = ui_state.export_status.as_deref() {
+        label(ui, status);
     } else if ui_state.export_path.is_some() {
         label(ui, "Ready - Start Export writes files in the background.");
     } else {

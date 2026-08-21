@@ -443,10 +443,17 @@ impl ApplicationHandler for TerraApp {
                 .finish_export(self.runtime_started.elapsed().as_millis() as u64);
             match result {
                 Ok(res) => {
-                    self.ui_state.status = format!("Exported {}", res.height_path.display());
+                    let dir = res
+                        .package_manifest_path
+                        .parent()
+                        .map(|p| p.display().to_string())
+                        .unwrap_or_else(|| res.height_path.display().to_string());
+                    self.ui_state.status = format!("Exported {dir}");
+                    self.ui_state.export_status = Some(format!("Exported to {dir}"));
                 }
                 Err(err) => {
                     self.ui_state.status = format!("Export failed: {err}");
+                    self.ui_state.export_status = Some(format!("Export failed: {err}"));
                 }
             }
             export_busy = true; // one more frame to show status

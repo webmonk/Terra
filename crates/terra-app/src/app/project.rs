@@ -526,8 +526,11 @@ impl TerraApp {
         self.session.document.sync_all_biome_paint_masks();
         self.terrain_runtime.refinement.begin_export();
         self.ui_state.export_progress = Some(0.0);
+        self.ui_state.export_status = None;
         self.ui_state.status = format!("Exporting to {}", path.display());
-        self.exporter.start(self.session.document.clone(), path);
+        let exclude_aux: Vec<String> = self.ui_state.export_excluded_aux.iter().cloned().collect();
+        self.exporter
+            .start(self.session.document.clone(), path, exclude_aux);
     }
 
     /// Ensure a Shape history layer for the active sculpt tool.

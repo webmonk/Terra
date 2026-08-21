@@ -450,6 +450,14 @@ impl TerraApp {
             );
             self.viewport_rect = gui.viewport_rect();
 
+            // Export panel checkboxes list whatever aux maps the last evaluation produced.
+            if self.ui_state.show_export {
+                let mut aux_keys: Vec<String> =
+                    self.scheduler.last_aux.keys().cloned().collect();
+                aux_keys.sort();
+                self.ui_state.export_available_aux = aux_keys;
+            }
+
             let mut home_actions = Vec::new();
             let ui_out = if self.screen == AppScreen::Home {
                 let mut out = crate::ui::FrameUiOutput::default();

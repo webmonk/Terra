@@ -8,6 +8,7 @@ description = "Terrain import/export, GeoTIFF bridge, build packages"
 [dependencies]
 terra-core = { workspace = true }
 image = { workspace = true }
+tiff = "0.11"
 serde = { workspace = true }
 serde_json = { workspace = true }
 thiserror = { workspace = true }

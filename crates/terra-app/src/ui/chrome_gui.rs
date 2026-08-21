@@ -4,7 +4,7 @@ use crate::ui::style::{self, FONT_SCALE, PAD, TOOLBAR_BTN_H, TYPE_BODY, TYPE_LAB
 use crate::ui::{FrameUiOutput, UiState, WindowResizeEdge};
 use terra_core::document::TerrainDocument;
 use terra_gui::{
-    checkbox, chip_button, icon_button, menu_button as menu_row, Color, DrawList, GuiContext, Icon,
+    checkbox, icon_button, menu_button as menu_row, Color, DrawList, GuiContext, Icon,
     Id, Rect, INSET_TOP,
 };
 
@@ -364,7 +364,7 @@ pub fn draw_menu_bar(
         state.right_open = None;
     }
 
-    // Primary EXPORT CTA - file export is not ready yet.
+    // Primary EXPORT CTA - opens the Export panel.
     let build_id = Id::new("tb_build");
     let build_hovered = ui.pointer_in(build_r);
     if build_hovered {
@@ -374,7 +374,7 @@ pub fn draw_menu_bar(
         ui.state.active = Some(build_id);
     }
     if ui.input.primary_released && ui.state.is_active(build_id) && build_hovered {
-        ui_state.show_export_unsupported = true;
+        ui_state.show_export = true;
         state.right_open = None;
     }
     ui.panel_rounded(
@@ -698,52 +698,3 @@ fn menu_item(ui: &mut GuiContext<'_>, text: &str) -> bool {
     menu_row(ui, Id::new("menu_item").child(text), text)
 }
 
-/// Simple stub when the toolbar EXPORT button is pressed.
-pub fn draw_export_unsupported_modal(ui: &mut GuiContext<'_>, open: &mut bool) {
-    if !*open {
-        return;
-    }
-
-    ui.begin_overlay();
-    ui.panel(
-        Rect::from_pos_size(0.0, 0.0, ui.screen_w, ui.screen_h),
-        Color::rgba(0.0, 0.0, 0.0, 0.55),
-    );
-
-    let w = 420.0_f32.min(ui.screen_w - 40.0);
-    let h = 160.0;
-    let dialog = Rect::from_pos_size((ui.screen_w - w) * 0.5, (ui.screen_h - h) * 0.5, w, h);
-    ui.panel_rounded(dialog, style::POPUP_BG, style::RADIUS_MD);
-
-    ui.label_at(
-        dialog.min_x + PAD * 1.5,
-        dialog.min_y + PAD * 1.5,
-        "Export",
-        style::TEXT,
-        FONT_SCALE * 1.2,
-    );
-    ui.label_at(
-        dialog.min_x + PAD * 1.5,
-        dialog.min_y + 48.0,
-        "Not supported yet.",
-        style::TEXT_DIM,
-        FONT_SCALE,
-    );
-
-    let btn_w = 100.0;
-    let btn_h = 34.0;
-    let ok_r = Rect::from_pos_size(
-        dialog.max_x - PAD - btn_w,
-        dialog.max_y - PAD - btn_h,
-        btn_w,
-        btn_h,
-    );
-    if chip_button(ui, Id::new("export_unsupported_ok"), "OK", ok_r, true)
-        || ui.input.escape_pressed
-        || (ui.input.primary_pressed && !ui.pointer_in(dialog))
-    {
-        *open = false;
-    }
-
-    ui.end_overlay();
-}

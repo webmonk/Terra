@@ -9,6 +9,8 @@ use terra_core::mask::MaskField;
 pub struct ExportRequest {
     pub out_dir: PathBuf,
     pub include_masks: bool,
+    /// Aux channel names to skip when `include_masks` is on (UI checkboxes).
+    pub exclude_aux: Vec<String>,
     /// Pack material IDs into splatmap RGBA (up to 4 IDs).
     pub include_splat: bool,
     /// Bake albedo color map from material IDs / height tint.
@@ -32,6 +34,7 @@ impl Default for ExportRequest {
         Self {
             out_dir: PathBuf::new(),
             include_masks: true,
+            exclude_aux: Vec::new(),
             include_splat: true,
             include_color: true,
             include_normal: true,
@@ -46,6 +49,13 @@ impl Default for ExportRequest {
 
 pub struct ExportResult {
     pub height_path: PathBuf,
+    /// 32-bit float grayscale TIFF (`height_f32.tif`) with raw metre heights.
+    pub height_tiff_path: PathBuf,
+    /// Top-level `manifest.json` describing every channel in the package.
+    pub package_manifest_path: PathBuf,
+    /// Height range recorded so `height.png` can be de-normalized.
+    pub height_min: f32,
+    pub height_max: f32,
     pub height_metadata_path: PathBuf,
     pub raw_path: PathBuf,
     pub raw_metadata_path: PathBuf,
@@ -60,6 +70,34 @@ pub struct ExportResult {
     pub manifest_path: Option<PathBuf>,
     pub tiles_changed: usize,
     pub tile_paths: Vec<PathBuf>,
+}
+
+/// One file inside the exported package (`manifest.json` entry).
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct PackageChannel {
+    /// Logical channel name ("height", "height_f32", or an aux key).
+    pub name: String,
+    /// File name relative to the package directory.
+    pub file: String,
+    /// Pixel format: "png_u16_normalized", "tiff_f32", "r32_le", "png_u16".
+    pub format: String,
+}
+
+/// Top-level `manifest.json` for an exported package.
+///
+/// `height_min` / `height_max` de-normalize `height.png`:
+/// `metres = height_min + sample / 65535 * (height_max - height_min)`.
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug)]
+pub struct PackageManifest {
+    pub app_version: String,
+    pub width: u32,
+    pub height: u32,
+    pub world_size_x: f32,
+    pub world_size_z: f32,
+    pub height_min: f32,
+    pub height_max: f32,
+    pub height_hash: u64,
+    pub channels: Vec<PackageChannel>,
 }
 
 #[derive(serde::Serialize)]
@@ -80,15 +118,43 @@ pub fn export_package(
     req: &ExportRequest,
 ) -> Result<ExportResult, IoError> {
     std::fs::create_dir_all(&req.out_dir)?;
+    let (height_min, height_max) = hf.min_max();
+    let mut channels = Vec::new();
     let height_path = req.out_dir.join("height.png");
     write_height_png(hf, &height_path)?;
+    channels.push(PackageChannel {
+        name: "height".into(),
+        file: "height.png".into(),
+        format: "png_u16_normalized".into(),
+    });
+    let height_tiff_path = req.out_dir.join("height_f32.tif");
+    write_height_tiff_f32(hf, &height_tiff_path)?;
+    channels.push(PackageChannel {
+        name: "height_f32".into(),
+        file: "height_f32.tif".into(),
+        format: "tiff_f32".into(),
+    });
     let height_metadata_path = req.out_dir.join("height_meta.json");
     write_height_metadata(hf, &height_metadata_path)?;
     let mut mask_paths = Vec::new();
     if req.include_masks {
-        for (name, mask) in &ctx.aux {
-            let path = req.out_dir.join(format!("mask_{name}.png"));
-            write_mask_png(mask, &path)?;
+        // Deterministic file set: sorted keys, minus UI-excluded channels.
+        let mut names: Vec<&String> = ctx
+            .aux
+            .keys()
+            .filter(|name| !req.exclude_aux.iter().any(|ex| ex == *name))
+            .collect();
+        names.sort();
+        for name in names {
+            let mask = &ctx.aux[name];
+            let file = format!("aux_{name}.png");
+            let path = req.out_dir.join(&file);
+            write_aux_png16(mask, &path)?;
+            channels.push(PackageChannel {
+                name: name.clone(),
+                file,
+                format: "png_u16".into(),
+            });
             mask_paths.push(path);
         }
     }
@@ -145,8 +211,30 @@ pub fn export_package(
     let hash = hash_heights(hf);
     let raw_path = req.out_dir.join("height.r32");
     write_height_raw_streamed(hf, &raw_path)?;
+    channels.push(PackageChannel {
+        name: "height_raw".into(),
+        file: "height.r32".into(),
+        format: "r32_le".into(),
+    });
     let raw_metadata_path = req.out_dir.join("height.r32.meta.json");
     write_height_metadata(hf, &raw_metadata_path)?;
+
+    let package_manifest = PackageManifest {
+        app_version: env!("CARGO_PKG_VERSION").to_string(),
+        width: hf.metrics.width,
+        height: hf.metrics.height,
+        world_size_x: hf.metrics.world_size_x,
+        world_size_z: hf.metrics.world_size_z,
+        height_min,
+        height_max,
+        height_hash: hash,
+        channels,
+    };
+    let package_manifest_path = req.out_dir.join("manifest.json");
+    std::fs::write(
+        &package_manifest_path,
+        serde_json::to_vec_pretty(&package_manifest)?,
+    )?;
 
     // Tile manifest for incremental / engine export.
     let tile_size = hf.metrics.tile_size.max(64);
@@ -170,6 +258,10 @@ pub fn export_package(
 
     Ok(ExportResult {
         height_path,
+        height_tiff_path,
+        package_manifest_path,
+        height_min,
+        height_max,
         height_metadata_path,
         raw_path,
         raw_metadata_path,
@@ -354,13 +446,34 @@ pub fn write_height_png(hf: &Heightfield, path: &std::path::Path) -> Result<(), 
     Ok(())
 }
 
-pub fn write_mask_png(mask: &MaskField, path: &std::path::Path) -> Result<(), IoError> {
-    let w = mask.metrics.width;
-    let h = mask.metrics.height;
-    let mut img = image::GrayImage::new(w, h);
+/// Raw metre heights as a single-channel 32-bit float TIFF (no normalization).
+pub fn write_height_tiff_f32(hf: &Heightfield, path: &std::path::Path) -> Result<(), IoError> {
+    let w = hf.metrics.width;
+    let h = hf.metrics.height;
+    let mut data = Vec::with_capacity((w as usize) * (h as usize));
     for j in 0..h {
         for i in 0..w {
-            img.put_pixel(i, j, image::Luma([(mask.get(i, j) * 255.0) as u8]));
+            data.push(hf.get(i, j));
+        }
+    }
+    let file = std::fs::File::create(path)?;
+    let mut encoder = tiff::encoder::TiffEncoder::new(BufWriter::new(file))
+        .map_err(|e| IoError::Msg(format!("tiff encode: {e}")))?;
+    encoder
+        .write_image::<tiff::encoder::colortype::Gray32Float>(w, h, &data)
+        .map_err(|e| IoError::Msg(format!("tiff encode: {e}")))?;
+    Ok(())
+}
+
+/// Aux field (0..1) as 16-bit grayscale PNG.
+pub fn write_aux_png16(mask: &MaskField, path: &std::path::Path) -> Result<(), IoError> {
+    let w = mask.metrics.width;
+    let h = mask.metrics.height;
+    let mut img = image::ImageBuffer::<image::Luma<u16>, Vec<u16>>::new(w, h);
+    for j in 0..h {
+        for i in 0..w {
+            let v = (mask.get(i, j).clamp(0.0, 1.0) * 65535.0).round() as u16;
+            img.put_pixel(i, j, image::Luma([v]));
         }
     }
     img.save(path)?;
@@ -763,6 +876,88 @@ mod tests {
         assert_eq!(export_package(&hf, &ctx, &req).unwrap().tiles_changed, 0);
         hf.set(96, 12, 9.0);
         assert_eq!(export_package(&hf, &ctx, &req).unwrap().tiles_changed, 1);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn package_round_trips_height_and_manifest() {
+        let dir = std::env::temp_dir().join(format!("terra_pkg_rt_{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let m = HeightfieldMetrics::new(16, 16, 320.0, 320.0);
+        let mut hf = Heightfield::zeros(m);
+        for j in 0..16u32 {
+            for i in 0..16u32 {
+                hf.set(i, j, -12.5 + (i as f32) * 3.25 + (j as f32) * 0.75);
+            }
+        }
+        let mut ctx = EvalContext::new(m);
+        let mut wet = MaskField::zeros(m);
+        let mut veg = MaskField::zeros(m);
+        for j in 0..16u32 {
+            for i in 0..16u32 {
+                wet.set(i, j, (i as f32) / 15.0);
+                veg.set(i, j, (j as f32) / 15.0);
+            }
+        }
+        ctx.aux.insert("wetness".to_string(), wet);
+        ctx.aux.insert("vegetation".to_string(), veg);
+        let req = ExportRequest {
+            out_dir: dir.clone(),
+            exclude_aux: vec!["vegetation".to_string()],
+            ..Default::default()
+        };
+        let result = export_package(&hf, &ctx, &req).expect("export");
+
+        // Manifest correctness.
+        let manifest: PackageManifest =
+            serde_json::from_slice(&std::fs::read(&result.package_manifest_path).unwrap())
+                .expect("manifest parses");
+        assert_eq!(manifest.width, 16);
+        assert_eq!(manifest.height, 16);
+        assert!((manifest.world_size_x - 320.0).abs() < 1e-6);
+        assert!((manifest.world_size_z - 320.0).abs() < 1e-6);
+        let (min_h, max_h) = hf.min_max();
+        assert_eq!(manifest.height_min, min_h);
+        assert_eq!(manifest.height_max, max_h);
+        assert!(!manifest.app_version.is_empty());
+        let names: Vec<&str> = manifest.channels.iter().map(|c| c.name.as_str()).collect();
+        assert!(names.contains(&"height"));
+        assert!(names.contains(&"height_f32"));
+        assert!(names.contains(&"wetness"));
+        assert!(!names.contains(&"vegetation"));
+
+        // Selected aux present as file, excluded absent.
+        assert!(dir.join("aux_wetness.png").exists());
+        assert!(!dir.join("aux_vegetation.png").exists());
+
+        // 16-bit PNG decodes back within 1/65535 of the normalized range.
+        let png = image::open(&result.height_path).expect("height.png").into_luma16();
+        let span = max_h - min_h;
+        for j in 0..16u32 {
+            for i in 0..16u32 {
+                let t = png.get_pixel(i, j).0[0] as f32 / 65535.0;
+                let expected = (hf.get(i, j) - min_h) / span;
+                assert!(
+                    (t - expected).abs() <= 1.0 / 65535.0 + 1e-6,
+                    "normalized height mismatch at ({i},{j}): {t} vs {expected}"
+                );
+            }
+        }
+
+        // Float TIFF is bit-exact.
+        let file = std::fs::File::open(&result.height_tiff_path).unwrap();
+        let mut dec = tiff::decoder::Decoder::new(std::io::BufReader::new(file)).unwrap();
+        match dec.read_image().unwrap() {
+            tiff::decoder::DecodingResult::F32(data) => {
+                assert_eq!(data.len(), 256);
+                for j in 0..16u32 {
+                    for i in 0..16u32 {
+                        assert_eq!(data[(j * 16 + i) as usize], hf.get(i, j));
+                    }
+                }
+            }
+            other => panic!("expected F32 tiff, got {other:?}"),
+        }
         let _ = std::fs::remove_dir_all(&dir);
     }
 

@@ -2815,6 +2815,7 @@ dependencies = [
  "serde_json",
  "terra-core",
  "thiserror 2.0.19",
+ "tiff",
 ]
 
 [[package]]
