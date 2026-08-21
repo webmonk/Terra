@@ -1221,7 +1221,17 @@ pub fn builtin_presets() -> Vec<LayerPreset> {
                         talus_angle_deg: 33.0,
                         sediment_transport: 0.48,
                         constraint_preservation: 0.82,
-                        base_level: -240.0,
+                        // Base level is the solver's sea/base-level boundary datum, not
+                        // the ocean-floor depth: with BoundaryMode::SeaLevel every cell
+                        // at or below this height is an elevation-locked outlet. Passing
+                        // the -240 m ocean floor here (as this preset originally did)
+                        // told the solver sea level sits at -240 m, so the whole shelf,
+                        // coast and island were rebuilt from that datum - land collapsed
+                        // to ~3% and ridge cells with tiny drainage area blew up to
+                        // ~5.9 km (the "LandscapeEvolution collapse" noted in commit
+                        // f1a0165). 0.0 locks the submarine terrain (preserving the
+                        // authored bathymetry) and evolves only the subaerial island.
+                        base_level: 0.0,
                         use_dinfinity: true,
                         geological_age: 0.55,
                         rainfall: 1.8,
