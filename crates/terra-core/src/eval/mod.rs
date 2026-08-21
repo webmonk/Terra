@@ -976,10 +976,12 @@ fn merge_aux_masked(
     opacity: f32,
     blend: crate::layer::BlendMode,
 ) {
+    use crate::fields::{channel_class, ChannelClass};
     use crate::layer::blend_weights;
     let child_map = child.to_hashmap();
     for (key, child_field) in child_map {
         ctx.pass_changed.insert(key.clone());
+        let class = channel_class(&key);
         let mut out = ctx
             .aux_maps
             .get(&key)
@@ -994,13 +996,21 @@ fn merge_aux_masked(
                 .for_each(|(j, row)| {
                     for (i, v) in row.iter_mut().enumerate() {
                         let (i, j) = (i as u32, j as u32);
-                        *v = blend_weights(
-                            blend,
-                            *v,
-                            child_field.get(i, j),
-                            opacity,
-                            mask.get(i, j),
-                        );
+                        let c = child_field.get(i, j);
+                        let w = (mask.get(i, j) * opacity).clamp(0.0, 1.0);
+                        *v = match class {
+                            ChannelClass::Weight => {
+                                blend_weights(blend, *v, c, opacity, mask.get(i, j))
+                            }
+                            ChannelClass::Metric => *v * (1.0 - w) + c * w,
+                            ChannelClass::Categorical => {
+                                if w >= 0.5 {
+                                    c
+                                } else {
+                                    *v
+                                }
+                            }
+                        };
                     }
                 });
         }
@@ -1113,6 +1123,7 @@ fn scope_aux_writes(
         let prior = prior.filter(|p| {
             p.metrics.width == metrics.width && p.metrics.height == metrics.height
         });
+        let class = crate::fields::channel_class(&key);
         let mut out = after;
         let width = metrics.width as usize;
         out.data_mut()
@@ -1123,7 +1134,18 @@ fn scope_aux_writes(
                     let (iu, ju) = (i as u32, j as u32);
                     let w = (mask.get(iu, ju) * opacity).clamp(0.0, 1.0);
                     let base = prior.map(|p| p.get(iu, ju)).unwrap_or(0.0);
-                    *v = base * (1.0 - w) + *v * w;
+                    *v = match class {
+                        // A fractional id is meaningless - the write wins
+                        // only where the layer's weight dominates.
+                        crate::fields::ChannelClass::Categorical => {
+                            if w >= 0.5 {
+                                *v
+                            } else {
+                                base
+                            }
+                        }
+                        _ => base * (1.0 - w) + *v * w,
+                    };
                 }
             });
         ctx.aux_insert(key, out);
@@ -1286,6 +1308,62 @@ mod tests {
                 );
             }
         }
+    }
+
+    #[test]
+    fn group_aux_merge_respects_channel_classes() {
+        let metrics = HeightfieldMetrics::new(8, 8, 8.0, 8.0);
+        let n = 64;
+        let mut child = AuxMaps::new();
+        child.insert(
+            "bedrock_height".to_string(),
+            MaskField::from_raw(metrics, &vec![250.0; n]),
+        );
+        child.insert(
+            "materials".to_string(),
+            MaskField::from_raw(metrics, &vec![3.0; n]),
+        );
+        child.insert(
+            "wetness".to_string(),
+            MaskField::from_raw(metrics, &vec![0.8; n]),
+        );
+
+        // Full-weight merge: metric takes the child value unclamped,
+        // categorical switches identity, weight lerps.
+        let mut ctx = EvalContext::new(metrics);
+        ctx.aux_insert("bedrock_height", MaskField::from_raw(metrics, &vec![100.0; n]));
+        ctx.aux_insert("materials", MaskField::from_raw(metrics, &vec![2.0; n]));
+        ctx.aux_insert("wetness", MaskField::from_raw(metrics, &vec![0.2; n]));
+        merge_aux_masked(
+            &mut ctx,
+            &child,
+            &MaskField::ones(metrics),
+            1.0,
+            crate::layer::BlendMode::Normal,
+        );
+        assert_eq!(
+            ctx.aux_maps.get("bedrock_height").unwrap().get(3, 3),
+            250.0,
+            "metric channels must not be clamped to [0,1]"
+        );
+        assert_eq!(ctx.aux_maps.get("materials").unwrap().get(3, 3), 3.0);
+        assert!((ctx.aux_maps.get("wetness").unwrap().get(3, 3) - 0.8).abs() < 1e-6);
+
+        // Sub-half weight: categorical keeps the parent identity outright
+        // (never a fractional id), metric lerps partway.
+        let mut ctx = EvalContext::new(metrics);
+        ctx.aux_insert("bedrock_height", MaskField::from_raw(metrics, &vec![100.0; n]));
+        ctx.aux_insert("materials", MaskField::from_raw(metrics, &vec![2.0; n]));
+        merge_aux_masked(
+            &mut ctx,
+            &child,
+            &MaskField::filled(metrics, 0.4),
+            1.0,
+            crate::layer::BlendMode::Normal,
+        );
+        assert_eq!(ctx.aux_maps.get("materials").unwrap().get(3, 3), 2.0);
+        let bedrock = ctx.aux_maps.get("bedrock_height").unwrap().get(3, 3);
+        assert!((bedrock - 160.0).abs() < 1e-3, "expected lerp, got {bedrock}");
     }
 
     #[test]

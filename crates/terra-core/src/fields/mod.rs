@@ -131,6 +131,53 @@ pub mod keys {
     }
 }
 
+/// Compositing semantics of an aux channel. Weights lerp and clamp to
+/// \[0,1\]; metric quantities (metres, degrees, rates, counts) interpolate
+/// unclamped; categorical identities never interpolate - a fractional
+/// material or lithology id is meaningless - and resolve winner-take-all
+/// at half weight.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ChannelClass {
+    Weight,
+    Metric,
+    Categorical,
+}
+
+/// Class of a canonical aux key. Unknown / free-form keys default to
+/// `Weight` (the safest for \[0,1\] coverage data, which is what ad-hoc
+/// processor outputs overwhelmingly are).
+pub fn channel_class(key: &str) -> ChannelClass {
+    match keys::canonical(key) {
+        keys::MATERIALS | keys::LITHOLOGY | keys::FLOW_DIRECTION => ChannelClass::Categorical,
+        keys::STRATA_REFERENCE
+        | keys::CONSTRAINT_TARGET
+        | keys::CONSTRAINT_ERROR
+        | keys::UPLIFT_RATE
+        | keys::TECTONIC_BASE
+        | keys::WATER_DISCHARGE
+        | keys::TEMPERATURE
+        | keys::RAINFALL
+        | keys::WIND_DIRECTION
+        | keys::OVERHANG_CEILING
+        | keys::WATER_DEPTH
+        | keys::SNOW_DEPTH
+        | keys::SAND_DEPTH
+        | keys::DEBRIS_DEPTH
+        | keys::MELTWATER
+        | keys::DRIFT
+        | keys::BEDROCK_HEIGHT
+        | keys::SEDIMENT_THICKNESS
+        | keys::SOIL_DEPTH
+        | keys::WATER_VELOCITY
+        | keys::FLOW_ACCUMULATION
+        | keys::STREAM_ORDER
+        | keys::SPE_INCISION
+        | keys::SHORE_DISTANCE
+        | keys::BATHYMETRY => ChannelClass::Metric,
+        _ => ChannelClass::Weight,
+    }
+}
+
 /// Typed auxiliary fields produced by sims and analysis.
 #[derive(Debug, Clone, Default)]
 pub struct AuxMaps {
