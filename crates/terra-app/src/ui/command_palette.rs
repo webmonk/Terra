@@ -29,6 +29,8 @@ pub enum PaletteAction {
     CameraReset,
     CameraTopView,
     CameraFrameSelection,
+    /// Group the layer panel multi-selection (resolved app-side).
+    GroupSelection,
 }
 
 pub fn draw_command_palette(
@@ -161,6 +163,13 @@ fn execute_command(
         CommandId::UNDO => actions.push(PaletteAction::Undo),
         CommandId::REDO => actions.push(PaletteAction::Redo),
         CommandId::EXPORT => actions.push(PaletteAction::Export),
+        CommandId::SELECTION_CLEAR => {
+            actions.push(PaletteAction::Panel(PanelAction::SelectionClear))
+        }
+        CommandId::SELECTION_INVERT => {
+            actions.push(PaletteAction::Panel(PanelAction::SelectionInvert))
+        }
+        CommandId::GROUP_SELECTED => actions.push(PaletteAction::GroupSelection),
         CommandId::SAVE => actions.push(PaletteAction::Save),
         CommandId::SAVE_AS => actions.push(PaletteAction::SaveAs),
         CommandId::NEW_PROJECT => actions.push(PaletteAction::NewProject),

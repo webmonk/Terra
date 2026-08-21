@@ -1,7 +1,7 @@
 use std::path::PathBuf;
 
 use crate::ui::{
-    project_template_by_id, resolve_workspace_command, CommandId, NewWorldSettings,
+    project_template_by_id, resolve_workspace_command, CommandId, NewWorldSettings, PanelAction,
     ProjectHomeAction,
 };
 use terra_core::document::EditorSession;
@@ -655,6 +655,27 @@ impl TerraApp {
             CommandId::OPEN_PROJECT => self.request_project_action(PendingProjectAction::Open),
             CommandId::CLOSE_PROJECT if self.screen == AppScreen::Editor => {
                 self.request_project_action(PendingProjectAction::Close)
+            }
+            CommandId::EXPORT if self.screen == AppScreen::Editor => {
+                // Same path as the chrome EXPORT button / File menu entry.
+                self.ui_state.show_export = true;
+            }
+            CommandId::SELECTION_CLEAR if self.screen == AppScreen::Editor => {
+                // No-op unless a session selection exists.
+                if self.selection.is_some() {
+                    self.apply_actions(vec![PanelAction::SelectionClear]);
+                }
+            }
+            CommandId::SELECTION_INVERT if self.screen == AppScreen::Editor => {
+                self.apply_actions(vec![PanelAction::SelectionInvert]);
+            }
+            CommandId::GROUP_SELECTED if self.screen == AppScreen::Editor => {
+                // Mirror the hierarchy context-menu batch grouping: only when the
+                // layer panel multi-selection holds more than one layer.
+                if self.layers_gui.multi_selection.len() > 1 {
+                    let ids: Vec<_> = self.layers_gui.multi_selection.iter().copied().collect();
+                    self.apply_actions(vec![PanelAction::BatchGroup(ids)]);
+                }
             }
             _ => {}
         }

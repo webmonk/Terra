@@ -136,6 +136,7 @@ impl ApplicationHandler for TerraApp {
                                     || self.ui_state.show_quick_add
                                     || self.ui_state.show_command_palette
                                     || self.ui_state.viewport_context_menu.is_some()
+                                    || self.ui_state.selection_popover.is_some()
                                     || self.inspector_gui.rename_buffer.is_some()
                                     || self.pending_project_action.is_some()
                                     || self.show_new_template_picker
@@ -143,6 +144,10 @@ impl ApplicationHandler for TerraApp {
                             {
                                 if self.ui_state.viewport_context_menu.is_some() {
                                     self.ui_state.viewport_context_menu = None;
+                                } else if self.ui_state.selection_popover.is_some()
+                                    && !self.gui_state.wants_text_input()
+                                {
+                                    self.ui_state.selection_popover = None;
                                 } else {
                                     self.gui_escape = true;
                                 }
@@ -550,6 +555,8 @@ impl ApplicationHandler for TerraApp {
                 let height = std::sync::Arc::new(height);
                 self.scheduler.last_good = Some(std::sync::Arc::clone(&height));
                 self.last_height = Some((*height).clone());
+                // New evaluation: selection popover height bounds are stale.
+                self.ui_state.terrain_height_stats = None;
                 // Ingest every CPU layer checkpoint so GPU can bake unsupported shapes
                 // and keep EffectFilters live on the next edit.
                 if let (Some(engine), Some(gpu)) = (self.gpu_engine.as_mut(), self.gpu.as_ref()) {

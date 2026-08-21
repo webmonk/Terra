@@ -284,6 +284,39 @@ pub struct UiState {
     pub outdated_layer_ids: Vec<terra_core::layer::LayerId>,
     /// Cap 1 soft incomplete-project diagnostic for the dock (non-blocking).
     pub soft_project_diag: Option<String>,
+    /// Anchored parameter popover for the SELECTION chip row ("+ Slope" /
+    /// "+ Height" right-click). Session-only; Escape / click-outside closes.
+    pub selection_popover: Option<SelectionPopover>,
+    /// Cached min/max/median of the last evaluated heightfield - slider bounds
+    /// for the height selection popover. Refreshed by the app when a new
+    /// evaluation lands (set back to `None`).
+    pub terrain_height_stats: Option<TerrainHeightStats>,
+}
+
+/// Which selection parameter popover is open.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SelectionPopoverKind {
+    Slope,
+    Height,
+}
+
+/// Transient state for the SELECTION chip-row parameter popover.
+#[derive(Debug, Clone, Copy)]
+pub struct SelectionPopover {
+    pub kind: SelectionPopoverKind,
+    /// Chip button rect the popover is anchored to.
+    pub anchor: terra_gui::Rect,
+    /// Current slider values (deg for slope, metres for height).
+    pub min: f32,
+    pub max: f32,
+}
+
+/// Min / max / strided-median of the last evaluated heightfield.
+#[derive(Debug, Clone, Copy)]
+pub struct TerrainHeightStats {
+    pub min: f32,
+    pub max: f32,
+    pub median: f32,
 }
 
 /// Presentation-only environment lighting for the 3D viewport.
@@ -1439,6 +1472,8 @@ pub struct FrameUiOutput {
     pub camera_reset: bool,
     pub camera_top_view: bool,
     pub camera_frame_selection: bool,
+    /// Group the layer panel multi-selection (command palette / Ctrl+G).
+    pub request_group_selection: bool,
     /// Cancel the in-flight evaluation / refine job.
     pub request_cancel_build: bool,
     /// Force a full-quality rebuild (EXPORT button).
@@ -1515,6 +1550,7 @@ pub fn draw_editor_gui(
         || ui_state.lighting_menu_open
         || ui_state.camera_speed_menu_open
         || ui_state.viewport_context_menu.is_some()
+        || ui_state.selection_popover.is_some()
         || ui.state.open_combo.is_some()
     {
         ui.suspend_pointer_edges();
@@ -1583,6 +1619,7 @@ pub fn draw_editor_gui(
             PaletteAction::CameraReset => out.camera_reset = true,
             PaletteAction::CameraTopView => out.camera_top_view = true,
             PaletteAction::CameraFrameSelection => out.camera_frame_selection = true,
+            PaletteAction::GroupSelection => out.request_group_selection = true,
         }
     }
     ui_state.command_palette = command_palette;

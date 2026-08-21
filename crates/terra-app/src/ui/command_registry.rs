@@ -58,6 +58,9 @@ impl CommandId {
     pub const TOGGLE_HISTORY: &'static str = "view.history";
     pub const TOGGLE_PIPELINE: &'static str = "view.pipeline";
     pub const CLEAR_GEOMORPH_DEBUG: &'static str = "debug.geomorph.clear";
+    pub const SELECTION_CLEAR: &'static str = "select.clear";
+    pub const SELECTION_INVERT: &'static str = "select.invert";
+    pub const GROUP_SELECTED: &'static str = "layer.group_selected";
 }
 
 #[derive(Debug, Clone, Copy)]
@@ -197,6 +200,10 @@ const OPEN: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyO, CTR
 const SAVE: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyS, CTRL)];
 const SAVE_AS: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyS, CTRL_SHIFT)];
 const CLOSE: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyW, CTRL)];
+const EXPORT: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyE, CTRL)];
+const SELECTION_CLEAR: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyD, CTRL)];
+const SELECTION_INVERT: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyI, CTRL_SHIFT)];
+const GROUP_SELECTED: &[ShortcutBinding] = &[ShortcutBinding::displayed(KeyCode::KeyG, CTRL)];
 fn digit_bindings(digit: u8) -> &'static [ShortcutBinding] {
     match digit {
         1 => D1,
@@ -279,7 +286,11 @@ fn format_chord(chord: ShortcutChord) -> String {
         KeyCode::Digit6 => "6",
         KeyCode::Digit7 => "7",
         KeyCode::Digit8 => "8",
+        KeyCode::KeyD => "D",
+        KeyCode::KeyE => "E",
         KeyCode::KeyF => "F",
+        KeyCode::KeyG => "G",
+        KeyCode::KeyI => "I",
         KeyCode::KeyL => "L",
         KeyCode::KeyN => "N",
         KeyCode::KeyO => "O",
@@ -434,8 +445,29 @@ pub fn commands() -> Vec<CommandDef> {
             id: CommandId::EXPORT,
             name: "Export",
             category: File,
-            bindings: &[],
+            bindings: EXPORT,
             icon: Some(Icon::Download),
+        },
+        CommandDef {
+            id: CommandId::SELECTION_CLEAR,
+            name: "Clear Selection",
+            category: Edit,
+            bindings: SELECTION_CLEAR,
+            icon: Some(Icon::X),
+        },
+        CommandDef {
+            id: CommandId::SELECTION_INVERT,
+            name: "Invert Selection",
+            category: Edit,
+            bindings: SELECTION_INVERT,
+            icon: Some(Icon::CircleDot),
+        },
+        CommandDef {
+            id: CommandId::GROUP_SELECTED,
+            name: "Group Selected Layers",
+            category: Layer,
+            bindings: GROUP_SELECTED,
+            icon: Some(Icon::Layers),
         },
         CommandDef {
             id: CommandId::BAKE_SELECTED,
@@ -572,6 +604,22 @@ mod tests {
         assert_eq!(
             resolve_shortcut(c(KeyCode::KeyZ, NONE)),
             Some(CommandId::UNDO)
+        );
+        assert_eq!(
+            resolve_shortcut(c(KeyCode::KeyD, CTRL)),
+            Some(CommandId::SELECTION_CLEAR)
+        );
+        assert_eq!(
+            resolve_shortcut(c(KeyCode::KeyI, CTRL_SHIFT)),
+            Some(CommandId::SELECTION_INVERT)
+        );
+        assert_eq!(
+            resolve_shortcut(c(KeyCode::KeyG, CTRL)),
+            Some(CommandId::GROUP_SELECTED)
+        );
+        assert_eq!(
+            resolve_shortcut(c(KeyCode::KeyE, CTRL)),
+            Some(CommandId::EXPORT)
         );
         for redo in [
             c(KeyCode::KeyY, CTRL),

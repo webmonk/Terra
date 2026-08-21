@@ -4,8 +4,8 @@ use crate::ui::style::{self, FONT_SCALE, GAP, PAD, TYPE_BODY, TYPE_CAPTION, TYPE
 use crate::ui::{EditorTool, LightingPreset, Preview2dMode, UiState};
 use terra_core::document::TerrainDocument;
 use terra_gui::{
-    checkbox, combo, section_header, slider_f32, slider_i32, Color, DrawList, GuiContext, Icon, Id,
-    Rect,
+    button_id, checkbox, combo, section_header, slider_f32, slider_f32_id, slider_i32, Color,
+    DrawList, GuiContext, Icon, Id, Rect,
 };
 use terra_render::{QualityPreset, ViewportRendererMode};
 
@@ -234,6 +234,14 @@ pub fn draw_viewport_overlays(
     let mut chip_top = layout.chip_top;
     if ui_state.editor_tool == EditorTool::SelectPaint || ui_state.selection_active {
         chip_top = draw_selection_chip_row(ui, ui_state, vp, chip_top, &mut actions) + GAP;
+        if ui_state.selection_popover.is_some() {
+            // Restored pointer edges: while the popover is open, edges are
+            // suspended for background chrome (same as the viewport context menu).
+            ui.with_menu_input(|ui| draw_selection_popover(ui, ui_state, vp, &mut actions));
+        }
+    } else {
+        // Chip row hidden (tool switched away) - drop any open popover.
+        ui_state.selection_popover = None;
     }
     if ui_state.preview_mode == Preview2dMode::Biome {
         if let Some((w, h, rgba)) = ui_state.preview_rgba.as_ref() {
@@ -248,7 +256,7 @@ pub fn draw_viewport_overlays(
 /// Compact Selection chip row (transient quick-mask actions). Returns max_y.
 fn draw_selection_chip_row(
     ui: &mut GuiContext<'_>,
-    ui_state: &UiState,
+    ui_state: &mut UiState,
     vp: Rect,
     top_y: f32,
     actions: &mut Vec<crate::ui::actions::PanelAction>,
@@ -307,6 +315,11 @@ fn draw_selection_chip_row(
                     ui.queue_tooltip(rect, title, tip, None);
                 }
             }
+            // Right-click on "+ Slope" / "+ Height" opens the parameter popover
+            // (left-click keeps the one-click preset below).
+            if matches!(*idx, 7 | 8) && ui.pointer_in(rect) && ui.input.secondary_pressed {
+                toggle_selection_popover(ui_state, *idx, rect);
+            }
             if toolbar_button(
                 ui,
                 Id::new("vp_selection_btn").with(*idx),
@@ -338,6 +351,157 @@ fn draw_selection_chip_row(
     }
     ui.end_overlay();
     panel.max_y
+}
+
+/// Toggle the anchored parameter popover for a "+ Slope" (7) / "+ Height" (8)
+/// chip. Reopening the same chip closes it; the other chip switches it over.
+fn toggle_selection_popover(ui_state: &mut UiState, idx: u64, anchor: Rect) {
+    use crate::ui::{SelectionPopover, SelectionPopoverKind};
+    let kind = if idx == 7 {
+        SelectionPopoverKind::Slope
+    } else {
+        SelectionPopoverKind::Height
+    };
+    if ui_state.selection_popover.map(|p| p.kind) == Some(kind) {
+        ui_state.selection_popover = None;
+        return;
+    }
+    let (min, max) = match kind {
+        // Same defaults as the one-click preset.
+        SelectionPopoverKind::Slope => (35.0, 90.0),
+        // Above-median preset resolved against the cached terrain stats.
+        SelectionPopoverKind::Height => match ui_state.terrain_height_stats {
+            Some(stats) => (stats.median, stats.max),
+            None => (0.0, 100.0),
+        },
+    };
+    ui_state.selection_popover = Some(SelectionPopover {
+        kind,
+        anchor,
+        min,
+        max,
+    });
+}
+
+/// Anchored popover with min/max sliders for the procedural selection chips.
+/// Escape (handled app-side, mirroring the viewport context menu) or clicking
+/// outside dismisses it; "Add to Selection" emits the action and closes.
+fn draw_selection_popover(
+    ui: &mut GuiContext<'_>,
+    ui_state: &mut UiState,
+    vp: Rect,
+    actions: &mut Vec<crate::ui::actions::PanelAction>,
+) {
+    use crate::ui::actions::PanelAction;
+    use crate::ui::SelectionPopoverKind;
+    let Some(mut pop) = ui_state.selection_popover else {
+        return;
+    };
+    let w = 264.0;
+    let h = 128.0;
+    let x = (pop.anchor.max_x - w).max(vp.min_x + PAD);
+    let y = (pop.anchor.max_y + 4.0).min(vp.max_y - PAD - h);
+    let rect = Rect::from_pos_size(x, y, w, h);
+
+    ui.begin_overlay();
+    ui.panel_rounded(rect, style::POPUP_BG, style::RADIUS_SM);
+    if ui.pointer_in(rect) {
+        ui.state.set_hot(Id::new("vp_selection_popover"));
+    }
+    let title = match pop.kind {
+        SelectionPopoverKind::Slope => "Add Slopes to Selection",
+        SelectionPopoverKind::Height => "Add Heights to Selection",
+    };
+    ui.label_at(
+        rect.min_x + 10.0,
+        rect.min_y + 8.0,
+        title,
+        style::TEXT_DIM,
+        FONT_SCALE * TYPE_CAPTION,
+    );
+    let inner = Rect::from_min_max(
+        rect.min_x + 8.0,
+        rect.min_y + 24.0,
+        rect.max_x - 8.0,
+        rect.max_y - 8.0,
+    );
+    ui.begin_panel(inner, Color::rgba(0.0, 0.0, 0.0, 0.0));
+    match pop.kind {
+        SelectionPopoverKind::Slope => {
+            slider_f32_id(
+                ui,
+                Id::new("vp_selpop_slope_min"),
+                "Min slope deg",
+                &mut pop.min,
+                0.0,
+                90.0,
+            );
+            slider_f32_id(
+                ui,
+                Id::new("vp_selpop_slope_max"),
+                "Max slope deg",
+                &mut pop.max,
+                0.0,
+                90.0,
+            );
+        }
+        SelectionPopoverKind::Height => {
+            let (lo, hi) = match ui_state.terrain_height_stats {
+                Some(stats) if stats.max > stats.min => (stats.min, stats.max),
+                _ => (0.0, 100.0),
+            };
+            slider_f32_id(
+                ui,
+                Id::new("vp_selpop_height_min"),
+                "Min height m",
+                &mut pop.min,
+                lo,
+                hi,
+            );
+            slider_f32_id(
+                ui,
+                Id::new("vp_selpop_height_max"),
+                "Max height m",
+                &mut pop.max,
+                lo,
+                hi,
+            );
+        }
+    }
+    let apply = button_id(ui, Id::new("vp_selpop_apply"), "Add to Selection");
+    ui.end_panel();
+    ui.end_overlay();
+
+    if apply {
+        // Sliders may cross; emit an ordered band.
+        let (lo, hi) = if pop.min <= pop.max {
+            (pop.min, pop.max)
+        } else {
+            (pop.max, pop.min)
+        };
+        match pop.kind {
+            SelectionPopoverKind::Slope => actions.push(PanelAction::SelectionFromSlope {
+                min_deg: lo,
+                max_deg: hi,
+            }),
+            SelectionPopoverKind::Height => actions.push(PanelAction::SelectionFromHeight {
+                min_m: lo,
+                max_m: hi,
+            }),
+        }
+        ui_state.selection_popover = None;
+        return;
+    }
+    // Click outside dismisses (mirrors the viewport context menu). The anchor
+    // chip is excluded so its own right-click toggle wins.
+    if (ui.input.primary_pressed || ui.input.secondary_pressed)
+        && !ui.pointer_in(rect)
+        && !ui.pointer_in(pop.anchor)
+    {
+        ui_state.selection_popover = None;
+        return;
+    }
+    ui_state.selection_popover = Some(pop);
 }
 
 /// Tooltip copy for the refine / procedural selection chips.

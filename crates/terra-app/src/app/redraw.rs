@@ -450,6 +450,18 @@ impl TerraApp {
             );
             self.viewport_rect = gui.viewport_rect();
 
+            // Selection parameter popover ("+ Height" right-click) needs terrain
+            // height bounds; refresh the cache lazily while the chip row is visible.
+            if self.screen == AppScreen::Editor
+                && self.ui_state.terrain_height_stats.is_none()
+                && (self.ui_state.editor_tool == crate::ui::EditorTool::SelectPaint
+                    || self.ui_state.selection_active)
+            {
+                if let Some(hf) = self.last_height.as_ref() {
+                    self.ui_state.terrain_height_stats = Some(terrain_height_stats(hf));
+                }
+            }
+
             // Export panel checkboxes list whatever aux maps the last evaluation produced.
             if self.ui_state.show_export {
                 let mut aux_keys: Vec<String> =
@@ -677,6 +689,9 @@ impl TerraApp {
             if let Some(slot) = ui_out.request_recall_bookmark {
                 self.recall_camera_bookmark(slot);
             }
+            if ui_out.request_group_selection {
+                self.dispatch_command(crate::ui::CommandId::GROUP_SELECTED);
+            }
         }
         if self.ui_state.layout_dirty {
             self.ui_state.layout.clamp_mut();
@@ -698,4 +713,25 @@ impl TerraApp {
             window.request_redraw();
         }
     }
+}
+
+/// Min / max / strided-median height stats for the selection height popover
+/// (same strided sampling as the auto-median selection preset).
+fn terrain_height_stats(hf: &terra_core::heightfield::Heightfield) -> crate::ui::TerrainHeightStats {
+    let (min, max) = hf.min_max();
+    let m = hf.metrics;
+    let stride = (m.width.max(m.height) / 128).max(1);
+    let mut vals = Vec::new();
+    let mut j = 0;
+    while j < m.height {
+        let mut i = 0;
+        while i < m.width {
+            vals.push(hf.get(i, j));
+            i += stride;
+        }
+        j += stride;
+    }
+    vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+    let median = vals.get(vals.len() / 2).copied().unwrap_or(0.0);
+    crate::ui::TerrainHeightStats { min, max, median }
 }
