@@ -305,6 +305,106 @@ impl PaintBuffer {
         }
     }
 
+    /// Morphological dilation: grow coverage by `radius` texels using a
+    /// separable two-pass max filter (square structuring element, Chebyshev
+    /// distance) - mirrors the separable box-blur pattern in `mask::ops`.
+    pub fn dilate(&mut self, radius: u32) {
+        self.morph(radius, true);
+    }
+
+    /// Morphological erosion: shrink coverage by `radius` texels using a
+    /// separable two-pass min filter (square structuring element).
+    pub fn erode(&mut self, radius: u32) {
+        self.morph(radius, false);
+    }
+
+    fn morph(&mut self, radius: u32, dilate: bool) {
+        if radius == 0
+            || self.width == 0
+            || self.height == 0
+            || self.samples.len() != (self.width * self.height) as usize
+        {
+            return;
+        }
+        let w = self.width as usize;
+        let h = self.height as usize;
+        let r = radius as usize;
+        let pick = if dilate { f32::max } else { f32::min };
+        // Horizontal pass into tmp.
+        let mut tmp = vec![0.0f32; w * h];
+        for j in 0..h {
+            let row = &self.samples[j * w..(j + 1) * w];
+            for i in 0..w {
+                let lo = i.saturating_sub(r);
+                let hi = (i + r).min(w - 1);
+                let mut acc = row[lo];
+                for x in lo + 1..=hi {
+                    acc = pick(acc, row[x]);
+                }
+                tmp[j * w + i] = acc;
+            }
+        }
+        // Vertical pass back into samples.
+        for j in 0..h {
+            let lo = j.saturating_sub(r);
+            let hi = (j + r).min(h - 1);
+            for i in 0..w {
+                let mut acc = tmp[lo * w + i];
+                for y in lo + 1..=hi {
+                    acc = pick(acc, tmp[y * w + i]);
+                }
+                self.samples[j * w + i] = acc;
+            }
+        }
+    }
+
+    /// Separable box blur over the samples (normalized shrinking window at
+    /// edges) - the `PaintBuffer` flavour of `mask::ops` `blur_inplace`.
+    pub fn blur(&mut self, radius: u32) {
+        if radius == 0
+            || self.width == 0
+            || self.height == 0
+            || self.samples.len() != (self.width * self.height) as usize
+        {
+            return;
+        }
+        let w = self.width as usize;
+        let h = self.height as usize;
+        let r = radius as usize;
+        // Horizontal pass: sliding-window row averages.
+        let mut tmp = vec![0.0f32; w * h];
+        for j in 0..h {
+            let src_row = &self.samples[j * w..(j + 1) * w];
+            let row = &mut tmp[j * w..(j + 1) * w];
+            let mut sum: f32 = src_row[..(r + 1).min(w)].iter().sum();
+            let mut count = (r + 1).min(w);
+            for i in 0..w {
+                row[i] = sum / count as f32;
+                if i + r + 1 < w {
+                    sum += src_row[i + r + 1];
+                    count += 1;
+                }
+                if i >= r {
+                    sum -= src_row[i - r];
+                    count -= 1;
+                }
+            }
+        }
+        // Vertical pass: average tmp rows in each row's window.
+        for j in 0..h {
+            let lo = j.saturating_sub(r);
+            let hi = (j + r).min(h - 1);
+            let inv = 1.0 / (hi - lo + 1) as f32;
+            for i in 0..w {
+                let mut sum = 0.0;
+                for y in lo..=hi {
+                    sum += tmp[y * w + i];
+                }
+                self.samples[j * w + i] = sum * inv;
+            }
+        }
+    }
+
     /// Fill a closed polygon given normalized UV vertices (scanline).
     pub fn fill_polygon(&mut self, points: &[(f32, f32)], value: f32) {
         if points.len() < 3
@@ -441,6 +541,54 @@ mod paint_buffer_tests {
         assert!(buf.sample_uv(0.5, 0.5) > 0.5);
         buf.clear();
         assert!(buf.samples.iter().all(|v| *v == 0.0));
+    }
+
+    #[test]
+    fn dilate_expands_single_texel_to_square_block() {
+        let mut buf = PaintBuffer::new(9, 9);
+        buf.samples[4 * 9 + 4] = 1.0;
+        buf.dilate(2);
+        // A single lit texel dilates to a (2r+1)^2 = 5x5 block of ones.
+        let lit = buf.samples.iter().filter(|v| **v == 1.0).count();
+        assert_eq!(lit, 25);
+        for j in 0..9usize {
+            for i in 0..9usize {
+                let inside = (2..=6).contains(&i) && (2..=6).contains(&j);
+                assert_eq!(buf.samples[j * 9 + i], if inside { 1.0 } else { 0.0 });
+            }
+        }
+    }
+
+    #[test]
+    fn erode_grows_hole_in_filled_buffer() {
+        let mut buf = PaintBuffer::new(9, 9);
+        buf.fill();
+        buf.samples[4 * 9 + 4] = 0.0;
+        buf.erode(1);
+        // The single-texel hole grows to a (2r+1)^2 = 3x3 block of zeros.
+        let holes = buf.samples.iter().filter(|v| **v == 0.0).count();
+        assert_eq!(holes, 9);
+        for j in 0..9usize {
+            for i in 0..9usize {
+                let inside = (3..=5).contains(&i) && (3..=5).contains(&j);
+                assert_eq!(buf.samples[j * 9 + i], if inside { 0.0 } else { 1.0 });
+            }
+        }
+    }
+
+    #[test]
+    fn blur_conserves_interior_mass() {
+        let mut buf = PaintBuffer::new(17, 17);
+        buf.samples[8 * 17 + 8] = 1.0;
+        buf.blur(3);
+        // Far from edges the box blur redistributes mass without loss.
+        let mass: f32 = buf.samples.iter().sum();
+        assert!((mass - 1.0).abs() < 1e-4, "mass = {mass}");
+        // The peak spreads over a (2r+1)^2 = 49-texel footprint.
+        let expected = 1.0 / 49.0;
+        assert!((buf.samples[8 * 17 + 8] - expected).abs() < 1e-6);
+        assert!((buf.samples[5 * 17 + 5] - expected).abs() < 1e-6);
+        assert_eq!(buf.samples[8 * 17 + 4], 0.0);
     }
 
     #[test]

@@ -260,16 +260,23 @@ fn draw_selection_chip_row(
     let btn_h = 20.0;
     let label = "SELECTION";
     let label_w = DrawList::text_width(label, FONT_SCALE * TYPE_CAPTION) + 8.0;
-    let buttons: [(&str, u64); 4] = [("All", 0), ("Invert", 1), ("Clear", 2), ("Save Mask", 3)];
-    let btn_ws: Vec<f32> = buttons
-        .iter()
-        .map(|(l, _)| (DrawList::text_width(l, font_scale) + 16.0).max(40.0))
-        .collect();
-    let panel_w = pad * 2.0
-        + label_w
-        + btn_ws.iter().sum::<f32>()
-        + gap * buttons.len() as f32;
-    let panel_h = btn_h + 10.0;
+    // Two chip rows: whole-selection ops, then refine / procedural ops.
+    let row1: [(&str, u64); 4] = [("All", 0), ("Invert", 1), ("Clear", 2), ("Save Mask", 3)];
+    let row2: [(&str, u64); 5] = [
+        ("Grow", 4),
+        ("Shrink", 5),
+        ("Feather", 6),
+        ("+ Slope", 7),
+        ("+ Height", 8),
+    ];
+    let btn_w = |l: &str| (DrawList::text_width(l, font_scale) + 16.0).max(40.0);
+    let row_w = |labels: &[&str]| {
+        labels.iter().map(|l| btn_w(l)).sum::<f32>() + gap * labels.len() as f32
+    };
+    let row1_w = row_w(&row1.map(|(l, _)| l));
+    let row2_w = row_w(&row2.map(|(l, _)| l));
+    let panel_w = pad * 2.0 + label_w + row1_w.max(row2_w);
+    let panel_h = btn_h * 2.0 + gap + 10.0;
     let panel = Rect::from_pos_size(
         vp.max_x - PAD - panel_w,
         top_y.max(vp.min_y + PAD),
@@ -283,34 +290,72 @@ fn draw_selection_chip_row(
     }
     ui.label_at(
         panel.min_x + pad,
-        panel.min_y + (panel_h - 10.0) * 0.5 - 1.0,
+        panel.min_y + 5.0 + (btn_h - 10.0) * 0.5 - 1.0,
         label,
         style::TEXT_DIM,
         FONT_SCALE * TYPE_CAPTION,
     );
-    let mut x = panel.min_x + pad + label_w;
     let has_selection = ui_state.selection_active;
-    for ((btn_label, idx), w) in buttons.iter().zip(btn_ws.iter()) {
-        let rect = Rect::from_pos_size(x, panel.min_y + 5.0, *w, btn_h);
-        if toolbar_button(
-            ui,
-            Id::new("vp_selection_btn").with(*idx),
-            rect,
-            btn_label,
-            false,
-        ) {
-            match idx {
-                0 => actions.push(PanelAction::SelectionAll),
-                1 => actions.push(PanelAction::SelectionInvert),
-                2 if has_selection => actions.push(PanelAction::SelectionClear),
-                3 if has_selection => actions.push(PanelAction::SelectionSaveAsMask),
-                _ => {}
+    for (row, labels) in [&row1[..], &row2[..]].iter().enumerate() {
+        let mut x = panel.min_x + pad + label_w;
+        let y = panel.min_y + 5.0 + row as f32 * (btn_h + gap);
+        for (btn_label, idx) in labels.iter() {
+            let w = btn_w(btn_label);
+            let rect = Rect::from_pos_size(x, y, w, btn_h);
+            if let Some((title, tip)) = selection_chip_tooltip(*idx) {
+                if ui.pointer_in(rect) {
+                    ui.queue_tooltip(rect, title, tip, None);
+                }
             }
+            if toolbar_button(
+                ui,
+                Id::new("vp_selection_btn").with(*idx),
+                rect,
+                btn_label,
+                false,
+            ) {
+                match idx {
+                    0 => actions.push(PanelAction::SelectionAll),
+                    1 => actions.push(PanelAction::SelectionInvert),
+                    2 if has_selection => actions.push(PanelAction::SelectionClear),
+                    3 if has_selection => actions.push(PanelAction::SelectionSaveAsMask),
+                    4 if has_selection => actions.push(PanelAction::SelectionGrow),
+                    5 if has_selection => actions.push(PanelAction::SelectionShrink),
+                    6 if has_selection => actions.push(PanelAction::SelectionFeather),
+                    7 => actions.push(PanelAction::SelectionFromSlope {
+                        min_deg: 35.0,
+                        max_deg: 90.0,
+                    }),
+                    8 => actions.push(PanelAction::SelectionFromHeight {
+                        min_m: f32::NAN,
+                        max_m: f32::NAN,
+                    }),
+                    _ => {}
+                }
+            }
+            x += w + gap;
         }
-        x += w + gap;
     }
     ui.end_overlay();
     panel.max_y
+}
+
+/// Tooltip copy for the refine / procedural selection chips.
+fn selection_chip_tooltip(idx: u64) -> Option<(&'static str, &'static str)> {
+    match idx {
+        4 => Some(("Grow", "Expand the selection edge by 2 texels")),
+        5 => Some(("Shrink", "Contract the selection edge by 2 texels")),
+        6 => Some(("Feather", "Soften selection edges (blur radius 3)")),
+        7 => Some((
+            "Add Steep Slopes",
+            "Add areas steeper than 35 deg to the selection",
+        )),
+        8 => Some((
+            "Add High Terrain",
+            "Add terrain above the median height to the selection",
+        )),
+        _ => None,
+    }
 }
 
 fn draw_biome_map_overlay(

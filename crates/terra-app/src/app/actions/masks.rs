@@ -575,8 +575,162 @@ pub(crate) fn try_apply(
                 app.ui_state.status = "Layer mask created from selection".into();
             }
         }
+        PanelAction::SelectionGrow => {
+            let mut asset = take_or_new_selection(app);
+            if let Some(paint) = asset.paint.as_mut() {
+                paint.dilate(SELECTION_MORPH_RADIUS);
+            }
+            app.selection = Some(asset);
+            app.ui_state.selection_active = true;
+            app.selection_overlay_dirty = true;
+            app.ui_state.status = "Selection grown".into();
+        }
+        PanelAction::SelectionShrink => {
+            let mut asset = take_or_new_selection(app);
+            if let Some(paint) = asset.paint.as_mut() {
+                paint.erode(SELECTION_MORPH_RADIUS);
+            }
+            app.selection = Some(asset);
+            app.ui_state.selection_active = true;
+            app.selection_overlay_dirty = true;
+            app.ui_state.status = "Selection shrunk".into();
+        }
+        PanelAction::SelectionFeather => {
+            let mut asset = take_or_new_selection(app);
+            if let Some(paint) = asset.paint.as_mut() {
+                paint.blur(SELECTION_FEATHER_RADIUS);
+            }
+            app.selection = Some(asset);
+            app.ui_state.selection_active = true;
+            app.selection_overlay_dirty = true;
+            app.ui_state.status = "Selection feathered".into();
+        }
+        PanelAction::SelectionFromSlope { min_deg, max_deg } => {
+            let Some(hf) = app.last_height.as_ref() else {
+                app.ui_state.status = "No terrain yet - nothing to select by slope".into();
+                return Ok(());
+            };
+            // `slope_degrees` stores slope normalized to [0,1] over 0..90 deg.
+            let slope = terra_core::analyze::slope_degrees(hf);
+            let (sw, sh) = (slope.metrics.width, slope.metrics.height);
+            let mut asset = take_or_new_selection(app);
+            if let Some(paint) = asset.paint.as_mut() {
+                bake_band_max(paint, min_deg, max_deg, |u, v| {
+                    let si = ((u * sw as f32) as u32).min(sw.saturating_sub(1));
+                    let sj = ((v * sh as f32) as u32).min(sh.saturating_sub(1));
+                    slope.get(si, sj) * 90.0
+                });
+            }
+            app.selection = Some(asset);
+            app.ui_state.selection_active = true;
+            app.selection_overlay_dirty = true;
+            app.ui_state.status =
+                format!("Added slopes {min_deg:.0}-{max_deg:.0} deg to selection");
+        }
+        PanelAction::SelectionFromHeight { min_m, max_m } => {
+            let Some(hf) = app.last_height.take() else {
+                app.ui_state.status = "No terrain yet - nothing to select by height".into();
+                return Ok(());
+            };
+            // Resolve the "auto" preset (non-finite min): above the terrain's
+            // median height, from a strided heightfield sample.
+            let (lo, hi) = if min_m.is_finite() && max_m.is_finite() {
+                (min_m, max_m)
+            } else {
+                let m = hf.metrics;
+                let stride = (m.width.max(m.height) / 128).max(1);
+                let mut vals = Vec::new();
+                let mut j = 0;
+                while j < m.height {
+                    let mut i = 0;
+                    while i < m.width {
+                        vals.push(hf.get(i, j));
+                        i += stride;
+                    }
+                    j += stride;
+                }
+                vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
+                let median = vals[vals.len() / 2];
+                let top = *vals.last().unwrap_or(&median);
+                let lo = if min_m.is_finite() { min_m } else { median };
+                // Push the upper bound beyond the terrain max so the top soft
+                // edge never trims real peaks.
+                let hi = if max_m.is_finite() {
+                    max_m
+                } else {
+                    top + (top - lo).max(1.0)
+                };
+                (lo, hi)
+            };
+            let (hw, hh) = (hf.metrics.width, hf.metrics.height);
+            let mut asset = take_or_new_selection(app);
+            if let Some(paint) = asset.paint.as_mut() {
+                bake_band_max(paint, lo, hi, |u, v| {
+                    let si = ((u * hw as f32) as u32).min(hw.saturating_sub(1));
+                    let sj = ((v * hh as f32) as u32).min(hh.saturating_sub(1));
+                    hf.get(si, sj)
+                });
+            }
+            app.last_height = Some(hf);
+            app.selection = Some(asset);
+            app.ui_state.selection_active = true;
+            app.selection_overlay_dirty = true;
+            app.ui_state.status = format!("Added heights {lo:.0}-{hi:.0} m to selection");
+        }
         other => return Err(other),
     };
     let _ = result;
     Ok(())
+}
+
+/// Dilate / erode step per Grow / Shrink click (texels).
+const SELECTION_MORPH_RADIUS: u32 = 2;
+/// Box-blur radius for Feather (texels).
+const SELECTION_FEATHER_RADIUS: u32 = 3;
+
+/// Take the transient selection asset out of the app, lazily creating it if
+/// absent (mirrors the stamp handler). Callers must put it back via
+/// `app.selection = Some(asset)`; taking it avoids borrow conflicts while
+/// baking against other `TerraApp` fields.
+fn take_or_new_selection(app: &mut TerraApp) -> terra_core::mask::MaskAsset {
+    let resolution = app.selection_resolution();
+    app.selection.take().unwrap_or_else(|| {
+        let mut asset = terra_core::mask::MaskAsset::new_painted(
+            terra_core::mask::MaskId::new(),
+            "Selection",
+            resolution,
+        );
+        asset.display_color = TerraApp::SELECTION_TINT;
+        asset
+    })
+}
+
+/// Max-combine (`sample = sample.max(band)`) membership of `[min, max]` into
+/// the selection paint buffer, sampling `value_at(u, v)` nearest at each
+/// texel centre. The band has a soft edge of ~10% of the range width.
+fn bake_band_max(
+    paint: &mut terra_core::mask::PaintBuffer,
+    min: f32,
+    max: f32,
+    value_at: impl Fn(f32, f32) -> f32,
+) {
+    if paint.width == 0
+        || paint.height == 0
+        || paint.samples.len() != (paint.width * paint.height) as usize
+    {
+        return;
+    }
+    let range = (max - min).max(1e-3);
+    let soft = (range * 0.10).max(1e-3);
+    for j in 0..paint.height {
+        let v = (j as f32 + 0.5) / paint.height as f32;
+        for i in 0..paint.width {
+            let u = (i as f32 + 0.5) / paint.width as f32;
+            let s = value_at(u, v);
+            let band =
+                ((s - min) / soft).clamp(0.0, 1.0) * ((max - s) / soft).clamp(0.0, 1.0);
+            let idx = (j * paint.width + i) as usize;
+            paint.samples[idx] = paint.samples[idx].max(band);
+        }
+    }
 }
