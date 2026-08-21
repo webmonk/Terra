@@ -867,6 +867,124 @@ impl TerraApp {
         }
     }
 
+    /// Colorized biome-ownership map: each biome's compiled rule coverage
+    /// (its group mask stack baked against the current terrain) blended in
+    /// stack order, with painted placement weights composited on top —
+    /// "paint owns, rules fill gaps" made visible. `None` without terrain
+    /// or biomes.
+    pub(crate) fn bake_biome_ownership_rgba(&self) -> Option<(u32, u32, Vec<u8>)> {
+        use terra_core::layer::{StackCategory, StackNode};
+        use terra_core::mask::{bake_distribution_with_context, bake_mask_assets, DistBakeContext};
+
+        let doc = &self.session.document;
+        let hf = self.last_height.as_ref()?;
+        let metrics = hf.metrics;
+        let (w, h) = (metrics.width, metrics.height);
+        let n = (w * h) as usize;
+
+        let placement = doc.selected_placement_layer();
+        let isolate = placement
+            .filter(|l| l.isolate_active)
+            .and_then(|_| doc.active_biome);
+
+        let surface = doc.stack.find_category(StackCategory::Surface)?;
+        let biomes: Vec<(terra_core::layer::LayerId, [f32; 3], &terra_core::mask::Distribution)> =
+            surface
+                .children
+                .iter()
+                .filter_map(|child| match child {
+                    StackNode::Group(g) if g.is_biome() && g.enabled => {
+                        let color = doc
+                            .biome_library
+                            .by_group(g.id)
+                            .map(|d| d.color)
+                            .unwrap_or(g.preview_color);
+                        Some((g.id, color, &g.masks))
+                    }
+                    _ => None,
+                })
+                .collect();
+        if biomes.is_empty() {
+            return None;
+        }
+
+        let slope = terra_core::analyze::slope_degrees(hf);
+        let baked_masks = bake_mask_assets(&doc.masks, hf, metrics, &self.scheduler.last_aux);
+        let flow = self
+            .scheduler
+            .last_aux
+            .get("flow_accumulation")
+            .filter(|f| f.metrics.width == w && f.metrics.height == h);
+        let ctx = DistBakeContext {
+            height: Some(hf),
+            slope_deg: Some(slope.data()),
+            curvature: None,
+            flow: flow.map(|f| f.data()),
+            masks: &baked_masks,
+            aux: Some(&self.scheduler.last_aux),
+        };
+
+        // Rules underlay: alpha-over in stack order (later biomes on top).
+        let mut color = vec![0.0f32; n * 3];
+        let mut alpha = vec![0.0f32; n];
+        for (id, biome_color, dist) in &biomes {
+            if isolate.is_some_and(|active| active != *id) {
+                continue;
+            }
+            let field = bake_distribution_with_context(dist, metrics, &ctx);
+            for (i, &weight) in field.data().iter().enumerate() {
+                if weight <= 0.003 {
+                    continue;
+                }
+                let c = i * 3;
+                for k in 0..3 {
+                    color[c + k] = color[c + k] * (1.0 - weight) + biome_color[k] * weight;
+                }
+                alpha[i] = alpha[i] + (1.0 - alpha[i]) * weight;
+            }
+        }
+
+        let mut rgba = vec![0u8; n * 4];
+        for i in 0..n {
+            let idx = i * 4;
+            let c = i * 3;
+            rgba[idx] = (color[c].clamp(0.0, 1.0) * 255.0) as u8;
+            rgba[idx + 1] = (color[c + 1].clamp(0.0, 1.0) * 255.0) as u8;
+            rgba[idx + 2] = (color[c + 2].clamp(0.0, 1.0) * 255.0) as u8;
+            rgba[idx + 3] = (alpha[i].clamp(0.0, 1.0) * 220.0) as u8;
+        }
+
+        // Painted placement weights own wherever painted.
+        if let Some(layer) = placement.filter(|l| !l.channels.is_empty()) {
+            let painted = layer.bake_color_rgba(
+                w,
+                h,
+                &|gid| {
+                    doc.biome_library
+                        .by_group(gid)
+                        .map(|d| d.color)
+                        .or_else(|| doc.stack.find_group(gid).map(|g| g.preview_color))
+                        .unwrap_or([0.45, 0.55, 0.4])
+                },
+                isolate,
+            );
+            for i in 0..n {
+                let idx = i * 4;
+                let pa = painted[idx + 3] as f32 / 255.0;
+                if pa <= 0.003 {
+                    continue;
+                }
+                for k in 0..3 {
+                    let cur = rgba[idx + k] as f32;
+                    rgba[idx + k] = (cur * (1.0 - pa) + painted[idx + k] as f32 * pa) as u8;
+                }
+                let cur_a = rgba[idx + 3] as f32 / 255.0;
+                rgba[idx + 3] = ((cur_a + (1.0 - cur_a) * pa) * 255.0).min(255.0) as u8;
+            }
+        }
+        Some((w, h, rgba))
+    }
+
     pub(crate) fn refresh_2d_preview(&mut self) {
         if self.ui_state.preview_mode != self.last_preview_mode {
             self.last_preview_mode = self.ui_state.preview_mode;
@@ -898,32 +1016,14 @@ impl TerraApp {
             self.preview_dirty = false;
             return;
         }
-        // Coloured biome placement overlay - bypass grayscale path.
+        // Coloured biome ownership overlay - bypass grayscale path. Shows
+        // rule coverage as the base coat with painted weights on top, so
+        // rule-only biomes (no paint yet) still render instead of black.
         if self.ui_state.preview_mode == Preview2dMode::Biome {
-            if let Some(layer) = self.session.document.selected_placement_layer() {
-                if !layer.channels.is_empty() {
-                    let doc = &self.session.document;
-                    let isolate = if layer.isolate_active {
-                        doc.active_biome
-                    } else {
-                        None
-                    };
-                    let rgba = layer.bake_color_rgba(
-                        metrics.width,
-                        metrics.height,
-                        &|gid| {
-                            doc.biome_library
-                                .by_group(gid)
-                                .map(|d| d.color)
-                                .or_else(|| doc.stack.find_group(gid).map(|g| g.preview_color))
-                                .unwrap_or([0.45, 0.55, 0.4])
-                        },
-                        isolate,
-                    );
-                    self.ui_state.preview_rgba = Some((metrics.width, metrics.height, rgba));
-                    self.preview_dirty = false;
-                    return;
-                }
+            if let Some((w, h, rgba)) = self.bake_biome_ownership_rgba() {
+                self.ui_state.preview_rgba = Some((w, h, rgba));
+                self.preview_dirty = false;
+                return;
             }
         }
         let values = match self.ui_state.preview_mode {
