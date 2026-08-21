@@ -157,6 +157,10 @@ pub struct LayersGuiState {
     pub scroll_y: f32,
     pub add_menu_open: bool,
     pub drag_from: Option<LayerDragSource>,
+    /// Multi-row drag: ordered ids (visible row order) moved together when the
+    /// grip drag starts on a row inside the multi-selection. Empty for a
+    /// single-row drag; only meaningful while `drag_from` is `Some`.
+    pub drag_multi: Vec<LayerId>,
     /// Cursor hint from the last layers draw (Grab / Grabbing while DnD).
     pub cursor_hint: crate::ui::UiCursor,
     pub context_menu: Option<(LayerId, f32, f32)>,
@@ -190,6 +194,7 @@ impl Default for LayersGuiState {
             scroll_y: 0.0,
             add_menu_open: false,
             drag_from: None,
+            drag_multi: Vec::new(),
             cursor_hint: crate::ui::UiCursor::Default,
             context_menu: None,
             rename_id: None,
@@ -586,7 +591,8 @@ pub fn draw_layers_gui(
         let dragging_this = state
             .drag_from
             .as_ref()
-            .is_some_and(|d| d.id == row_data.id);
+            .is_some_and(|d| d.id == row_data.id)
+            || (layer_dragging && state.drag_multi.contains(&row_data.id));
         let subtitle = row_list_subtitle(&row_data, is_section, is_plain_header);
         let has_subtitle = !subtitle.is_empty();
         let row_h = if is_section {
@@ -666,6 +672,16 @@ pub fn draw_layers_gui(
                 if state.rename_id.is_some() {
                     cancel_hierarchy_rename(ui, state);
                 }
+                if state.multi_selection.contains(&row_data.id) && state.multi_selection.len() > 1
+                {
+                    // Grip drag on a multi-selected row: move the whole set.
+                    state.drag_multi = collect_multi_drag_ids(doc, &rows, &state.multi_selection);
+                } else {
+                    // Single-row drag: same as a plain click, collapse the
+                    // multi-selection back to this row.
+                    state.drag_multi.clear();
+                    state.multi_selection.clear();
+                }
                 {
                     state.drag_from = Some(LayerDragSource {
                         id: row_data.id,
@@ -728,7 +744,9 @@ pub fn draw_layers_gui(
         // Drop indicator (above / below / nest-into).
         if hovered && (layer_dragging || tool_dragging) {
             let src_id = state.drag_from.as_ref().map(|d| d.id);
-            let can_drop = src_id != Some(row_data.id) && row_accepts_drop(row_data.role);
+            let can_drop = src_id != Some(row_data.id)
+                && !state.drag_multi.contains(&row_data.id)
+                && row_accepts_drop(row_data.role);
             if can_drop {
                 let rel_y = ui
                     .input
@@ -1597,8 +1615,27 @@ pub fn draw_layers_gui(
     }
 
     if ui.input.primary_released {
+        let multi_ids = std::mem::take(&mut state.drag_multi);
         if let (Some(_from), Some(to)) = (state.drag_from.take(), drop_target) {
-            if to.nest_into {
+            if multi_ids.len() > 1 {
+                // Multi-row drag: no-op when the target is inside the dragged
+                // set (the drop indicator is suppressed there already).
+                if !multi_ids.contains(&to.target) {
+                    if to.nest_into {
+                        // Nest each dragged id in visible order (reuses the
+                        // single-drop routing per id).
+                        for id in &multi_ids {
+                            push_nest_drop_actions(doc, *id, to.target, &mut actions);
+                        }
+                    } else {
+                        actions.push(PanelAction::ReorderMany {
+                            moving: multi_ids,
+                            target: to.target,
+                            place_before: to.place_before,
+                        });
+                    }
+                }
+            } else if to.nest_into {
                 push_nest_drop_actions(doc, to.moving, to.target, &mut actions);
             } else {
                 actions.push(PanelAction::ReorderRelative {
@@ -1677,15 +1714,23 @@ fn draw_layer_drag_ghost(ui: &mut GuiContext<'_>, state: &LayersGuiState) {
         Rect::from_pos_size(ghost.min_x, ghost.min_y + 4.0, 3.0, ghost.height() - 8.0),
         style::ACCENT,
     );
+    // Multi-row drag: a layer-stack icon and a "N layers" count instead of
+    // the single row's icon / name.
+    let multi_count = state.drag_multi.len();
+    let (ghost_icon, ghost_name) = if multi_count > 1 {
+        (Icon::Layers, format!("{multi_count} layers"))
+    } else {
+        (drag.icon, drag.name.clone())
+    };
     ui.icon_at(
         ghost.min_x + 12.0,
         ghost.min_y + (ghost_h - 16.0) * 0.5,
-        drag.icon,
+        ghost_icon,
         style::TEXT,
         16.0,
     );
     let label =
-        DrawList::truncate_to_width(&drag.name, FONT_SCALE * TYPE_BODY, ghost.width() - 44.0);
+        DrawList::truncate_to_width(&ghost_name, FONT_SCALE * TYPE_BODY, ghost.width() - 44.0);
     ui.label_at(
         ghost.min_x + 34.0,
         label_y(ghost.min_y, ghost_h, FONT_SCALE * TYPE_BODY),
@@ -1815,6 +1860,38 @@ fn push_nest_drop_actions(
         group: target,
     });
 }
+
+/// Ordered ids for a multi-row drag: visible row order, excluding Base rows
+/// and any id that has another dragged id as ancestor (dragging a group plus
+/// its children moves only the group).
+fn collect_multi_drag_ids(
+    doc: &TerrainDocument,
+    rows: &[LayerRow],
+    selection: &std::collections::HashSet<LayerId>,
+) -> Vec<LayerId> {
+    let mut ids: Vec<LayerId> = Vec::new();
+    for r in rows {
+        if !row_is_draggable(r.role, r.is_base) {
+            continue;
+        }
+        if selection.contains(&r.id) && !ids.contains(&r.id) {
+            ids.push(r.id);
+        }
+    }
+    let set: std::collections::HashSet<LayerId> = ids.iter().copied().collect();
+    ids.retain(|id| {
+        let mut parent = doc.stack.sibling_location(*id).and_then(|(p, _)| p);
+        while let Some(p) = parent {
+            if set.contains(&p) {
+                return false;
+            }
+            parent = doc.stack.sibling_location(p).and_then(|(pp, _)| pp);
+        }
+        true
+    });
+    ids
+}
+
 fn blank_row(
     id: LayerId,
     name: String,

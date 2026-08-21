@@ -537,4 +537,12 @@ pub enum PanelAction {
         min_m: f32,
         max_m: f32,
     },
+    /// Reorder several layers/groups (multi-selection drag) relative to a
+    /// sibling. `moving` is in visible (top-to-bottom) row order; the set's
+    /// relative order is preserved at the drop point.
+    ReorderMany {
+        moving: Vec<LayerId>,
+        target: LayerId,
+        place_before: bool,
+    },
 }

@@ -1102,6 +1102,71 @@ pub(crate) fn try_apply(
                 ctx.doc_mutated = true;
             }
         }
+        PanelAction::ReorderMany {
+            moving,
+            target,
+            place_before,
+        } => {
+            // Multi-selection drag-drop. `moving` is in visible (top-to-bottom)
+            // row order. If the target sits inside the dragged set the drop is
+            // ambiguous - no-op.
+            if moving.contains(&target) {
+                ctx.continue_loop = true;
+                return Ok(());
+            }
+            // Ordering: `reorder_relative` places each id IMMEDIATELY
+            // before/after `target`.
+            // - place_before: iterate FORWARD. Inserting a, then b, then c
+            //   right before `target` yields `a b c target` (each later
+            //   insert lands between the previous one and the target).
+            // - place_after: iterate in REVERSE. Inserting c, then b, then a
+            //   right after `target` yields `target a b c` (each earlier id
+            //   pushes the later ones down).
+            let ordered: Vec<terra_core::layer::LayerId> = if place_before {
+                moving
+            } else {
+                moving.into_iter().rev().collect()
+            };
+            let mut moved_any = false;
+            for id in ordered {
+                if id == target {
+                    continue;
+                }
+                // Skip ids that vanished since the drag started.
+                if app.session.document.stack.find(id).is_none()
+                    && app.session.document.stack.find_group(id).is_none()
+                {
+                    continue;
+                }
+                let from = app.session.document.stack.sibling_location(id);
+                if app
+                    .session
+                    .document
+                    .stack
+                    .reorder_relative(id, target, place_before)
+                {
+                    // One undoable MoveNode per moved layer, exactly like the
+                    // single-drag handler (undo steps the set back one by one).
+                    if let (Some((from_parent, from_index)), Some((to_parent, to_index))) =
+                        (from, app.session.document.stack.sibling_location(id))
+                    {
+                        app.session.history.push_executed(EditorCommand::MoveNode {
+                            id,
+                            from_parent,
+                            from_index,
+                            to_parent,
+                            to_index,
+                        });
+                    }
+                    moved_any = true;
+                }
+            }
+            if moved_any {
+                app.mark_all_layers_dirty();
+                app.request_rebuild();
+                ctx.doc_mutated = true;
+            }
+        }
         PanelAction::ShowExportPanel => {
             app.ui_state.show_export = true;
         }
