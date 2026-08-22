@@ -345,37 +345,51 @@ pub fn downsample_height(src: &Heightfield, target_res: u32) -> Heightfield {
     let mut out =
         DOWNSAMPLE_ARENA.with(|arena| arena.borrow_mut().acquire(tw as usize * th as usize));
     if tw < src.metrics.width || th < src.metrics.height {
-        for j in 0..th as usize {
-            for i in 0..tw as usize {
-                out[j * tw as usize + i] =
-                    area_sample(&dense, sw, sh, tw as usize, th as usize, i, j);
-            }
-        }
+        // Row-parallel: output rows are independent and each element does real
+        // work, so unlike a memcpy-speed pass this one pays for the threads.
+        // Chunking by row keeps the write order, so results are unchanged.
+        use rayon::prelude::*;
+        let (twu, thu) = (tw as usize, th as usize);
+        out[..twu * thu]
+            .par_chunks_mut(twu)
+            .enumerate()
+            .for_each(|(j, row)| {
+                for (i, slot) in row.iter_mut().enumerate() {
+                    *slot = area_sample(&dense, sw, sh, twu, thu, i, j);
+                }
+            });
         let result = Heightfield::from_dense(metrics, &out);
         DOWNSAMPLE_ARENA.with(|arena| arena.borrow_mut().release(out));
         return result;
     }
-    for j in 0..th as usize {
-        for i in 0..tw as usize {
-            let u = (i as f32 + 0.5) / tw as f32;
-            let v = (j as f32 + 0.5) / th as f32;
-            let x = (u * sw as f32 - 0.5).clamp(0.0, (sw - 1) as f32);
-            let z = (v * sh as f32 - 0.5).clamp(0.0, (sh - 1) as f32);
-            let x0 = x.floor() as usize;
-            let z0 = z.floor() as usize;
-            let x1 = (x0 + 1).min(sw - 1);
-            let z1 = (z0 + 1).min(sh - 1);
-            let fx = x - x0 as f32;
-            let fz = z - z0 as f32;
-            let h00 = dense[z0 * sw + x0];
-            let h10 = dense[z0 * sw + x1];
-            let h01 = dense[z1 * sw + x0];
-            let h11 = dense[z1 * sw + x1];
-            out[j * tw as usize + i] = h00 * (1.0 - fx) * (1.0 - fz)
-                + h10 * fx * (1.0 - fz)
-                + h01 * (1.0 - fx) * fz
-                + h11 * fx * fz;
-        }
+    {
+        use rayon::prelude::*;
+        let (twu, thu) = (tw as usize, th as usize);
+        out[..twu * thu]
+            .par_chunks_mut(twu)
+            .enumerate()
+            .for_each(|(j, row)| {
+                let v = (j as f32 + 0.5) / th as f32;
+                let z = (v * sh as f32 - 0.5).clamp(0.0, (sh - 1) as f32);
+                let z0 = z.floor() as usize;
+                let z1 = (z0 + 1).min(sh - 1);
+                let fz = z - z0 as f32;
+                for (i, slot) in row.iter_mut().enumerate() {
+                    let u = (i as f32 + 0.5) / tw as f32;
+                    let x = (u * sw as f32 - 0.5).clamp(0.0, (sw - 1) as f32);
+                    let x0 = x.floor() as usize;
+                    let x1 = (x0 + 1).min(sw - 1);
+                    let fx = x - x0 as f32;
+                    let h00 = dense[z0 * sw + x0];
+                    let h10 = dense[z0 * sw + x1];
+                    let h01 = dense[z1 * sw + x0];
+                    let h11 = dense[z1 * sw + x1];
+                    *slot = h00 * (1.0 - fx) * (1.0 - fz)
+                        + h10 * fx * (1.0 - fz)
+                        + h01 * (1.0 - fx) * fz
+                        + h11 * fx * fz;
+                }
+            });
     }
     let result = Heightfield::from_dense(metrics, &out);
     DOWNSAMPLE_ARENA.with(|arena| arena.borrow_mut().release(out));
@@ -717,12 +731,16 @@ pub fn hydraulic_erode_leveled_with_fields(
 }
 
 fn downsample_mask_field(src: &MaskField, target_res: u32) -> MaskField {
-    let hf = Heightfield::from_dense(src.metrics, src.data());
-    let low = downsample_height(&hf, target_res);
-    let dense = low.to_dense();
-    let mut out = MaskField::zeros(low.metrics);
-    out.data_mut().copy_from_slice(&dense);
-    out
+    let res = target_res.max(1);
+    let target = HeightfieldMetrics {
+        width: res,
+        height: res,
+        world_size_x: src.metrics.world_size_x,
+        world_size_z: src.metrics.world_size_z,
+        tile_size: src.metrics.tile_size.min(res),
+        halo: src.metrics.halo,
+    };
+    resample_mask(src, target)
 }
 
 fn upsample_to_metrics(src: &Heightfield, target: HeightfieldMetrics) -> Heightfield {
@@ -763,13 +781,60 @@ fn apply_height_delta(
         .collect();
     Heightfield::from_dense(target, &composed)
 }
-fn upsample_mask(src: &MaskField, target: HeightfieldMetrics) -> MaskField {
-    let hf = Heightfield::from_dense(src.metrics, src.data());
-    let up = downsample_height(&hf, target.width);
-    let dense = up.to_dense();
+/// Bilinear/area resample between two flat `MaskField` buffers.
+///
+/// Deliberately does not route through `Heightfield`: that round trip cost five
+/// conversions per call, and the leveled sim paths resample once per published
+/// channel per level, so the conversions dominated the arithmetic.
+fn resample_mask(src: &MaskField, target: HeightfieldMetrics) -> MaskField {
+    if src.metrics.width == target.width && src.metrics.height == target.height {
+        return src.clone();
+    }
+    use rayon::prelude::*;
+    let (sw, sh) = (src.metrics.width as usize, src.metrics.height as usize);
+    let (tw, th) = (target.width as usize, target.height as usize);
+    let data = src.data();
+    let shrinking = tw < sw || th < sh;
     let mut out = MaskField::zeros(target);
-    out.data_mut().copy_from_slice(&dense);
+    out.data_mut()
+        .par_chunks_mut(tw)
+        .enumerate()
+        .for_each(|(j, row)| {
+            if shrinking {
+                // Match `downsample_height`: box-average when decimating, so a
+                // coarse level sees the mean of the texels it stands in for
+                // rather than a point sample.
+                for (i, slot) in row.iter_mut().enumerate() {
+                    *slot = area_sample(data, sw, sh, tw, th, i, j);
+                }
+                return;
+            }
+            let v = (j as f32 + 0.5) / th as f32;
+            let z = (v * sh as f32 - 0.5).clamp(0.0, (sh - 1) as f32);
+            let z0 = z.floor() as usize;
+            let z1 = (z0 + 1).min(sh - 1);
+            let fz = z - z0 as f32;
+            for (i, slot) in row.iter_mut().enumerate() {
+                let u = (i as f32 + 0.5) / tw as f32;
+                let x = (u * sw as f32 - 0.5).clamp(0.0, (sw - 1) as f32);
+                let x0 = x.floor() as usize;
+                let x1 = (x0 + 1).min(sw - 1);
+                let fx = x - x0 as f32;
+                let h00 = data[z0 * sw + x0];
+                let h10 = data[z0 * sw + x1];
+                let h01 = data[z1 * sw + x0];
+                let h11 = data[z1 * sw + x1];
+                *slot = h00 * (1.0 - fx) * (1.0 - fz)
+                    + h10 * fx * (1.0 - fz)
+                    + h01 * (1.0 - fx) * fz
+                    + h11 * fx * fz;
+            }
+        });
     out
+}
+
+fn upsample_mask(src: &MaskField, target: HeightfieldMetrics) -> MaskField {
+    resample_mask(src, target)
 }
 
 #[cfg(test)]
