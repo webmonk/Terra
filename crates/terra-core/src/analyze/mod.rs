@@ -29,7 +29,7 @@ pub use level_step::{
     amplify_sim_levels, author_sim_levels, default_sim_levels, downsample_height, draft_sim_levels,
     hydraulic_erode_leveled, hydraulic_erode_leveled_with_fields,
     hydraulic_erode_leveled_with_hardness, multi_scale_amplify, thermal_erode_leveled,
-    thermal_erode_leveled_with_hardness, AmplifyResult, SimLevel,
+    thermal_erode_layered_leveled, thermal_erode_leveled_with_hardness, AmplifyResult, SimLevel,
 };
 pub use mass_wasting::{
     debris_flow_erode, mud_settle_mass, sediment_fill_soft_mass, talus_apron,

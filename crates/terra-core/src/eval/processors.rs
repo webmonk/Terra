@@ -280,8 +280,17 @@ impl ProcessorRegistry {
                         0.0,
                         0.0,
                     );
-                    let result =
-                        analyze::thermal_erode_layered(input, p, &hardness, Some(&initial));
+                    // Preview qualities run the coarse-to-fine schedule, the way
+                    // every other sim already does; Full and Export keep the
+                    // single full-resolution solve so exported and golden
+                    // output is unchanged. Without this the layered path - the
+                    // default for this layer - ignored quality entirely and a
+                    // Draft brush dab cost the same as a Full one.
+                    let result = if ctx.quality.is_preview() {
+                        analyze::thermal_erode_layered_leveled(input, p, &hardness, &levels)
+                    } else {
+                        analyze::thermal_erode_layered(input, p, &hardness, Some(&initial))
+                    };
                     ctx.aux_insert(keys::EROSION, result.erosion);
                     ctx.aux_insert(keys::DEPOSITION, result.deposition.clone());
                     ctx.aux_insert(keys::DEBRIS_DEPTH, result.loose_debris.clone());

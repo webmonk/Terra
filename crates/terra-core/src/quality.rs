@@ -31,6 +31,14 @@ impl PreviewQuality {
         }
     }
 
+    /// True for the interactive rungs that refine into something better.
+    ///
+    /// Sims may take coarse-to-fine shortcuts here that `Full` and `Export`
+    /// must not, so what gets exported stays exactly what the solver produces.
+    pub fn is_preview(self) -> bool {
+        matches!(self, PreviewQuality::Draft | PreviewQuality::Medium)
+    }
+
     pub fn next_refine(self) -> Option<Self> {
         match self {
             PreviewQuality::Draft => Some(PreviewQuality::Medium),

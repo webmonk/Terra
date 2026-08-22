@@ -474,6 +474,54 @@ pub fn thermal_erode_leveled(
     (current, last_e, last_d)
 }
 
+/// Multilevel wrapper for the layered (bedrock + debris) thermal solver.
+///
+/// The layered path is the default for Thermal Erosion but was the only sim
+/// that ignored the level schedule, so it simulated the full grid no matter
+/// what quality asked for and a Draft preview cost exactly as much as Full.
+/// This runs the same solver over the coarse-to-fine schedule the height-only
+/// path already uses: simulate at the level resolution, apply the delta back
+/// onto the full-resolution field, and carry the finest level's aux upsampled.
+pub fn thermal_erode_layered_leveled(
+    input: &Heightfield,
+    p: &ThermalErosionParams,
+    hardness: &MaskField,
+    levels: &[SimLevel],
+) -> super::mass_wasting::ThermalResult {
+    use super::mass_wasting::thermal_erode_layered;
+
+    let target = input.metrics;
+    if levels.is_empty() {
+        return thermal_erode_layered(input, p, hardness, None);
+    }
+
+    let mut current = input.clone();
+    let mut last: Option<super::mass_wasting::ThermalResult> = None;
+    for level in levels {
+        let low = downsample_height(&current, level.resolution);
+        let k_low = downsample_mask_field(hardness, level.resolution);
+        let params = scale_thermal(p, *level);
+        let result = thermal_erode_layered(&low, &params, &k_low, None);
+        current = apply_height_delta(&current, &low, &result.height, target);
+        last = Some(result);
+    }
+
+    let last = last.expect("at least one level");
+    let up = |m: &MaskField| upsample_mask(m, target);
+    super::mass_wasting::ThermalResult {
+        bedrock: up(&last.bedrock),
+        loose_debris: up(&last.loose_debris),
+        sediment: up(&last.sediment),
+        erosion: up(&last.erosion),
+        deposition: up(&last.deposition),
+        talus_stability: up(&last.talus_stability),
+        instability: up(&last.instability),
+        erosion_raw: up(&last.erosion_raw),
+        deposition_raw: up(&last.deposition_raw),
+        height: current,
+    }
+}
+
 /// Multilevel thermal with a spatial hardness map (downsampled per level).
 pub fn thermal_erode_leveled_with_hardness(
     input: &Heightfield,

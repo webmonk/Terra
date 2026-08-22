@@ -1653,6 +1653,13 @@ mod tests {
 
         let mut eval = StackEvaluator::new();
         let mut ctx = EvalContext::new(metrics);
+        // The interactive drag runs at Draft and only refines to Full on
+        // release, so report both rather than optimising the wrong one.
+        ctx.quality = match std::env::var("SCULPT_QUALITY").as_deref() {
+            Ok("draft") => PreviewQuality::Draft,
+            Ok("medium") => PreviewQuality::Medium,
+            _ => PreviewQuality::Full,
+        };
         eval.rebuild_all(&stack, &mut ctx).unwrap();
 
         // One brush dab, as the interactive path produces.
