@@ -527,6 +527,7 @@ impl ApplicationHandler for TerraApp {
             if let Some(result) = self.eval_worker.try_recv_matching(self.eval_token) {
                 let quality = result.quality;
                 let height = result.height;
+                self.scheduler.last_object_instances = result.object_instances;
                 self.scheduler.last_aux = result.aux;
                 self.scheduler.last_strata = result.strata;
                 self.scheduler.last_layer_timings = result.layer_timings;

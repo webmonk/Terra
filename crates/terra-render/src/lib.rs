@@ -49,6 +49,7 @@ pub mod scene_versions;
 pub mod shadows;
 pub mod staging;
 pub mod terrain_mesh;
+pub mod objects;
 pub mod vegetation;
 
 pub use adaptive_sampling::{AdaptiveSamplingState, TileState, VarianceTileSummary, TILE_SIZE};
@@ -274,6 +275,8 @@ pub struct TerrainRenderer {
     pub overhang: OverhangOverlay,
     /// Instanced vegetation driven by the evaluated vegetation-density field.
     pub vegetation: VegetationOverlay,
+    /// Solid props from Scatter Objects layers.
+    pub objects: objects::ObjectOverlay,
     /// Presentation lighting (does not affect height data).
     pub lighting: EnvironmentLighting,
     /// Active ocean height; None disables the water surface.
@@ -951,6 +954,7 @@ impl TerrainRenderer {
         let guides = GuideOverlay::new(&device, format);
         let overhang = OverhangOverlay::new(&device, format);
         let vegetation = VegetationOverlay::new(&device, format);
+        let objects = objects::ObjectOverlay::new(&device, format);
         let progressive =
             progressive::ProgressiveRenderer::new(&device, config.width, config.height, format);
         let quality = ViewportQualityManager::default();
@@ -1002,6 +1006,7 @@ impl TerrainRenderer {
             guides,
             overhang,
             vegetation,
+            objects,
             lighting: EnvironmentLighting::default(),
             ocean_level: None,
             biome_tint_strength: 0.0,
@@ -1641,6 +1646,21 @@ impl TerrainRenderer {
     }
 
     /// Rebuild sparse viewport instances from the evaluated vegetation field.
+    /// Upload placed props. `base_size_m` is the world size of a unit prop.
+    ///
+    /// Returns (drawn, placed): the overlay thins above its draw budget, and
+    /// the caller should say so rather than let the viewport imply fewer props
+    /// than were actually placed.
+    pub fn sync_object_instances(
+        &mut self,
+        instances: &[terra_core::layer::ObjectInstance],
+        base_size_m: f32,
+    ) -> (usize, usize) {
+        self.objects.sync(&self.device, instances, base_size_m);
+        self.notify_invalidation(InvalidationReason::GeometryChanged);
+        self.objects.counts()
+    }
+
     pub fn sync_vegetation_instances(
         &mut self,
         height: &Heightfield,
@@ -1686,6 +1706,7 @@ impl TerrainRenderer {
         );
         self.vegetation
             .sync(&self.device, &blank, None, 1.0, 1.0, 0.0);
+        self.objects.sync(&self.device, &[], 1.0);
         self.overhang.clear();
         self.ocean_level = ocean_level.filter(|v| v.is_finite());
         self.notify_invalidation(InvalidationReason::TerrainChanged);
@@ -2001,6 +2022,8 @@ impl TerrainRenderer {
             .upload_view_proj(&self.queue, view_proj, self.lighting.light_dir);
         self.vegetation
             .upload_view_proj(&self.queue, view_proj, self.lighting.light_dir);
+        self.objects
+            .update_uniforms(&self.queue, view_proj, self.lighting.light_dir);
 
         // Depth-only directional shadow pass (RasterLit only).
         if self.frame_graph.schedule.shadow {
@@ -2268,6 +2291,7 @@ impl TerrainRenderer {
                             pass.draw_indexed(0..self.grid.edge_index_count, 0, 0..1);
                         }
                         self.vegetation.draw(&mut pass);
+                        self.objects.draw(&mut pass);
                         self.overhang.draw(&mut pass);
                         self.brush.draw(&mut pass);
                         self.guides.draw(&mut pass);

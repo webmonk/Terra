@@ -939,6 +939,20 @@ pub fn draw_inspector_gui(
             } else {
                 label(ui, "Status: cached / ready");
             }
+            // Props are drawn as solids from exact placements, but the overlay
+            // thins above its draw budget. Say so, so a sparser viewport is
+            // never mistaken for a sparser scatter.
+            let (drawn, placed) = (
+                ui_state.object_instances_drawn,
+                ui_state.object_instances_placed,
+            );
+            if placed > 0 {
+                if drawn < placed {
+                    label(ui, &format!("Props: {drawn} of {placed} shown"));
+                } else {
+                    label(ui, &format!("Props: {placed}"));
+                }
+            }
             ui_state.inspector_advanced = false;
         }
         // Deep-links to retired peer tabs are remapped by `initialize_tabs`.

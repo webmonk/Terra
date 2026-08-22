@@ -18,6 +18,9 @@ pub struct EvalScheduler {
     pub current_token: u64,
     pub last_good: Option<Arc<Heightfield>>,
     pub last_aux: HashMap<String, MaskField>,
+    /// Props placed by Scatter Objects layers in the last pass. Not a raster,
+    /// so it cannot ride in `last_aux`.
+    pub last_object_instances: Vec<crate::layer::ObjectInstance>,
     /// Materials strata preserved across HashMap aux round-trips.
     pub last_strata: Option<Vec<crate::layer::Stratum>>,
     /// Most recent per-layer CPU timing and cache provenance.
@@ -38,6 +41,7 @@ impl EvalScheduler {
             current_token: 0,
             last_good: None,
             last_aux: HashMap::new(),
+            last_object_instances: Vec::new(),
             last_strata: None,
             last_layer_timings: Vec::new(),
             quality: PreviewQuality::Draft,
@@ -108,6 +112,7 @@ impl EvalScheduler {
         ctx.sync_aux_hashmap();
         self.last_strata = ctx.aux_maps.strata.clone();
         self.last_layer_timings = ctx.layer_timings.clone();
+        self.last_object_instances = ctx.aux_maps.object_instances.clone();
         self.last_aux = ctx.aux;
         self.last_good = Some(Arc::new(hf.clone()));
         Ok(Some(hf))

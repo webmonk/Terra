@@ -704,6 +704,8 @@ impl TerraApp {
                                         self.ui_state.profile.update_layer_timings(
                                             &self.scheduler.last_layer_timings,
                                         );
+                                        self.scheduler.last_object_instances =
+                                            ctx.aux_maps.object_instances.clone();
                                         self.scheduler.last_aux = ctx.aux;
                                         self.scheduler.last_good =
                                             Some(std::sync::Arc::new(hf.clone()));

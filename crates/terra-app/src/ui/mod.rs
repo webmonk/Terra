@@ -158,6 +158,11 @@ pub struct UiState {
     pub build_progress: Option<f32>,
     /// Layer or pass currently being refined, when the evaluator can identify one.
     pub refining_layer_name: Option<String>,
+    /// Props drawn in the viewport, and how many the placer actually made.
+    /// They differ when the overlay thins above its draw budget; the inspector
+    /// says so rather than letting the viewport imply a sparser scatter.
+    pub object_instances_drawn: usize,
+    pub object_instances_placed: usize,
     /// True when the visible terrain is a Draft or Medium evaluation.
     pub draft_displayed: bool,
     pub quality: PreviewQuality,

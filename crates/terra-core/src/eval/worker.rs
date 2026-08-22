@@ -42,6 +42,8 @@ pub struct EvalWorkResult {
     pub height: Heightfield,
     pub aux: HashMap<String, MaskField>,
     pub strata: Option<Vec<crate::layer::Stratum>>,
+    /// Props placed by Scatter Objects layers; a list, not a raster.
+    pub object_instances: Vec<crate::layer::ObjectInstance>,
     pub eval_us: u64,
     pub layer_timings: Vec<super::LayerEvalTiming>,
     /// Compact per-layer height previews for UI thumbnails, taken from the
@@ -267,6 +269,7 @@ fn run_cpu_job(
         height: hf,
         aux: ctx.aux,
         strata: ctx.aux_maps.strata.clone(),
+        object_instances: ctx.aux_maps.object_instances.clone(),
         eval_us: t0.elapsed().as_micros() as u64,
         layer_timings: ctx.layer_timings,
         layer_previews,

@@ -248,6 +248,8 @@ pub struct TerraApp {
     /// Skip redundant aux / vegetation / overhang GPU syncs.
     aux_upload_fp: u64,
     veg_upload_fp: u64,
+    /// Fingerprint of the prop placements last uploaded to the viewport.
+    obj_upload_fp: u64,
     overhang_upload_fp: u64,
     /// Detect lighting preset changes for progressive invalidation.
     last_lighting_preset: crate::ui::LightingPreset,
@@ -368,6 +370,7 @@ impl Default for TerraApp {
             mask_overlay_dirty: true,
             aux_upload_fp: u64::MAX,
             veg_upload_fp: u64::MAX,
+            obj_upload_fp: u64::MAX,
             overhang_upload_fp: u64::MAX,
             last_lighting_preset: crate::ui::LightingPreset::Studio,
             last_lighting_customized: false,

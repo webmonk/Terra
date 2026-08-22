@@ -142,6 +142,22 @@ impl TerraApp {
                         );
                         self.veg_upload_fp = veg_fp;
                     }
+                    // Placed props. Unlike vegetation these are exact
+                    // placements, so the overlay draws solids at them rather
+                    // than re-deriving billboards from a density raster.
+                    let props = &self.scheduler.last_object_instances;
+                    let obj_fp = object_instances_fingerprint(props);
+                    if obj_fp != self.obj_upload_fp {
+                        let base = hf.metrics.world_size_x.max(hf.metrics.world_size_z);
+                        // One unit prop is a small fraction of the world, so
+                        // props stay visible at 1 km and at 16 km without the
+                        // artist retuning every class scale per project.
+                        let base_size_m = (base * 0.0015).clamp(0.5, 12.0);
+                        let (drawn, placed) = r.sync_object_instances(props, base_size_m);
+                        self.ui_state.object_instances_drawn = drawn;
+                        self.ui_state.object_instances_placed = placed;
+                        self.obj_upload_fp = obj_fp;
+                    }
                     // Phase J: dual-height overhang / cave roof proxy from aux maps.
                     let overhang_fp = self
                         .scheduler
@@ -736,4 +752,25 @@ fn terrain_height_stats(
     vals.sort_by(|a, b| a.partial_cmp(b).unwrap_or(std::cmp::Ordering::Equal));
     let median = vals.get(vals.len() / 2).copied().unwrap_or(0.0);
     crate::ui::TerrainHeightStats { min, max, median }
+}
+
+/// Cheap order-sensitive fingerprint of a placement list.
+///
+/// Placement is deterministic for a given seed and terrain, so re-uploading is
+/// only needed when the list actually changes; hashing position and scale
+/// catches a re-place without walking every field.
+fn object_instances_fingerprint(instances: &[terra_core::layer::ObjectInstance]) -> u64 {
+    let mut hash = 0xcbf2_9ce4_8422_2325u64 ^ instances.len() as u64;
+    for inst in instances {
+        for bits in [
+            inst.x.to_bits(),
+            inst.z.to_bits(),
+            inst.scale.to_bits(),
+            inst.class_index,
+        ] {
+            hash ^= bits as u64;
+            hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+    }
+    hash
 }
