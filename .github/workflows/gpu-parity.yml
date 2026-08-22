@@ -5,6 +5,10 @@
 # they run for real: mesa-vulkan-drivers provides lavapipe, a software
 # Vulkan implementation wgpu picks up when no hardware adapter exists,
 # so the CPU-vs-GPU tolerance contracts are enforced on every push.
+#
+# This leg also runs terra-render's tests. Those self-skip when there is no
+# adapter, which means the main CI workflow reports them green without ever
+# executing them; lavapipe is where they actually run.
 
 name: GPU parity
 
@@ -42,3 +46,10 @@ jobs:
 
       - name: Run parity matrix
         run: cargo test -p terra-gpu --test parity_matrix --locked --no-fail-fast
+
+      # terra-render's render tests self-skip without an adapter, so on the main
+      # CI legs they pass by never running. This is the only leg where they
+      # actually execute - the double-buffer seeding and terrain AO regressions
+      # they guard are invisible to a run that skips.
+      - name: Run terra-render GPU tests
+        run: cargo test -p terra-render --locked --no-fail-fast
