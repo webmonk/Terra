@@ -73,7 +73,11 @@ fn thermal_erode_height_only(
                 if soft <= 1e-6 {
                     continue;
                 }
-                let mut deltas = Vec::with_capacity(8);
+                // Stack array, not a Vec: there are at most 8 downhill
+                // neighbours, and heap-allocating one per texel per iteration
+                // dominated the pass.
+                let mut deltas: [(usize, f32); 8] = [(0, 0.0); 8];
+                let mut n_deltas = 0usize;
                 let mut sum = 0.0f32;
                 for &(di, dj, distance) in &neighbors {
                     let ni = i + di;
@@ -84,7 +88,8 @@ fn thermal_erode_height_only(
                     let nidx = nj as usize * w + ni as usize;
                     let diff = h0 - src[nidx] - talus_slope * distance;
                     if diff > 0.0 {
-                        deltas.push((nidx, diff));
+                        deltas[n_deltas] = (nidx, diff);
+                        n_deltas += 1;
                         sum += diff;
                     }
                 }
@@ -94,7 +99,7 @@ fn thermal_erode_height_only(
                 let move_amt = sum * strength * 0.125 * soft;
                 h[idx] -= move_amt;
                 erosion[idx] += move_amt;
-                for (nidx, diff) in deltas {
+                for &(nidx, diff) in &deltas[..n_deltas] {
                     let share = move_amt * (diff / sum);
                     h[nidx] += share;
                     deposit[nidx] += share;
@@ -211,7 +216,8 @@ pub fn thermal_erode_with_strata_ex(
                 let z = metrics.world_z(j as u32);
                 let depth = strata_depth_m(reference.get(i as u32, j as u32), h0, x, z, geom);
                 let stability = stability_at_strata_depth(strata, depth, default_hardness);
-                let mut deltas = Vec::with_capacity(8);
+                let mut deltas: [(usize, f32); 8] = [(0, 0.0); 8];
+                let mut n_deltas = 0usize;
                 let mut sum = 0.0f32;
                 for &(di, dj, distance) in &neighbors {
                     let ni = i + di;
@@ -222,7 +228,8 @@ pub fn thermal_erode_with_strata_ex(
                     let nidx = nj as usize * w + ni as usize;
                     let diff = h0 - src[nidx] - talus_slope * distance;
                     if diff > 0.0 {
-                        deltas.push((nidx, diff));
+                        deltas[n_deltas] = (nidx, diff);
+                        n_deltas += 1;
                         sum += diff;
                     }
                 }
@@ -239,7 +246,7 @@ pub fn thermal_erode_with_strata_ex(
                 }
                 h[idx] -= move_amt;
                 erosion[idx] += move_amt;
-                for (nidx, diff) in deltas {
+                for &(nidx, diff) in &deltas[..n_deltas] {
                     let share = move_amt * (diff / sum);
                     h[nidx] += share;
                     deposit[nidx] += share;

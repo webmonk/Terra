@@ -274,6 +274,92 @@ fn bilateral_settle(input: &Heightfield, radius: u32, sigma_range: f32) -> Heigh
     out
 }
 
+/// One Jacobi talus redistribution over `surface`, expressed as a **gather** so
+/// it parallelises.
+///
+/// The scatter form ("each cell pushes its share into its downhill neighbours")
+/// cannot be run in parallel: neighbouring cells write the same slots. The
+/// gather form is arithmetically the same pass — both read only the `surface`
+/// snapshot — but each cell computes its own inflow by pulling from the uphill
+/// neighbours that would have pushed to it. The 8-neighbourhood is symmetric,
+/// so the pair set is identical; only the order the shares are summed differs.
+///
+/// `outgoing[idx]` is what leaves cell `idx`, `incoming[idx]` what arrives.
+/// `move_for(idx, sum)` returns how much may leave given the downhill excess
+/// `sum`; returning <= 0 skips the cell.
+fn redistribute_gather(
+    w: usize,
+    hh: usize,
+    surface: &[f32],
+    neighbors: &[(i32, i32, f32); 8],
+    talus_slope: f32,
+    move_for: impl Fn(usize, f32) -> f32 + Sync,
+) -> (Vec<f32>, Vec<f32>) {
+    use rayon::prelude::*;
+    let n = w * hh;
+
+    // Pass 1: each cell's total downhill excess and the amount it will shed.
+    let mut sums = vec![0.0f32; n];
+    let mut outgoing = vec![0.0f32; n];
+    sums.par_iter_mut()
+        .zip(outgoing.par_iter_mut())
+        .enumerate()
+        .for_each(|(idx, (sum_slot, out_slot))| {
+            let i = (idx % w) as i32;
+            let j = (idx / w) as i32;
+            let h0 = surface[idx];
+            let mut sum = 0.0f32;
+            for &(di, dj, dist) in neighbors {
+                let (ni, nj) = (i + di, j + dj);
+                if ni < 0 || nj < 0 || ni >= w as i32 || nj >= hh as i32 {
+                    continue;
+                }
+                let diff = h0 - surface[nj as usize * w + ni as usize] - talus_slope * dist;
+                if diff > 0.0 {
+                    sum += diff;
+                }
+            }
+            if sum <= 0.0 {
+                return;
+            }
+            let moved = move_for(idx, sum);
+            if moved <= 0.0 {
+                return;
+            }
+            *sum_slot = sum;
+            *out_slot = moved;
+        });
+
+    // Pass 2: each cell pulls its share from the uphill neighbours that shed.
+    let mut incoming = vec![0.0f32; n];
+    incoming.par_iter_mut().enumerate().for_each(|(idx, slot)| {
+        let i = (idx % w) as i32;
+        let j = (idx / w) as i32;
+        let h_me = surface[idx];
+        let mut inflow = 0.0f32;
+        for &(di, dj, dist) in neighbors {
+            let (ni, nj) = (i + di, j + dj);
+            if ni < 0 || nj < 0 || ni >= w as i32 || nj >= hh as i32 {
+                continue;
+            }
+            let nidx = nj as usize * w + ni as usize;
+            let moved = outgoing[nidx];
+            if moved <= 0.0 {
+                continue;
+            }
+            // Excess of the *neighbour* toward this cell - the same quantity the
+            // scatter form used to weight the share it pushed here.
+            let diff = surface[nidx] - h_me - talus_slope * dist;
+            if diff > 0.0 {
+                inflow += moved * (diff / sums[nidx]);
+            }
+        }
+        *slot = inflow;
+    });
+
+    (outgoing, incoming)
+}
+
 /// Layered thermal erosion (classical talus + Yang 2024 weathering / rock discharge).
 ///
 /// 1. Weather bedrock -> loose debris where slope exceeds the talus angle (`weathering_rate`).
@@ -312,39 +398,48 @@ pub fn thermal_erode_layered(
     for _ in 0..p.iterations.max(1) {
         // --- Weathering: bedrock -> debris (Yang K_th excess slope) ---
         let surface = state.sync_surface();
-        for j in 0..hh as i32 {
-            for i in 0..w as i32 {
-                let idx = j as usize * w + i as usize;
-                let k = hardness.get(i as u32, j as u32).clamp(0.0, 1.0);
-                let soft = 1.0 - k;
-                if soft <= 1e-6 || weathering <= 1e-8 {
-                    continue;
-                }
-                let h0 = surface[idx];
-                let mut max_excess = 0.0f32;
-                for &(di, dj, dist) in &neighbors {
-                    let ni = i + di;
-                    let nj = j + dj;
-                    if ni < 0 || nj < 0 || ni >= w as i32 || nj >= hh as i32 {
-                        continue;
+        // Per-cell and write-local: every store is to `idx`, so this is a plain
+        // parallel map. Compute the detachments, then fold them in.
+        let detached: Vec<(f32, f32)> = {
+            use rayon::prelude::*;
+            (0..n)
+                .into_par_iter()
+                .map(|idx| {
+                    let i = (idx % w) as i32;
+                    let j = (idx / w) as i32;
+                    let soft = 1.0 - hardness.get(i as u32, j as u32).clamp(0.0, 1.0);
+                    if soft <= 1e-6 || weathering <= 1e-8 {
+                        return (0.0, 0.0);
                     }
-                    let nidx = nj as usize * w + ni as usize;
-                    let excess = h0 - surface[nidx] - talus_slope * dist;
-                    if excess > max_excess {
-                        max_excess = excess;
+                    let h0 = surface[idx];
+                    let mut max_excess = 0.0f32;
+                    for &(di, dj, dist) in &neighbors {
+                        let (ni, nj) = (i + di, j + dj);
+                        if ni < 0 || nj < 0 || ni >= w as i32 || nj >= hh as i32 {
+                            continue;
+                        }
+                        let excess =
+                            h0 - surface[nj as usize * w + ni as usize] - talus_slope * dist;
+                        if excess > max_excess {
+                            max_excess = excess;
+                        }
                     }
-                }
-                if max_excess <= 1e-6 {
-                    continue;
-                }
-                instability[idx] = instability[idx].max(max_excess);
-                // Detach amount: Yang-style K_th * excess, capped by material + bedrock.
-                let detach = (weathering * soft * max_excess * strength * 0.25)
-                    .min(material_cap)
-                    .min(state.bedrock[idx].max(0.0));
-                if detach <= 1e-8 {
-                    continue;
-                }
+                    if max_excess <= 1e-6 {
+                        return (0.0, 0.0);
+                    }
+                    // Yang-style K_th * excess, capped by material and bedrock.
+                    let detach = (weathering * soft * max_excess * strength * 0.25)
+                        .min(material_cap)
+                        .min(state.bedrock[idx].max(0.0));
+                    (max_excess, if detach <= 1e-8 { 0.0 } else { detach })
+                })
+                .collect()
+        };
+        for (idx, &(max_excess, detach)) in detached.iter().enumerate() {
+            if max_excess > instability[idx] {
+                instability[idx] = max_excess;
+            }
+            if detach > 0.0 {
                 state.bedrock[idx] -= detach;
                 state.debris[idx] += detach;
                 erosion[idx] += detach;
@@ -355,50 +450,26 @@ pub fn thermal_erode_layered(
         for _hop in 0..transport_hops.max(1) {
             let surface = state.sync_surface();
             let debris_src = state.debris.clone();
-            let mut delta_debris = vec![0.0f32; n];
-            for j in 0..hh as i32 {
-                for i in 0..w as i32 {
-                    let idx = j as usize * w + i as usize;
+            let (out, inflow) =
+                redistribute_gather(w, hh, &surface, &neighbors, talus_slope, |idx, sum| {
                     let available = debris_src[idx];
                     if available <= 1e-8 {
-                        continue;
-                    }
-                    let h0 = surface[idx];
-                    let mut deltas = Vec::with_capacity(8);
-                    let mut sum = 0.0f32;
-                    for &(di, dj, dist) in &neighbors {
-                        let ni = i + di;
-                        let nj = j + dj;
-                        if ni < 0 || nj < 0 || ni >= w as i32 || nj >= hh as i32 {
-                            continue;
-                        }
-                        let nidx = nj as usize * w + ni as usize;
-                        let diff = h0 - surface[nidx] - talus_slope * dist;
-                        if diff > 0.0 {
-                            deltas.push((nidx, diff));
-                            sum += diff;
-                        }
-                    }
-                    if sum <= 0.0 {
-                        continue;
+                        return 0.0;
                     }
                     let move_amt = (sum * strength * 0.125)
                         .min(available)
                         .min(material_cap.max(available));
                     if move_amt <= 1e-8 {
-                        continue;
+                        0.0
+                    } else {
+                        move_amt
                     }
-                    delta_debris[idx] -= move_amt;
-                    erosion[idx] += move_amt * 0.15; // scar contribution from remobilised debris
-                    for (nidx, diff) in deltas {
-                        let share = move_amt * (diff / sum);
-                        delta_debris[nidx] += share;
-                        deposit[nidx] += share;
-                    }
-                }
-            }
+                });
             for i in 0..n {
-                state.debris[i] = (debris_src[i] + delta_debris[i]).max(0.0);
+                // Scar contribution from remobilised debris.
+                erosion[i] += out[i] * 0.15;
+                deposit[i] += inflow[i];
+                state.debris[i] = (debris_src[i] - out[i] + inflow[i]).max(0.0);
             }
         }
 
@@ -406,79 +477,62 @@ pub fn thermal_erode_layered(
         // Preserves Musgrave behaviour on soft rock when weathering alone is insufficient.
         {
             let surface = state.sync_surface();
-            let mut delta_b = vec![0.0f32; n];
-            let mut delta_d = vec![0.0f32; n];
-            for j in 0..hh as i32 {
-                for i in 0..w as i32 {
-                    let idx = j as usize * w + i as usize;
-                    if state.debris[idx] > 1e-5 {
-                        continue;
+            let bedrock_src = state.bedrock.clone();
+            let debris_now = state.debris.clone();
+            let (out, inflow) =
+                redistribute_gather(w, hh, &surface, &neighbors, talus_slope, |idx, sum| {
+                    if debris_now[idx] > 1e-5 {
+                        return 0.0;
                     }
-                    let k = hardness.get(i as u32, j as u32).clamp(0.0, 1.0);
-                    let soft = 1.0 - k;
+                    let i = (idx % w) as u32;
+                    let j = (idx / w) as u32;
+                    let soft = 1.0 - hardness.get(i, j).clamp(0.0, 1.0);
                     if soft <= 1e-6 {
-                        continue;
-                    }
-                    let h0 = surface[idx];
-                    let mut deltas = Vec::with_capacity(8);
-                    let mut sum = 0.0f32;
-                    for &(di, dj, dist) in &neighbors {
-                        let ni = i + di;
-                        let nj = j + dj;
-                        if ni < 0 || nj < 0 || ni >= w as i32 || nj >= hh as i32 {
-                            continue;
-                        }
-                        let nidx = nj as usize * w + ni as usize;
-                        let diff = h0 - surface[nidx] - talus_slope * dist;
-                        if diff > 0.0 {
-                            deltas.push((nidx, diff));
-                            sum += diff;
-                        }
-                    }
-                    if sum <= 0.0 {
-                        continue;
+                        return 0.0;
                     }
                     let move_amt = (sum * strength * 0.125 * soft)
-                        .min(state.bedrock[idx])
+                        .min(bedrock_src[idx])
                         .min(material_cap.max(sum));
                     if move_amt <= 1e-8 {
-                        continue;
+                        0.0
+                    } else {
+                        move_amt
                     }
-                    delta_b[idx] -= move_amt;
-                    erosion[idx] += move_amt;
-                    for (nidx, diff) in deltas {
-                        let share = move_amt * (diff / sum);
-                        delta_d[nidx] += share;
-                        deposit[nidx] += share;
-                    }
-                }
-            }
+                });
             for i in 0..n {
-                state.bedrock[i] = (state.bedrock[i] + delta_b[i]).max(0.0);
-                state.debris[i] = (state.debris[i] + delta_d[i]).max(0.0);
+                erosion[i] += out[i];
+                deposit[i] += inflow[i];
+                state.bedrock[i] = (bedrock_src[i] - out[i]).max(0.0);
+                state.debris[i] = (state.debris[i] + inflow[i]).max(0.0);
             }
         }
     }
 
     let surface = state.sync_surface();
     let mut stability = vec![1.0f32; n];
-    for j in 0..hh as i32 {
-        for i in 0..w as i32 {
-            let idx = j as usize * w + i as usize;
-            let h0 = surface[idx];
-            let mut max_excess = 0.0f32;
-            for &(di, dj, dist) in &neighbors {
-                let ni = i + di;
-                let nj = j + dj;
-                if ni < 0 || nj < 0 || ni >= w as i32 || nj >= hh as i32 {
-                    continue;
+    {
+        use rayon::prelude::*;
+        let excesses: Vec<f32> = (0..n)
+            .into_par_iter()
+            .map(|idx| {
+                let i = (idx % w) as i32;
+                let j = (idx / w) as i32;
+                let h0 = surface[idx];
+                let mut max_excess = 0.0f32;
+                for &(di, dj, dist) in &neighbors {
+                    let (ni, nj) = (i + di, j + dj);
+                    if ni < 0 || nj < 0 || ni >= w as i32 || nj >= hh as i32 {
+                        continue;
+                    }
+                    let excess = h0 - surface[nj as usize * w + ni as usize] - talus_slope * dist;
+                    if excess > max_excess {
+                        max_excess = excess;
+                    }
                 }
-                let nidx = nj as usize * w + ni as usize;
-                let excess = h0 - surface[nidx] - talus_slope * dist;
-                if excess > max_excess {
-                    max_excess = excess;
-                }
-            }
+                max_excess
+            })
+            .collect();
+        for (idx, &max_excess) in excesses.iter().enumerate() {
             // 1 = fully stable; 0 = strongly over-steep.
             stability[idx] =
                 (1.0 - (max_excess / (dx.max(dz) * 4.0)).clamp(0.0, 1.0)).clamp(0.0, 1.0);
