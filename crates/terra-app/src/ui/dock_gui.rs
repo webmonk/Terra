@@ -70,7 +70,14 @@ pub fn draw_bottom_dock(
     let (status_text, show_progress, progress) = if ui_state.refining {
         let pct = ui_state.build_progress.unwrap_or(0.0).clamp(0.0, 1.0);
         let name = ui_state.refining_layer_name.as_deref().unwrap_or("Terrain");
-        (format!("{name} {:.0}%", pct * 100.0), true, pct)
+        // Name the rung being computed: the preview qualities take coarse-to-fine
+        // shortcuts in the sims, so which one you are looking at is meaningful,
+        // not just how far along it is.
+        (
+            format!("{name} {:.0}% - {quality}", pct * 100.0),
+            true,
+            pct,
+        )
     } else if ui_state.draft_displayed {
         (
             "Interactive preview active - full refinement pending".into(),
