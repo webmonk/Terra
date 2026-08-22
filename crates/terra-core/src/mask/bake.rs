@@ -34,13 +34,36 @@ pub fn bake_mask_assets_resolved(
         resample_height(reference, target)
     };
 
-    let mut out = HashMap::new();
-    for asset in assets {
-        let mut field = bake_source(&asset.source, assets, &hf, aux, published);
-        apply_mask_ops(&mut field, &asset.ops);
-        out.insert(asset.id, field);
-    }
-    out
+    // Slope and curvature are whole-field derivative passes that several
+    // sources ask for independently; compute each at most once and share it.
+    let derived = DerivedFields {
+        slope: assets
+            .iter()
+            .any(|a| matches!(a.source, MaskSource::Slope { .. }))
+            .then(|| analyze::slope_degrees(&hf)),
+        curvature: assets
+            .iter()
+            .any(|a| matches!(a.source, MaskSource::Curvature { .. }))
+            .then(|| analyze::curvature(&hf)),
+    };
+
+    // Assets are independent, so bake them concurrently.
+    use rayon::prelude::*;
+    assets
+        .par_iter()
+        .map(|asset| {
+            let mut field = bake_source(&asset.source, assets, &hf, aux, published, &derived);
+            apply_mask_ops(&mut field, &asset.ops);
+            (asset.id, field)
+        })
+        .collect()
+}
+
+/// Whole-field analyses shared by every asset in one bake.
+#[derive(Default)]
+struct DerivedFields {
+    slope: Option<MaskField>,
+    curvature: Option<MaskField>,
 }
 
 fn resample_height(src: &Heightfield, target: HeightfieldMetrics) -> Heightfield {
@@ -63,6 +86,7 @@ fn bake_source(
     hf: &Heightfield,
     aux: &HashMap<String, MaskField>,
     published: &HashMap<OutputId, MaskField>,
+    derived: &DerivedFields,
 ) -> MaskField {
     match source {
         MaskSource::None => MaskField::ones(hf.metrics),
@@ -79,7 +103,14 @@ fn bake_source(
         MaskSource::Constant(v) => MaskField::filled(hf.metrics, *v),
         MaskSource::Height { min, max } => MaskField::from_height_range(hf, *min, *max),
         MaskSource::Slope { min_deg, max_deg } => {
-            let s = analyze::slope_degrees(hf);
+            let owned;
+            let s = match derived.slope.as_ref() {
+                Some(shared) => shared,
+                None => {
+                    owned = analyze::slope_degrees(hf);
+                    &owned
+                }
+            };
             let mut m = MaskField::zeros(hf.metrics);
             for j in 0..hf.metrics.height {
                 for i in 0..hf.metrics.width {
@@ -95,8 +126,10 @@ fn bake_source(
             width_deg,
         } => analyze::aspect_mask(hf, *center_deg, *width_deg),
         MaskSource::Curvature { min, max } => {
-            let c = analyze::curvature(hf);
-            let mut m = c;
+            let mut m = match derived.curvature.as_ref() {
+                Some(shared) => shared.clone(),
+                None => analyze::curvature(hf),
+            };
             for v in m.data_mut() {
                 *v = ((*v - *min) / (*max - *min).max(1e-3)).clamp(0.0, 1.0);
             }

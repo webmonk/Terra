@@ -111,9 +111,10 @@ impl LayerKind {
             | LayerKind::SandSimulation(_)
             | LayerKind::FluidSimulation(_) => OperationCategory::Simulation,
 
-            LayerKind::Materials(_) | LayerKind::Biomes(_) | LayerKind::Vegetation(_) => {
-                OperationCategory::Surface
-            }
+            LayerKind::Materials(_)
+            | LayerKind::Biomes(_)
+            | LayerKind::Vegetation(_)
+            | LayerKind::ScatterObjects(_) => OperationCategory::Surface,
         }
     }
 
@@ -144,7 +145,7 @@ impl LayerKind {
             | LayerKind::Path(_)
             | LayerKind::PolygonHeight(_) => vec![FieldId::Height],
             LayerKind::Biomes(_) => vec![FieldId::Height],
-            LayerKind::Vegetation(_) => vec![FieldId::Height],
+            LayerKind::Vegetation(_) | LayerKind::ScatterObjects(_) => vec![FieldId::Height],
             LayerKind::Materials(_) => vec![FieldId::Height],
             _ => Vec::new(),
         }
@@ -185,6 +186,14 @@ impl LayerKind {
                     FieldId::Wetness,
                     FieldId::Slope,
                     FieldId::Snow,
+                ]
+            }
+            LayerKind::ScatterObjects(_) => {
+                vec![
+                    FieldId::Biomes,
+                    FieldId::Materials,
+                    FieldId::Wetness,
+                    FieldId::Slope,
                 ]
             }
             LayerKind::Materials(_) => {
@@ -370,6 +379,12 @@ impl LayerKind {
                     vec![FieldId::Vegetation]
                 }
             }
+            // Scatter Objects is a height passthrough: it publishes the
+            // scatter density channel the renderer / export already consume
+            // plus the candidate field the placement was drawn from.
+            LayerKind::ScatterObjects(_) => {
+                vec![FieldId::Vegetation, FieldId::ScatterCandidates]
+            }
             LayerKind::OverhangStamp(_) | LayerKind::LocalSdf(_) => {
                 vec![
                     FieldId::Height,
@@ -476,7 +491,8 @@ impl LayerKind {
             | LayerKind::EcosystemFeedback(_)
             | LayerKind::Materials(_)
             | LayerKind::Biomes(_)
-            | LayerKind::Vegetation(_) => ScaleBand::Meso,
+            | LayerKind::Vegetation(_)
+            | LayerKind::ScatterObjects(_) => ScaleBand::Meso,
         }
     }
 }

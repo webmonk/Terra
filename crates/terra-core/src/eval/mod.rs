@@ -164,6 +164,11 @@ pub struct StackEvaluator {
     scrub_cache: HashMap<LayerId, Vec<ScrubEntry>>,
     /// Scrub-checkpoint reuse count (observable for tests / diagnostics).
     pub scrub_hits: u64,
+    /// Field contract each layer had when it last evaluated. A kind whose
+    /// contract depends on its parameters can *stop* writing a channel, and
+    /// its new contract cannot mention what it abandoned - so invalidation
+    /// unions this with the current contract for the edited layer.
+    last_contracts: HashMap<LayerId, Vec<crate::fields::FieldId>>,
 }
 
 struct ScrubEntry {
@@ -230,6 +235,7 @@ impl StackEvaluator {
             cache: LayerCache::new(),
             scrub_cache: HashMap::new(),
             scrub_hits: 0,
+            last_contracts: HashMap::new(),
         }
     }
 
@@ -288,7 +294,11 @@ impl StackEvaluator {
         self.scrub_cache.remove(&id);
         let mut changed: HashSet<String> = HashSet::new();
         let mut height_changed = false;
-        for field in extra_changed {
+        // Union what the layer produced when it last ran: if a parameter
+        // edit narrowed its contract, consumers of the dropped channel still
+        // need invalidating, and the new contract cannot tell us that.
+        let remembered = self.last_contracts.get(&id).cloned().unwrap_or_default();
+        for field in remembered.iter().chain(extra_changed) {
             if *field == crate::fields::FieldId::Height {
                 height_changed = true;
             } else {
@@ -381,6 +391,7 @@ impl StackEvaluator {
         profiling::scope!("rebuild_all");
         self.cache.clear();
         ctx.pass_changed.clear();
+        ctx.mask_bake_memo = None;
         let seed = Heightfield::zeros(ctx.metrics);
         self.evaluate_nodes(&stack.nodes, ctx, &seed)
     }
@@ -396,6 +407,7 @@ impl StackEvaluator {
     ) -> Result<Heightfield, EvalError> {
         profiling::scope!("rebuild_incremental");
         ctx.pass_changed.clear();
+        ctx.mask_bake_memo = None;
         if stack.requires_tree_evaluation() {
             let seed = Heightfield::zeros(ctx.metrics);
             return self.evaluate_nodes(&stack.nodes, ctx, &seed);
@@ -730,6 +742,13 @@ impl StackEvaluator {
         want_mask: bool,
     ) -> Result<(Heightfield, Option<MaskField>), EvalError> {
         let timing_started = Instant::now();
+        // Remember the contract this layer evaluated under. Invalidation
+        // unions it with the post-edit contract so a kind that narrows its
+        // contract (vegetation dropping root cohesion) still invalidates
+        // consumers of the channel it abandoned - for every caller,
+        // including undo and redo.
+        self.last_contracts
+            .insert(layer.id(), layer.kind.produced_fields());
         if !layer.common.enabled {
             record_layer_timing(ctx, layer, timing_started, LayerEvalStatus::Disabled);
             // A disabled base applied nowhere, so clipped layers above see zero.
@@ -1013,7 +1032,8 @@ fn node_contains_solo(node: &StackNode) -> bool {
 pub(crate) struct MaskBakeMemo {
     input: Heightfield,
     aux: HashMap<String, MaskField>,
-    assets: usize,
+    /// Identity of the point-of-use asset set (ids + sources).
+    assets: u64,
 }
 
 fn refresh_point_of_use_masks(ctx: &mut EvalContext, input: &Heightfield) {
@@ -1033,10 +1053,34 @@ fn refresh_point_of_use_masks(ctx: &mut EvalContext, input: &Heightfield) {
     // aux writes land elsewhere hit this constantly.
     // Only the aux channels these sources actually read matter; a sim
     // writing an unrelated channel must not invalidate slope-derived masks.
+    // Canonicalised: `bake_source` folds legacy spellings onto the canonical
+    // key, and the aux store only ever holds canonical names, so comparing
+    // the raw source name would look up a key that can never exist and
+    // report "unchanged" forever.
     let read_keys: Vec<String> = assets
         .iter()
         .filter_map(|asset| mask_source_aux_key(&asset.source))
+        .map(|key| crate::fields::keys::canonical(&key).to_string())
         .collect();
+    // The memo must also notice the asset set itself changing. Contexts are
+    // built fresh per pass in the app, but the type is public and tests
+    // reuse them, so key on the point-of-use sources rather than trusting
+    // the caller.
+    let assets_fp = {
+        let mut hash = 0xcbf2_9ce4_8422_2325u64;
+        for asset in &assets {
+            for byte in serde_json::to_string(&asset.source)
+                .unwrap_or_default()
+                .as_bytes()
+                .iter()
+                .chain(asset.id.0.as_bytes())
+            {
+                hash ^= *byte as u64;
+                hash = hash.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+        }
+        hash
+    };
     // Every layer publishes its named outputs, so the published set grows
     // constantly; it only invalidates a bake that actually samples one.
     let reads_published = assets.iter().any(|asset| {
@@ -1044,7 +1088,7 @@ fn refresh_point_of_use_masks(ctx: &mut EvalContext, input: &Heightfield) {
     });
     if let Some(memo) = &ctx.mask_bake_memo {
         let unchanged = !reads_published
-            && memo.assets == assets.len()
+            && memo.assets == assets_fp
             && memo.input.shares_storage_with(input)
             && read_keys.iter().all(|key| {
                 match (memo.aux.get(key), ctx.aux.get(key)) {
@@ -1074,7 +1118,7 @@ fn refresh_point_of_use_masks(ctx: &mut EvalContext, input: &Heightfield) {
             .iter()
             .filter_map(|key| ctx.aux.get(key).map(|f| (key.clone(), f.clone())))
             .collect(),
-        assets: assets.len(),
+        assets: assets_fp,
     });
 }
 
@@ -1580,6 +1624,62 @@ mod tests {
     /// tracks the evolving terrain, which is pure waste when nothing they
     /// read changed. Passthrough layers must not force a re-bake, and a
     /// layer that actually moves height must.
+    /// Diagnostic: per-layer cost of one interactive brush dab, so sculpt
+    /// latency work targets what actually dominates rather than what seems
+    /// likely. Ignored by default; run with
+    /// `cargo test -p terra-core --lib profile_sculpt_stroke_latency --
+    ///  --ignored --nocapture`.
+    #[test]
+    #[ignore]
+    fn profile_sculpt_stroke_latency() {
+        use crate::authoring::{SculptPoint, SculptStroke, SculptStrokeKind};
+        use crate::layer::{
+            BlurParams, FbmParams, FlatParams, MaterialsParams, SculptStrokeParams,
+            ThermalErosionParams, VegetationParams,
+        };
+        let metrics = HeightfieldMetrics::new(512, 512, 4096.0, 4096.0);
+        let mut stack = LayerStack::new();
+        stack.push(Layer::new("Base", LayerKind::Flat(FlatParams { height: 40.0 })));
+        let mut fbm = Layer::new("Fbm", LayerKind::Fbm(FbmParams::default()));
+        fbm.common.blend = BlendMode::Add;
+        stack.push(fbm);
+        let sculpt = Layer::new("Sculpt", LayerKind::SculptStrokes(SculptStrokeParams::default()));
+        let sculpt_id = sculpt.id();
+        stack.push(sculpt);
+        stack.push(Layer::new("Thermal", LayerKind::ThermalErosion(ThermalErosionParams::default())));
+        stack.push(Layer::new("Blur", LayerKind::Blur(BlurParams::default())));
+        stack.push(Layer::new("Materials", LayerKind::Materials(MaterialsParams::default())));
+        stack.push(Layer::new("Veg", LayerKind::Vegetation(VegetationParams::default())));
+
+        let mut eval = StackEvaluator::new();
+        let mut ctx = EvalContext::new(metrics);
+        eval.rebuild_all(&stack, &mut ctx).unwrap();
+
+        // One brush dab, as the interactive path produces.
+        if let Some(l) = stack.find_mut(sculpt_id) {
+            if let LayerKind::SculptStrokes(p) = &mut l.kind {
+                p.strokes.push(SculptStroke {
+                    kind: SculptStrokeKind::Raise,
+                    points: vec![SculptPoint { u: 0.5, v: 0.5, pressure: 1.0 }],
+                    radius_m: 120.0,
+                    strength: 40.0,
+                    ..Default::default()
+                });
+            }
+        }
+        eval.mark_dirty_from(&stack, sculpt_id);
+        ctx.layer_timings.clear();
+        let t = std::time::Instant::now();
+        eval.rebuild_incremental(&stack, &mut ctx).unwrap();
+        println!("SCULPT total={:?}", t.elapsed());
+        for timing in &ctx.layer_timings {
+            println!(
+                "  {:<28} {:>9} us  {:?}",
+                timing.layer_name, timing.elapsed_us, timing.status
+            );
+        }
+    }
+
     #[test]
     fn point_of_use_mask_bakes_are_skipped_when_inputs_are_unchanged() {
         use crate::layer::{FlatParams, MaterialsParams, VegetationParams};

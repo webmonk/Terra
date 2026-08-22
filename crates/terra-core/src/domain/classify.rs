@@ -57,7 +57,7 @@ pub fn classify_layer_kind(kind: &LayerKind) -> DomainRole {
         | LayerKind::FluidSimulation(_) => DomainRole::SimulationLayer,
 
         LayerKind::Materials(_) => DomainRole::MaterialLayer,
-        LayerKind::Vegetation(_) => DomainRole::ScatterLayer,
+        LayerKind::Vegetation(_) | LayerKind::ScatterObjects(_) => DomainRole::ScatterLayer,
 
         // Dual / legacy
         LayerKind::Path(_) => DomainRole::ShapeLayer, // height path; object path is future

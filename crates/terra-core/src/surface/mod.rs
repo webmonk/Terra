@@ -202,6 +202,19 @@ pub fn bake_biomes_climate(
     }
 }
 
+/// Place general props for a Scatter Objects layer.
+///
+/// Thin surface-level entry point over [`scatter::scatter_objects`] so the
+/// evaluator keeps a single dependency edge into the surface family.
+pub fn place_scatter_objects(
+    hf: &Heightfield,
+    p: &crate::layer::ScatterObjectsParams,
+    coverage: Option<&MaskField>,
+    exclusion: Option<&MaskField>,
+) -> scatter::ScatterObjectsOutput {
+    scatter::scatter_objects(hf, p, coverage, exclusion)
+}
+
 pub fn vegetation_density(
     hf: &Heightfield,
     p: &VegetationParams,
@@ -235,12 +248,41 @@ pub fn vegetation_density(
             suitability.set(i, j, cov.clamp(0.0, 1.0));
         }
     }
-    // Encode scatter count proxy via poisson acceptance
-    let points = scatter::poisson_disk(hf, p);
+    // Scatter proxy. The Poisson set is only splatted into single texels and
+    // then blurred, so once the disk radius drops below one texel the
+    // realization saturates the accepted region and the blur reproduces
+    // exactly `blur(acceptance)`. Compute that directly instead of flood
+    // filling: at the 3 m default over a 4096 m world the sampler was ~650k
+    // seeds, a 3.7M-entry (~44 MB) grid, and 77% of an interactive edit.
+    // Above one texel the point set is genuinely sparse and still shapes the
+    // look, so that branch keeps sampling (and reuses the slope already
+    // computed here instead of recomputing it inside the sampler).
+    let texel = hf.metrics.dx().min(hf.metrics.dz()).max(1e-3);
     let mut dens = MaskField::zeros(hf.metrics);
-    for &(x, z) in &points {
-        let (i, j) = hf.metrics.sample_index(x, z);
-        dens.set(i, j, 1.0);
+    let min_dist = p.min_distance.max(0.5);
+    if min_dist <= texel {
+        // Occupancy, not a flat fill: `density` only scales the sampler's seed
+        // attempts, so a low density leaves a fraction of texels empty even in
+        // the sub-texel regime and the slider must keep biting. Expected
+        // accepted seeds per texel is `density * (texel / min_dist)^2`; for
+        // uniform seeds the chance a texel receives at least one is
+        // `1 - exp(-lambda)`, which saturates to 1.0 at the defaults (lambda
+        // is ~7 at 3 m spacing on an 8 m texel) and degrades smoothly below.
+        let lambda_full = (texel / min_dist).powi(2) * p.density.max(0.0);
+        let occupancy = 1.0 - (-lambda_full).exp();
+        for j in 0..hf.metrics.height {
+            for i in 0..hf.metrics.width {
+                let s = slope.get(i, j) * 90.0;
+                if s >= p.min_slope_deg && s <= p.max_slope_deg {
+                    dens.set(i, j, occupancy);
+                }
+            }
+        }
+    } else {
+        for (x, z) in scatter::poisson_disk_with_slope(hf, p, &slope) {
+            let (i, j) = hf.metrics.sample_index(x, z);
+            dens.set(i, j, 1.0);
+        }
     }
     // Soften - larger blur so Draft (256) still shows a forest canopy tint.
     let blur_r = if hf.metrics.width <= 512 { 2 } else { 1 };
@@ -255,4 +297,85 @@ pub fn vegetation_density(
         }
     }
     dens
+}
+
+#[cfg(test)]
+mod vegetation_density_tests {
+    use super::*;
+    use crate::heightfield::HeightfieldMetrics;
+    use crate::layer::VegetationParams;
+
+    /// Flat terrain, so every texel passes the slope filter and the only thing
+    /// separating the two code paths is how many of them get a plant.
+    fn flat(res: u32, world: f32) -> Heightfield {
+        Heightfield::zeros(HeightfieldMetrics::new(res, res, world, world))
+    }
+
+    fn mean(field: &MaskField) -> f32 {
+        let (w, h) = (field.metrics.width, field.metrics.height);
+        let mut sum = 0.0;
+        for j in 0..h {
+            for i in 0..w {
+                sum += field.get(i, j);
+            }
+        }
+        sum / (w * h) as f32
+    }
+
+    fn veg(density: f32, min_distance: f32) -> VegetationParams {
+        VegetationParams {
+            density,
+            min_distance,
+            min_slope_deg: 0.0,
+            max_slope_deg: 90.0,
+            ..VegetationParams::default()
+        }
+    }
+
+    /// The sub-texel shortcut replaced a real Poisson realization; it must not
+    /// also swallow the density slider. A flat fill would report the same
+    /// coverage at every density.
+    #[test]
+    fn sub_texel_density_still_responds_to_the_density_slider() {
+        // 8 m texels, 3 m spacing: comfortably inside the shortcut.
+        let hf = flat(128, 1024.0);
+        let sparse = mean(&vegetation_density(&hf, &veg(0.02, 3.0), None, None, None));
+        let mid = mean(&vegetation_density(&hf, &veg(0.15, 3.0), None, None, None));
+        let full = mean(&vegetation_density(&hf, &veg(1.0, 3.0), None, None, None));
+
+        assert!(
+            sparse < mid && mid < full,
+            "density must remain monotonic in the sub-texel regime; \
+             got {sparse} / {mid} / {full}"
+        );
+        assert!(
+            full > 0.95,
+            "at full density the accepted region saturates; got {full}"
+        );
+        assert!(
+            sparse < 0.5,
+            "a very low density must leave most texels empty; got {sparse}"
+        );
+    }
+
+    /// Above one texel the point set is genuinely sparse, so the shortcut must
+    /// not engage and the seeded sampler still drives the result.
+    #[test]
+    fn super_texel_spacing_keeps_the_sampled_path() {
+        let hf = flat(128, 1024.0);
+        // 32 m spacing on 8 m texels.
+        let a = vegetation_density(&hf, &veg(1.0, 32.0), None, None, None);
+        let b = vegetation_density(&hf, &veg(1.0, 32.0), None, None, None);
+        for j in 0..hf.metrics.height {
+            for i in 0..hf.metrics.width {
+                assert_eq!(a.get(i, j), b.get(i, j), "sampler must stay deterministic");
+            }
+        }
+        // A blurred sparse point set covers far less than a saturated fill.
+        assert!(
+            mean(&a) < 0.6,
+            "32 m spacing must stay visibly sparse; got {}",
+            mean(&a)
+        );
+    }
 }

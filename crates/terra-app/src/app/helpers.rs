@@ -112,6 +112,7 @@ pub(crate) fn randomize_layer_seed(kind: &mut terra_core::layer::LayerKind) {
         LayerKind::Canyons(p) => p.seed = seed,
         LayerKind::VoronoiRegions(p) => p.base.seed = seed,
         LayerKind::Vegetation(p) => p.seed = seed,
+        LayerKind::ScatterObjects(p) => p.seed = seed,
         LayerKind::OverhangStamp(p) => p.seed = seed,
         LayerKind::LocalSdf(p) => p.seed = seed,
         _ => {}

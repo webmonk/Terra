@@ -504,3 +504,105 @@ fn all_layer_ids_is_stable_across_group_enable_toggles() {
         "layer_ids still skips disabled groups by design - that is why the          diff cannot use it"
     );
 }
+
+// ---------------------------------------------------------------------------
+// Round 4, finding 3 — the progress slider must keep its scrub checkpoints.
+//
+// `ApplyCtx::dirty_keeps_scrub_for` was previously a `bool` that nothing ever
+// assigned, so `apply_actions` always took the `mark_dirty_from_fields` branch
+// and the scrub cache could never hit: the feature was dead in the shipping
+// binary. `SetSimProgress` now seeds it — but only when the scrub is the
+// batch's sole dirty seed, since the scrub key covers neither masks nor
+// bindings.
+//
+// Mirrors `actions/layers.rs:189-211` (the seeding) and `actions/mod.rs:209-217`
+// (the dispatch).
+// ---------------------------------------------------------------------------
+
+/// Verbatim transcription of the `SetSimProgress` seeding in
+/// `crates/terra-app/src/app/actions/layers.rs:204-210`.
+fn seed_sim_progress(dirty_from: &mut Option<LayerId>, keeps_scrub_for: &mut Option<LayerId>, id: LayerId) {
+    if dirty_from.is_none() {
+        *keeps_scrub_for = Some(id);
+    }
+    *dirty_from = Some(id);
+}
+
+/// Verbatim transcription of the invalidation dispatch in
+/// `crates/terra-app/src/app/actions/mod.rs:209-217`.
+fn dispatch_dirty(
+    eval: &mut StackEvaluator,
+    stack: &LayerStack,
+    id: LayerId,
+    keeps_scrub_for: Option<LayerId>,
+) {
+    if keeps_scrub_for == Some(id) {
+        eval.mark_dirty_from_scrub(stack, id);
+    } else {
+        eval.mark_dirty_from_fields(stack, id, &[]);
+    }
+}
+
+fn scrub_stack() -> (LayerStack, LayerId) {
+    let mut stack = LayerStack::new();
+    let mut fbm = Layer::new("Fbm", LayerKind::Fbm(FbmParams::default()));
+    fbm.common.blend = BlendMode::Add;
+    stack.push(fbm);
+    let mut thermal = Layer::new(
+        "Thermal",
+        LayerKind::ThermalErosion(ThermalErosionParams::default()),
+    );
+    thermal.common.sim_progress = 0.5;
+    let id = thermal.id();
+    stack.push(thermal);
+    (stack, id)
+}
+
+#[test]
+fn sim_progress_scrub_keeps_its_checkpoints() {
+    let (mut stack, thermal_id) = scrub_stack();
+    let mut eval = StackEvaluator::new();
+    let mut ctx = EvalContext::new(HeightfieldMetrics::new(48, 48, 96.0, 96.0));
+    eval.rebuild_all(&stack, &mut ctx).unwrap();
+
+    // Scrub away and back, one slider action per batch.
+    for progress in [0.7_f32, 0.5] {
+        stack.find_mut(thermal_id).unwrap().common.sim_progress = progress;
+        let (mut dirty_from, mut keeps) = (None, None);
+        seed_sim_progress(&mut dirty_from, &mut keeps, thermal_id);
+        dispatch_dirty(&mut eval, &stack, dirty_from.unwrap(), keeps);
+        eval.rebuild_incremental(&stack, &mut ctx).unwrap();
+    }
+
+    assert!(
+        eval.scrub_hits >= 1,
+        "returning the slider to a visited position must replay from a \
+         checkpoint; ApplyCtx::dirty_keeps_scrub_for was never seeded, so \
+         mark_dirty_from_scrub stayed unreachable from the app"
+    );
+}
+
+#[test]
+fn a_scrub_batched_with_another_edit_drops_the_checkpoints() {
+    let (mut stack, thermal_id) = scrub_stack();
+    let mut eval = StackEvaluator::new();
+    let mut ctx = EvalContext::new(HeightfieldMetrics::new(48, 48, 96.0, 96.0));
+    eval.rebuild_all(&stack, &mut ctx).unwrap();
+
+    for progress in [0.7_f32, 0.5] {
+        stack.find_mut(thermal_id).unwrap().common.sim_progress = progress;
+        // Some earlier action in the same batch already seeded a dirty layer,
+        // so the scrub is not the sole seed and must not keep checkpoints.
+        let (mut dirty_from, mut keeps) = (Some(thermal_id), None);
+        seed_sim_progress(&mut dirty_from, &mut keeps, thermal_id);
+        assert_eq!(keeps, None, "a batched scrub must not claim the scrub path");
+        dispatch_dirty(&mut eval, &stack, dirty_from.unwrap(), keeps);
+        eval.rebuild_incremental(&stack, &mut ctx).unwrap();
+    }
+
+    assert_eq!(
+        eval.scrub_hits, 0,
+        "checkpoints must be dropped when the batch contains another edit: \
+         the scrub key covers neither masks nor bindings"
+    );
+}

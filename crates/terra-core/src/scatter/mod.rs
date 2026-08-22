@@ -1,30 +1,68 @@
-//! Poisson-disk / blue-noise sampling for vegetation.
+//! Poisson-disk / blue-noise sampling for vegetation and object scatter.
+
+pub mod objects;
+
+pub use objects::{scatter_objects, ScatterObjectsOutput};
 
 use crate::analyze::slope_degrees;
-use crate::heightfield::Heightfield;
+use crate::heightfield::{Heightfield, HeightfieldMetrics};
 use crate::layer::VegetationParams;
 
 /// Bridson-style Poisson disk in world XZ, filtered by slope/biome proxies.
 pub fn poisson_disk(hf: &Heightfield, p: &VegetationParams) -> Vec<(f32, f32)> {
-    let min_dist = p.min_distance.max(0.5);
+    poisson_disk_with_slope(hf, p, &slope_degrees(hf))
+}
+
+/// [`poisson_disk`] for callers that already have the slope field.
+///
+/// `slope` must be the normalised (degrees / 90) field for `hf`; passing it in
+/// avoids recomputing it once per call.
+pub fn poisson_disk_with_slope(
+    hf: &Heightfield,
+    p: &VegetationParams,
+    slope: &crate::mask::MaskField,
+) -> Vec<(f32, f32)> {
+    let mut accept = |x: f32, z: f32| accepted(hf, slope, p, x, z);
+    poisson_disk_filtered(
+        hf.metrics,
+        p.min_distance,
+        p.density,
+        p.seed,
+        &mut accept,
+    )
+}
+
+/// Seeded Bridson Poisson-disk over the world XZ rectangle.
+///
+/// `accept` rejects world positions before they consume a disk slot; it is
+/// called in a fixed order driven only by the seeded stream, so the same
+/// `(min_distance, density, seed, accept)` always yields the same points.
+/// Nothing here reads the clock or an unseeded RNG.
+pub fn poisson_disk_filtered(
+    metrics: HeightfieldMetrics,
+    min_distance: f32,
+    density: f32,
+    seed: u64,
+    accept: &mut dyn FnMut(f32, f32) -> bool,
+) -> Vec<(f32, f32)> {
+    let min_dist = min_distance.max(0.5);
     let cell = min_dist / std::f32::consts::SQRT_2;
-    let gw = (hf.metrics.world_size_x / cell).ceil() as usize;
-    let gh = (hf.metrics.world_size_z / cell).ceil() as usize;
+    let gw = (metrics.world_size_x / cell).ceil() as usize;
+    let gh = (metrics.world_size_z / cell).ceil() as usize;
     let mut grid = vec![None::<(f32, f32)>; gw * gh];
     let mut points = Vec::new();
     let mut active = Vec::new();
-    let slope = slope_degrees(hf);
 
-    let mut rng = Rng::new(p.seed);
+    let mut rng = Rng::new(seed);
     // Seed points proportional to density
-    let attempts = ((hf.metrics.world_size_x * hf.metrics.world_size_z) / (min_dist * min_dist)
-        * p.density)
-        .ceil() as u32;
+    let attempts =
+        ((metrics.world_size_x * metrics.world_size_z) / (min_dist * min_dist) * density).ceil()
+            as u32;
 
     for _ in 0..attempts.max(1) {
-        let x = rng.f32() * hf.metrics.world_size_x;
-        let z = rng.f32() * hf.metrics.world_size_z;
-        if !accepted(hf, &slope, p, x, z) {
+        let x = rng.f32() * metrics.world_size_x;
+        let z = rng.f32() * metrics.world_size_z;
+        if !accept(x, z) {
             continue;
         }
         if try_add(x, z, min_dist, cell, gw, gh, &mut grid, &mut points) {
@@ -39,10 +77,10 @@ pub fn poisson_disk(hf: &Heightfield, p: &VegetationParams) -> Vec<(f32, f32)> {
             let rad = min_dist * (1.0 + rng.f32());
             let x = px + ang.cos() * rad;
             let z = pz + ang.sin() * rad;
-            if x < 0.0 || z < 0.0 || x >= hf.metrics.world_size_x || z >= hf.metrics.world_size_z {
+            if x < 0.0 || z < 0.0 || x >= metrics.world_size_x || z >= metrics.world_size_z {
                 continue;
             }
-            if !accepted(hf, &slope, p, x, z) {
+            if !accept(x, z) {
                 continue;
             }
             if try_add(x, z, min_dist, cell, gw, gh, &mut grid, &mut points) {

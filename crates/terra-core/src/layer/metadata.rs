@@ -277,6 +277,11 @@ impl LayerKind {
                 WorkflowStage::BiomePlacement,
             ),
             LayerKind::Vegetation(_) => ("vegetation", "Vegetation", WorkflowStage::Scatter),
+            LayerKind::ScatterObjects(_) => (
+                "scatter_objects",
+                "Scatter Objects",
+                WorkflowStage::Scatter,
+            ),
             LayerKind::OverhangStamp(_) => (
                 "overhang_stamp",
                 "Overhang Stamp",

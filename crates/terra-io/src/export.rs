@@ -23,6 +23,8 @@ pub struct ExportRequest {
     pub include_splat_ids: bool,
     /// Write `vegetation_instances.json` from Poisson sampling of Vegetation layers.
     pub include_vegetation_instances: bool,
+    /// Write `object_instances.json` from Scatter Objects layers (exact placements).
+    pub include_object_instances: bool,
     /// Write a coarse collision/preview mesh (`terrain_collision.obj`).
     pub include_collision_mesh: bool,
     /// Grid stride for collision mesh (higher = coarser).
@@ -41,6 +43,7 @@ impl Default for ExportRequest {
             tint_only: true,
             include_splat_ids: true,
             include_vegetation_instances: true,
+            include_object_instances: true,
             include_collision_mesh: true,
             collision_mesh_stride: 8,
         }
@@ -65,6 +68,8 @@ pub struct ExportResult {
     pub normal_path: Option<PathBuf>,
     pub splat_ids_path: Option<PathBuf>,
     pub vegetation_instances_path: Option<PathBuf>,
+    /// `object_instances.json` when a Scatter Objects layer placed props.
+    pub object_instances_path: Option<PathBuf>,
     pub collision_mesh_path: Option<PathBuf>,
     pub hash: u64,
     pub manifest_path: Option<PathBuf>,
@@ -200,6 +205,16 @@ pub fn export_package(
         None
     };
 
+    let object_instances_path = if req.include_object_instances
+        && !ctx.aux_maps.object_instances.is_empty()
+    {
+        let path = req.out_dir.join("object_instances.json");
+        write_object_instances(ctx, &path)?;
+        Some(path)
+    } else {
+        None
+    };
+
     let collision_mesh_path = if req.include_collision_mesh {
         let path = req.out_dir.join("terrain_collision.obj");
         write_collision_obj(hf, req.collision_mesh_stride.max(1), &path)?;
@@ -271,6 +286,7 @@ pub fn export_package(
         normal_path,
         splat_ids_path,
         vegetation_instances_path,
+        object_instances_path,
         collision_mesh_path,
         hash,
         manifest_path: Some(manifest_path),
@@ -608,6 +624,25 @@ fn write_vegetation_instances(
     let doc = VegDoc {
         count: instances.len(),
         instances,
+    };
+    std::fs::write(path, serde_json::to_vec_pretty(&doc)?)?;
+    Ok(())
+}
+
+/// Exact prop placements from Scatter Objects layers.
+///
+/// Unlike `vegetation_instances.json` (re-sampled from the density map), these
+/// are the instances the evaluator actually placed, so class, scale, yaw and
+/// up-vector round-trip to the DCC / engine.
+fn write_object_instances(ctx: &EvalContext, path: &std::path::Path) -> Result<(), IoError> {
+    #[derive(serde::Serialize)]
+    struct ObjectDoc<'a> {
+        count: usize,
+        instances: &'a [terra_core::layer::ObjectInstance],
+    }
+    let doc = ObjectDoc {
+        count: ctx.aux_maps.object_instances.len(),
+        instances: &ctx.aux_maps.object_instances,
     };
     std::fs::write(path, serde_json::to_vec_pretty(&doc)?)?;
     Ok(())

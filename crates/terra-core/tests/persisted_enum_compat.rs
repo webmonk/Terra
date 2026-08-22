@@ -127,6 +127,7 @@ fn layer_kind_and_stack_node_tags_are_frozen() {
         "Materials",
         "Biomes",
         "Vegetation",
+        "ScatterObjects",
         "OverhangStamp",
         "LocalSdf",
         "Path",

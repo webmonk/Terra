@@ -233,7 +233,8 @@ impl LayerGroup {
     pub fn push_into_section(&mut self, layer: Layer) -> LayerId {
         self.ensure_biome_sections();
         let section = match &layer.kind {
-            crate::layer::LayerKind::Vegetation(_) => BiomeSection::Objects,
+            crate::layer::LayerKind::Vegetation(_)
+            | crate::layer::LayerKind::ScatterObjects(_) => BiomeSection::Objects,
             crate::layer::LayerKind::Materials(_) | crate::layer::LayerKind::Biomes(_) => {
                 BiomeSection::Materials
             }
@@ -1056,7 +1057,8 @@ pub fn biome_destination_section(kind: &crate::layer::LayerKind) -> Option<Biome
         return None;
     }
     Some(match kind {
-        crate::layer::LayerKind::Vegetation(_) => BiomeSection::Objects,
+        crate::layer::LayerKind::Vegetation(_)
+        | crate::layer::LayerKind::ScatterObjects(_) => BiomeSection::Objects,
         crate::layer::LayerKind::Materials(_) | crate::layer::LayerKind::Biomes(_) => {
             BiomeSection::Materials
         }

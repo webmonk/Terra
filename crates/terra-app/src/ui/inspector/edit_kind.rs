@@ -5,8 +5,8 @@ use crate::ui::style::{self, FONT_SCALE, ROW_H};
 use crate::ui::EditorTool;
 use terra_core::layer::*;
 use terra_gui::{
-    button_id, checkbox, combo, label, label_dim, section_header, slider_f32, slider_f32_id,
-    slider_i32, slider_i32_id, GuiContext, Icon, Id, Rect,
+    button_id, checkbox, checkbox_id, combo, label, label_dim, section_header, slider_f32,
+    slider_f32_id, slider_i32, slider_i32_id, GuiContext, Icon, Id, Rect,
 };
 
 /// Which parameter pane `edit_kind` should draw.
@@ -803,6 +803,149 @@ pub(crate) fn edit_kind(
                 changed |= slider_f32(ui, "Min Slope", &mut p.min_slope_deg, 0.0, 90.0);
                 changed |= slider_f32(ui, "Max Slope", &mut p.max_slope_deg, 0.0, 90.0);
                 changed |= slider_f32(ui, "Root Cohesion", &mut p.root_cohesion, 0.0, 0.5);
+            }
+        }
+        LayerKind::ScatterObjects(p) => {
+            let mut seed = p.seed.min(99999) as i32;
+            if slider_i32(ui, "Seed", &mut seed, 0, 99999) {
+                p.seed = seed as u64;
+                changed = true;
+            }
+            label(
+                ui,
+                &format!(
+                    "{} class(es), {} coverage, {} exclusion",
+                    p.classes.len(),
+                    p.coverage.len(),
+                    p.exclusion.len()
+                ),
+            );
+            let mut remove: Option<usize> = None;
+            let class_count = p.classes.len();
+            for (i, class) in p.classes.iter_mut().enumerate() {
+                let idx = i as u64;
+                section_header(ui, &class.name);
+                changed |= checkbox_id(
+                    ui,
+                    Id::new("obj_enabled").with(idx),
+                    "Enabled",
+                    &mut class.enabled,
+                );
+                changed |= slider_f32_id(
+                    ui,
+                    Id::new("obj_weight").with(idx),
+                    "Weight",
+                    &mut class.weight,
+                    0.0,
+                    10.0,
+                );
+                changed |= slider_f32_id(
+                    ui,
+                    Id::new("obj_density").with(idx),
+                    "Density",
+                    &mut class.density,
+                    0.0,
+                    1.0,
+                );
+                changed |= slider_f32_id(
+                    ui,
+                    Id::new("obj_spacing").with(idx),
+                    "Min Spacing (m)",
+                    &mut class.min_spacing_m,
+                    0.5,
+                    60.0,
+                );
+                // The placer widens over-tight spacing toward a 120k site
+                // budget rather than honouring it literally, so say so instead
+                // of letting the slider quietly stop biting on a large world.
+                label_dim(ui, "Widened if it would exceed 120k sites.");
+                changed |= slider_f32_id(
+                    ui,
+                    Id::new("obj_scale_min").with(idx),
+                    "Scale Min",
+                    &mut class.scale_range[0],
+                    0.1,
+                    4.0,
+                );
+                changed |= slider_f32_id(
+                    ui,
+                    Id::new("obj_scale_max").with(idx),
+                    "Scale Max",
+                    &mut class.scale_range[1],
+                    0.1,
+                    4.0,
+                );
+                changed |= slider_f32_id(
+                    ui,
+                    Id::new("obj_yaw").with(idx),
+                    "Yaw Jitter",
+                    &mut class.yaw_jitter_deg,
+                    0.0,
+                    180.0,
+                );
+                changed |= checkbox_id(
+                    ui,
+                    Id::new("obj_align").with(idx),
+                    "Align To Normal",
+                    &mut class.align_to_normal,
+                );
+                changed |= slider_f32_id(
+                    ui,
+                    Id::new("obj_max_slope").with(idx),
+                    "Max Slope",
+                    &mut class.max_slope_deg,
+                    0.0,
+                    90.0,
+                );
+                if advanced {
+                    let mut banded = class.height_range[0] > OBJECT_HEIGHT_MIN
+                        || class.height_range[1] < OBJECT_HEIGHT_MAX;
+                    if checkbox_id(
+                        ui,
+                        Id::new("obj_band").with(idx),
+                        "Limit Height Band",
+                        &mut banded,
+                    ) {
+                        class.height_range = if banded {
+                            [0.0, 1000.0]
+                        } else {
+                            [OBJECT_HEIGHT_MIN, OBJECT_HEIGHT_MAX]
+                        };
+                        changed = true;
+                    }
+                    if banded {
+                        changed |= slider_f32_id(
+                            ui,
+                            Id::new("obj_h_min").with(idx),
+                            "Min Height",
+                            &mut class.height_range[0],
+                            -500.0,
+                            4000.0,
+                        );
+                        changed |= slider_f32_id(
+                            ui,
+                            Id::new("obj_h_max").with(idx),
+                            "Max Height",
+                            &mut class.height_range[1],
+                            -500.0,
+                            4000.0,
+                        );
+                    }
+                }
+                if class_count > 1
+                    && button_id(ui, Id::new("obj_remove").with(idx), "Remove Class")
+                {
+                    remove = Some(i);
+                }
+            }
+            if let Some(i) = remove {
+                p.classes.remove(i);
+                changed = true;
+            }
+            if button_id(ui, Id::new("obj_add_class"), "Add Object Class") {
+                let n = p.classes.len() + 1;
+                p.classes.push(ObjectClass::named(format!("Object {n}")));
+                changed = true;
             }
         }
         LayerKind::Materials(p) => {
@@ -1874,6 +2017,7 @@ pub(crate) fn kind_display_name(kind: &LayerKind) -> &'static str {
         Materials(_) => "Materials",
         Biomes(_) => "Biome",
         Vegetation(_) => "Objects",
+        ScatterObjects(_) => "Props",
         OverhangStamp(_) => "Overhang",
         LocalSdf(_) => "Cave",
         EffectFilter(p) => p.kind.label(),

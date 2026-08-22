@@ -17,7 +17,7 @@
 >
 > - **Real-time terrain visualization** — progressive Draft→Full preview with a hybrid GPU+CPU path exists, but live feedback still needs major refinement; expect laggy, approximate, or stale results
 > - **Export pipeline** — the Export button re-evaluates at export resolution on a background worker and writes a package (16-bit PNG + 32-bit float TIFF heights, selectable 16-bit aux maps, `manifest.json` with de-normalization metadata); formats are still unstable
-> - **Objects** — vegetation scatter exists; general prop/object placement is largely placeholder
+> - **Objects** — vegetation scatter and a multi-class Scatter Objects layer exist; there is still no per-instance authoring (placing / moving a single prop by hand)
 > - **Materials** — material IDs / strata / hardness and viewport tinting exist; this is not a full shading or surface-authoring pipeline
 >
 > Treat everything you see as experimental scaffolding. Star the repo, experiment locally, and contribute if you like — but do not depend on Terra for real work yet.

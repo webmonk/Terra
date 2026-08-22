@@ -938,6 +938,11 @@ pub fn all_tools() -> Vec<ToolDef> {
         WorkspaceMode::Objects,
         "vegetation",
     ));
+    tools.push(registered_layer_tool(
+        "obj.props",
+        WorkspaceMode::Objects,
+        "scatter_objects",
+    ));
     tools.push(add(
         "obj.rocks",
         "Rocks",

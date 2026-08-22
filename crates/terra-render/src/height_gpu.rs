@@ -91,7 +91,13 @@ impl HeightSlot {
             sample_count: 1,
             dimension: wgpu::TextureDimension::D2,
             format: wgpu::TextureFormat::Rgba16Float,
-            usage: wgpu::TextureUsages::TEXTURE_BINDING | wgpu::TextureUsages::STORAGE_BINDING,
+            // COPY_SRC/COPY_DST so a partial normals pass can seed the write
+            // slot from the display slot; without it every texel outside the
+            // dilated region would keep normals and baked AO from two swaps ago.
+            usage: wgpu::TextureUsages::TEXTURE_BINDING
+                | wgpu::TextureUsages::STORAGE_BINDING
+                | wgpu::TextureUsages::COPY_SRC
+                | wgpu::TextureUsages::COPY_DST,
             view_formats: &[],
         });
         Self {
@@ -707,14 +713,45 @@ impl HeightGpu {
                     ],
                 }));
         }
+        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
+            label: Some("normal-enc"),
+        });
+        // The dispatch only writes the dilated region, so everything outside it
+        // would still hold this slot's content from two swaps ago. Seed it from
+        // the slot currently on display - the same "seed write from last
+        // display" the height path already does before a partial upload.
+        let partial = region.x != 0 || region.y != 0 || region.w < w || region.h < h;
+        let display = self.display;
+        if partial
+            && self.slots[display].width == w
+            && self.slots[display].height_px == h
+            && self.slots[write].width == w
+            && self.slots[write].height_px == h
+        {
+            encoder.copy_texture_to_texture(
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.slots[display].normal,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::TexelCopyTextureInfo {
+                    texture: &self.slots[write].normal,
+                    mip_level: 0,
+                    origin: wgpu::Origin3d::ZERO,
+                    aspect: wgpu::TextureAspect::All,
+                },
+                wgpu::Extent3d {
+                    width: w,
+                    height: h,
+                    depth_or_array_layers: 1,
+                },
+            );
+        }
         let bind = self.slots[write]
             .normal_bind
             .as_ref()
             .expect("normal bind group");
-
-        let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("normal-enc"),
-        });
         {
             let mut pass = encoder.begin_compute_pass(&wgpu::ComputePassDescriptor {
                 label: Some("normals"),

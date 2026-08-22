@@ -211,6 +211,10 @@ pub struct AuxMaps {
     pub strata_reference: Option<MaskField>,
     /// Vertical material stack from the last Materials layer (surface -> bedrock).
     pub strata: Option<Vec<crate::layer::Stratum>>,
+    /// Prop instances placed by the last Scatter Objects layer. Side-channel
+    /// like `strata`: it is not a raster, so it lives beside the aux maps
+    /// rather than in them.
+    pub object_instances: Vec<crate::layer::ObjectInstance>,
     /// Bed attitude from the last Materials layer (tilted / folded / warped).
     pub bed_geometry: crate::layer::BedGeometry,
     // Phase H climate fields (normalized \[0,1\] unless noted).

@@ -1105,6 +1105,7 @@ fn default_kind_like(kind: &LayerKind) -> LayerKind {
         Materials(_) => Materials(Default::default()),
         Biomes(_) => Biomes(Default::default()),
         Vegetation(_) => Vegetation(Default::default()),
+        ScatterObjects(_) => ScatterObjects(Default::default()),
         OverhangStamp(_) => OverhangStamp(Default::default()),
         LocalSdf(_) => LocalSdf(Default::default()),
         EffectFilter(_) => EffectFilter(Default::default()),
@@ -1186,7 +1187,7 @@ fn primary_section(kind: &LayerKind) -> InspectorSection {
         | LayerKind::RiverCarve(_) => InspectorSection::Erosion,
         LayerKind::Materials(_) => InspectorSection::Materials,
         LayerKind::Biomes(_) => InspectorSection::Biome,
-        LayerKind::Vegetation(_) => InspectorSection::Objects,
+        LayerKind::Vegetation(_) | LayerKind::ScatterObjects(_) => InspectorSection::Objects,
         LayerKind::SandSimulation(_)
         | LayerKind::FluidSimulation(_)
         | LayerKind::RiverNetwork(_)

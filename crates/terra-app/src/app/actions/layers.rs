@@ -201,6 +201,12 @@ pub(crate) fn try_apply(
             };
             apply(&cmd, &mut app.session.document.stack);
             app.session.push_command_coalesced(cmd, Some((coalesce_layer_id(id), "simprog")));
+            // Preserve this layer's scrub checkpoints, but only when the
+            // scrub is the sole seed of the batch: any other edit must drop
+            // them (their key does not cover masks or bindings).
+            if ctx.dirty_from.is_none() {
+                ctx.dirty_keeps_scrub_for = Some(id);
+            }
             ctx.dirty_from = Some(id);
         }
         PanelAction::SetBlend { id, blend } => {

@@ -19,7 +19,7 @@ use super::{
     LayerKind, LocalSdfParams, MaterialsParams, MesaParams, MountainParams,
     MultiScaleAmplifyParams, NoiseParams, OverhangStampParams, PathParams, PlateauParams,
     PolygonHeightParams, ProceduralShapeParams, RampParams, RiverCarveParams, RiverNetworkParams,
-    SandSimParams, SculptParams, SculptStrokeParams, Stamp2dParams, Stamp3dParams,
+    SandSimParams, ScatterObjectsParams, SculptParams, SculptStrokeParams, Stamp2dParams, Stamp3dParams,
     StreamPowerParams, TerraceParams, TerrainConstraintParams, ThermalErosionParams, UpliftParams,
     VegetationParams, VolcanoParams, VoronoiParams, WorleyParams,
 };
@@ -534,6 +534,14 @@ impl LayerTypeRegistry {
             "sparkles",
             "Vegetation density / scatter weights.",
             || LayerKind::Vegetation(VegetationParams::default()),
+            true,
+            &["surface"],
+            &[]
+        );
+        entry!(
+            "box",
+            "Multi-class prop / object placement with per-class filters.",
+            || LayerKind::ScatterObjects(ScatterObjectsParams::default()),
             true,
             &["surface"],
             &[]

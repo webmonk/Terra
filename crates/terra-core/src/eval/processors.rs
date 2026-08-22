@@ -733,6 +733,42 @@ impl ProcessorRegistry {
                 }
                 Ok(input.clone())
             }
+            LayerKind::ScatterObjects(p) => {
+                // Height passthrough: props are placed on the surface, they
+                // never move it. Publishes the scatter density channel plus
+                // the candidate field, and parks the instance list on the
+                // context for the app / export.
+                let bake = |dist: &crate::mask::Distribution| -> Option<MaskField> {
+                    if dist.is_empty() {
+                        return None;
+                    }
+                    let bake_ctx = crate::mask::DistBakeContext {
+                        height: Some(input),
+                        slope_deg: None,
+                        curvature: None,
+                        flow: None,
+                        masks: &ctx.masks,
+                        aux: Some(&ctx.aux),
+                    };
+                    Some(crate::mask::bake_distribution_with_context(
+                        dist,
+                        input.metrics,
+                        &bake_ctx,
+                    ))
+                };
+                let coverage = bake(&p.coverage);
+                let exclusion = bake(&p.exclusion);
+                let placed = surface::place_scatter_objects(
+                    input,
+                    p,
+                    coverage.as_ref(),
+                    exclusion.as_ref(),
+                );
+                ctx.aux_insert(keys::VEGETATION, placed.density);
+                ctx.aux_insert(keys::SCATTER_CANDIDATES, placed.candidates);
+                ctx.aux_maps.object_instances = placed.instances;
+                Ok(input.clone())
+            }
             LayerKind::OverhangStamp(p) => {
                 let result = volumetric::apply_overhang_stamp(input, p);
                 ctx.aux_insert(keys::OVERHANG_CEILING, result.ceiling);

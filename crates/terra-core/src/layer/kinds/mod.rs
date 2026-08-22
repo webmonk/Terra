@@ -8,6 +8,7 @@ mod filters;
 mod hydro;
 mod materials;
 mod noise;
+mod scatter_objects;
 mod sculpt;
 mod shapes;
 mod vegetation;
@@ -17,6 +18,7 @@ pub use filters::*;
 pub use hydro::*;
 pub use materials::*;
 pub use noise::*;
+pub use scatter_objects::*;
 pub use sculpt::*;
 pub use shapes::*;
 pub use vegetation::*;
@@ -96,6 +98,8 @@ pub enum LayerKind {
     Materials(MaterialsParams),
     Biomes(BiomesParams),
     Vegetation(VegetationParams),
+    /// General prop / object placement (multi-class scatter).
+    ScatterObjects(ScatterObjectsParams),
     // Phase J - optional local volumetric (dual-height / local SDF); heightfield remains default
     /// Cliff undercut / shelf via dual-height floor+ceiling (opt-in).
     OverhangStamp(OverhangStampParams),
@@ -180,7 +184,7 @@ impl LayerKind {
 
             LayerKind::Materials(_) => EvalStage::Materials,
 
-            LayerKind::Vegetation(_) => EvalStage::Vegetation,
+            LayerKind::Vegetation(_) | LayerKind::ScatterObjects(_) => EvalStage::Vegetation,
 
             LayerKind::GeomorphicDetail(_)
             | LayerKind::EcosystemFeedback(_)
@@ -292,6 +296,7 @@ impl LayerKind {
             | LayerKind::Materials(_)
             | LayerKind::Biomes(_)
             | LayerKind::Vegetation(_)
+            | LayerKind::ScatterObjects(_)
             | LayerKind::OverhangStamp(_)
             | LayerKind::LocalSdf(_)
             | LayerKind::Stamp3d(_) => BlendMode::Normal,

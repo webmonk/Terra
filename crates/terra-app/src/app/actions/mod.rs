@@ -28,9 +28,11 @@ pub(crate) struct ApplyCtx {
     /// changed set so consumers of a channel the layer just stopped writing
     /// are still invalidated.
     pub dirty_extra_fields: Vec<terra_core::fields::FieldId>,
-    /// Set by a simulation progress scrub, whose checkpoints must survive
-    /// the invalidation it seeds (every other edit drops them).
-    pub dirty_keeps_scrub: bool,
+    /// Layer whose scrub checkpoints survive this batch's invalidation, set
+    /// only by a progress scrub that is the batch's sole dirty seed. Honoured
+    /// just when it matches the final seed, so a later edit elsewhere cannot
+    /// smuggle checkpoints through.
+    pub dirty_keeps_scrub_for: Option<LayerId>,
     pub continue_loop: bool,
 }
 
@@ -43,7 +45,7 @@ impl ApplyCtx {
             mask_assets_mutated: false,
             mutated_masks: Vec::new(),
             dirty_extra_fields: Vec::new(),
-            dirty_keeps_scrub: false,
+            dirty_keeps_scrub_for: None,
             continue_loop: false,
         }
     }
@@ -204,7 +206,7 @@ impl TerraApp {
                         preview.find(id).map(|layer| &layer.kind),
                         Some(terra_core::layer::LayerKind::SculptBase(_))
                     );
-                if ctx.dirty_keeps_scrub {
+                if ctx.dirty_keeps_scrub_for == Some(id) {
                     self.scheduler.evaluator.mark_dirty_from_scrub(&preview, id);
                 } else {
                     self.scheduler.evaluator.mark_dirty_from_fields(
