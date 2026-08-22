@@ -107,6 +107,8 @@ pub enum FieldId {
     SandMaterialMask,
     SnowMaterialMask,
     ScatterCandidates,
+    /// Placed-prop density from a Scatter Objects layer.
+    ScatterDensity,
     /// Fine-scale flow organisation from multi-scale amplification.
     FineFlow,
     /// Nested micro-channel / gully intensity.
@@ -207,6 +209,7 @@ impl FieldId {
             FieldId::SandMaterialMask => keys::SAND_MATERIAL_MASK.into(),
             FieldId::SnowMaterialMask => keys::SNOW_MATERIAL_MASK.into(),
             FieldId::ScatterCandidates => keys::SCATTER_CANDIDATES.into(),
+            FieldId::ScatterDensity => keys::SCATTER_DENSITY.into(),
             FieldId::FineFlow => keys::FINE_FLOW.into(),
             FieldId::MicroChannel => keys::MICRO_CHANNEL.into(),
             FieldId::RidgeBreakup => keys::RIDGE_BREAKUP.into(),
@@ -302,6 +305,7 @@ impl FieldId {
             keys::SAND_MATERIAL_MASK => FieldId::SandMaterialMask,
             keys::SNOW_MATERIAL_MASK => FieldId::SnowMaterialMask,
             keys::SCATTER_CANDIDATES => FieldId::ScatterCandidates,
+            keys::SCATTER_DENSITY => FieldId::ScatterDensity,
             keys::FINE_FLOW => FieldId::FineFlow,
             keys::MICRO_CHANNEL => FieldId::MicroChannel,
             keys::RIDGE_BREAKUP => FieldId::RidgeBreakup,
@@ -401,6 +405,7 @@ impl FieldId {
             FieldId::SandMaterialMask => "Sand Material Mask".into(),
             FieldId::SnowMaterialMask => "Snow Material Mask".into(),
             FieldId::ScatterCandidates => "Scatter Candidates".into(),
+            FieldId::ScatterDensity => "Scatter Density".into(),
             FieldId::FineFlow => "Fine Flow".into(),
             FieldId::MicroChannel => "Micro Channel".into(),
             FieldId::RidgeBreakup => "Ridge Breakup".into(),

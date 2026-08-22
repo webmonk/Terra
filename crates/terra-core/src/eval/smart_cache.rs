@@ -20,7 +20,10 @@ const MAGIC: &[u8; 4] = b"TCS1";
 // Version 3 invalidates procedural outputs created before 64-bit seed canonicalization.
 // Version 4 invalidates checkpoints where loose_sediment could contain coarse debris
 // while sediment_depth held the actual fine-sediment inventory.
-const VERSION: u32 = 4;
+// Version 5 adds the quality rung to the metadata: checkpoints written before it
+// carry no record of which rung produced them, and a Draft bake satisfying a Full
+// request survived restarts.
+const VERSION: u32 = 5;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 struct DiskMeta {
@@ -28,6 +31,12 @@ struct DiskMeta {
     metrics: HeightfieldMetrics,
     generation: u64,
     aux_names: Vec<String>,
+    /// Quality rung the checkpoint was baked at. Processors branch on quality,
+    /// so a Draft bake must not satisfy a Full request - and the disk store
+    /// lives at a stable temp path, so without this the mismatch outlived the
+    /// process.
+    #[serde(default)]
+    quality: Option<crate::quality::PreviewQuality>,
 }
 
 /// On-disk bake store keyed by [`LayerId`].
@@ -100,7 +109,12 @@ impl DiskSmartCache {
         let _ = fs::create_dir_all(&self.root);
     }
 
-    pub fn spill(&self, id: LayerId, output: &CachedOutput) -> Result<(), EvalError> {
+    pub fn spill(
+        &self,
+        id: LayerId,
+        output: &CachedOutput,
+        quality: Option<crate::quality::PreviewQuality>,
+    ) -> Result<(), EvalError> {
         fs::create_dir_all(&self.root).map_err(|e| EvalError::Io(e.to_string()))?;
 
         let mut aux_names: Vec<String> = output.aux.keys().cloned().collect();
@@ -111,6 +125,7 @@ impl DiskSmartCache {
             metrics: output.height.metrics,
             generation: output.generation,
             aux_names: aux_names.clone(),
+            quality,
         };
         let meta_json =
             serde_json::to_vec_pretty(&meta).map_err(|e| EvalError::Io(e.to_string()))?;
@@ -129,6 +144,16 @@ impl DiskSmartCache {
                 serde_json::to_vec_pretty(strata).map_err(|e| EvalError::Io(e.to_string()))?;
             fs::write(path, json).map_err(|e| EvalError::Io(e.to_string()))?;
         }
+        // Placed props ride alongside strata: neither is a raster, so neither
+        // survives the aux blob round-trip.
+        let objects_path = self.stem(id).with_extension("objects.json");
+        if output.object_instances.is_empty() {
+            let _ = fs::remove_file(&objects_path);
+        } else {
+            let json = serde_json::to_vec(&output.object_instances)
+                .map_err(|e| EvalError::Io(e.to_string()))?;
+            fs::write(objects_path, json).map_err(|e| EvalError::Io(e.to_string()))?;
+        }
         Ok(())
     }
 
@@ -137,6 +162,7 @@ impl DiskSmartCache {
         &self,
         id: LayerId,
         expected: HeightfieldMetrics,
+        quality: Option<crate::quality::PreviewQuality>,
     ) -> Result<Option<CachedOutput>, EvalError> {
         let meta_path = self.meta_path(id);
         if !meta_path.exists() {
@@ -146,6 +172,10 @@ impl DiskSmartCache {
         let meta: DiskMeta =
             serde_json::from_slice(&meta_bytes).map_err(|e| EvalError::Io(e.to_string()))?;
         if meta.version != VERSION {
+            return Ok(None);
+        }
+        // A checkpoint is only valid for the rung that produced it.
+        if meta.quality != quality {
             return Ok(None);
         }
         if meta.metrics.width != expected.width
@@ -192,6 +222,13 @@ impl DiskSmartCache {
                 } else {
                     None
                 }
+            },
+            object_instances: {
+                let path = self.stem(id).with_extension("objects.json");
+                fs::read(&path)
+                    .ok()
+                    .and_then(|b| serde_json::from_slice(&b).ok())
+                    .unwrap_or_default()
             },
         }))
     }
@@ -261,9 +298,10 @@ mod tests {
             dirty: false,
             aux,
             strata: None,
+            object_instances: Vec::new(),
         };
-        cache.spill(id, &output).unwrap();
-        let loaded = cache.load(id, metrics).unwrap().expect("disk hit");
+        cache.spill(id, &output, None).unwrap();
+        let loaded = cache.load(id, metrics, None).unwrap().expect("disk hit");
         assert!((loaded.height.get(3, 4) - 12.5).abs() < 1e-5);
         assert!((loaded.aux["flow_acc"].get(1, 1) - 0.75).abs() < 1e-5);
         assert!(!loaded.dirty);
@@ -304,10 +342,12 @@ mod tests {
                     dirty: false,
                     aux,
                     strata: None,
+                    object_instances: Vec::new(),
                 },
+                None,
             )
             .unwrap();
-        let loaded = cache.load(id, metrics).unwrap().expect("disk hit");
+        let loaded = cache.load(id, metrics, None).unwrap().expect("disk hit");
         let restored = AuxMaps::from_hashmap(&loaded.aux);
         assert_eq!(restored.bedrock_height.as_ref().unwrap().get(0, 0), 6.0);
         assert_eq!(restored.get(keys::DEBRIS_DEPTH).unwrap().get(0, 0), 2.0);

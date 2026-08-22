@@ -103,6 +103,12 @@ pub mod keys {
     pub const SAND_MATERIAL_MASK: &str = "sand_material_mask";
     pub const SNOW_MATERIAL_MASK: &str = "snow_material_mask";
     pub const SCATTER_CANDIDATES: &str = "scatter_candidates";
+    /// Placed-prop density from a Scatter Objects layer.
+    ///
+    /// Deliberately not `vegetation`: that channel belongs to the Vegetation
+    /// layer and drives the tree instancer, so publishing props onto it erased
+    /// the forest and rendered trees at the prop positions.
+    pub const SCATTER_DENSITY: &str = "scatter_density";
     /// Hydraulic-family channel mask (normalized flux threshold).
     pub const CHANNEL_MASK: &str = "channel_mask";
     /// Bedrock height under loose sediment (layered hydraulic / mass wasting).

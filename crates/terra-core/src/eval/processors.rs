@@ -287,7 +287,7 @@ impl ProcessorRegistry {
                     // default for this layer - ignored quality entirely and a
                     // Draft brush dab cost the same as a Full one.
                     let result = if ctx.quality.is_preview() {
-                        analyze::thermal_erode_layered_leveled(input, p, &hardness, &levels)
+                        analyze::thermal_erode_layered_leveled(input, p, &hardness, Some(&initial), &levels)
                     } else {
                         analyze::thermal_erode_layered(input, p, &hardness, Some(&initial))
                     };
@@ -747,23 +747,17 @@ impl ProcessorRegistry {
                 // never move it. Publishes the scatter density channel plus
                 // the candidate field, and parks the instance list on the
                 // context for the app / export.
+                // Go through the shared baker rather than hand-rolling a
+                // context: it wires slope, curvature and flow from aux. Left
+                // unwired, a Curvature/Cavity/Flow node silently evaluates to
+                // ones - a no-op filter for coverage, but for exclusion
+                // `coverage * (1 - exclusion)` collapses to zero field-wide and
+                // the layer places nothing at all.
                 let bake = |dist: &crate::mask::Distribution| -> Option<MaskField> {
                     if dist.is_empty() {
                         return None;
                     }
-                    let bake_ctx = crate::mask::DistBakeContext {
-                        height: Some(input),
-                        slope_deg: None,
-                        curvature: None,
-                        flow: None,
-                        masks: &ctx.masks,
-                        aux: Some(&ctx.aux),
-                    };
-                    Some(crate::mask::bake_distribution_with_context(
-                        dist,
-                        input.metrics,
-                        &bake_ctx,
-                    ))
+                    Some(super::composite_distribution(ctx, dist, input))
                 };
                 let coverage = bake(&p.coverage);
                 let exclusion = bake(&p.exclusion);
@@ -773,9 +767,14 @@ impl ProcessorRegistry {
                     coverage.as_ref(),
                     exclusion.as_ref(),
                 );
-                ctx.aux_insert(keys::VEGETATION, placed.density);
+                ctx.aux_insert(keys::SCATTER_DENSITY, placed.density);
                 ctx.aux_insert(keys::SCATTER_CANDIDATES, placed.candidates);
-                ctx.aux_maps.object_instances = placed.instances;
+                // Append: a second scatter layer must add its props, not delete
+                // the first layer's. Unlike a raster channel there is no blend
+                // to fall back on - a replaced list is simply lost work.
+                ctx.aux_maps
+                    .object_instances
+                    .extend(placed.instances);
                 Ok(input.clone())
             }
             LayerKind::OverhangStamp(p) => {

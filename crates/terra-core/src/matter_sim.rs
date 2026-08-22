@@ -129,6 +129,7 @@ impl MatterOutputConsumer {
             Self::Scatter => matches!(
                 field,
                 FieldId::ScatterCandidates
+                    | FieldId::ScatterDensity
                     | FieldId::Instability
                     | FieldId::SlidePath
                     | FieldId::SandDepth

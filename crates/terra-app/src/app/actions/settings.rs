@@ -126,6 +126,7 @@ mod tests {
                 dirty: false,
                 aux: HashMap::new(),
                 strata: None,
+                object_instances: Vec::new(),
             },
         );
         assert!(!app.scheduler.evaluator.cache.is_dirty(id));

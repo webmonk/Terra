@@ -390,6 +390,7 @@ impl StackEvaluator {
     ) -> Result<Heightfield, EvalError> {
         profiling::scope!("rebuild_all");
         self.cache.clear();
+        self.cache.ensure_quality(ctx.quality);
         ctx.pass_changed.clear();
         ctx.mask_bake_memo = None;
         let seed = Heightfield::zeros(ctx.metrics);
@@ -406,6 +407,9 @@ impl StackEvaluator {
         ctx: &mut EvalContext,
     ) -> Result<Heightfield, EvalError> {
         profiling::scope!("rebuild_incremental");
+        // Entries computed at another rung are not valid here: processors
+        // branch on quality, and the dimension check alone cannot see it.
+        self.cache.ensure_quality(ctx.quality);
         ctx.pass_changed.clear();
         ctx.mask_bake_memo = None;
         if stack.requires_tree_evaluation() {
@@ -575,6 +579,14 @@ impl StackEvaluator {
                         // until after the group composite.
                         let aux_snapshot = ctx.aux_maps.clone();
                         let aux_hash_snapshot = ctx.aux.clone();
+                        // Props placed inside the group must survive the
+                        // restore below. They are a list, not a raster, so
+                        // there is nothing for the group mask to weight and
+                        // nothing in the aux HashMap to merge them back - and
+                        // biome sections put scatter layers inside a scoped
+                        // group by default, so dropping them here discarded
+                        // every prop in the normal authoring arrangement.
+                        let instances_before = ctx.aux_maps.object_instances.len();
                         let descendant_ids = collect_descendant_layer_ids(&group.children);
                         let (group_out, child_aux) = if let Some((height, aux)) = self
                             .try_reuse_group_cache(group.id, ctx, &descendant_ids, &private_seed)
@@ -600,6 +612,10 @@ impl StackEvaluator {
                         ctx.aux_maps = aux_snapshot;
                         ctx.aux = aux_hash_snapshot;
                         ctx.sync_aux_hashmap();
+                        if child_aux.object_instances.len() > instances_before {
+                            let placed = &child_aux.object_instances[instances_before..];
+                            ctx.aux_maps.object_instances.extend_from_slice(placed);
+                        }
 
                         let mask = effective_layer_mask(ctx, &group.masks, &current);
                         // Biome Filters blend toward lower biomes at `filter_blending`
@@ -660,6 +676,7 @@ impl StackEvaluator {
         start_index: usize,
         mut current: Heightfield,
     ) -> Result<Heightfield, EvalError> {
+        self.cache.ensure_quality(ctx.quality);
         // A suffix run is a fresh pass: no layer below it was computed here,
         // so nothing is pending-restore from this context.
         ctx.pass_changed.clear();
@@ -697,6 +714,7 @@ impl StackEvaluator {
             dirty: false,
             aux: ctx.aux_maps.to_hashmap(),
             strata: ctx.aux_maps.strata.clone(),
+            object_instances: ctx.aux_maps.object_instances.clone(),
         };
         if baked {
             self.cache.insert_baked(id, output);
@@ -721,6 +739,7 @@ impl StackEvaluator {
             dirty: false,
             aux: child_aux.to_hashmap(),
             strata: child_aux.strata.clone(),
+            object_instances: child_aux.object_instances.clone(),
         };
         if baked {
             self.cache.insert_baked(id, output);
@@ -953,10 +972,14 @@ impl StackEvaluator {
         if cached.generation != height_fingerprint(input) {
             return None;
         }
-        let child_aux = crate::fields::AuxMaps::from_hashmap_preserving_strata(
+        let mut child_aux = crate::fields::AuxMaps::from_hashmap_preserving_strata(
             &cached.aux,
             cached.strata.clone(),
         );
+        // Not a raster, so the HashMap round-trip cannot carry it.
+        child_aux
+            .object_instances
+            .clone_from(&cached.object_instances);
         Some((cached.height.clone(), child_aux))
     }
 }
@@ -1604,6 +1627,7 @@ mod tests {
                     dirty: false,
                     aux: HashMap::new(),
                     strata: None,
+                    object_instances: Vec::new(),
                 },
             );
         }
@@ -2273,6 +2297,7 @@ mod tests {
                 dirty: false,
                 aux: HashMap::new(),
                 strata: None,
+                object_instances: Vec::new(),
             },
         );
         eval.mark_dirty_from(&stack, upper_id);

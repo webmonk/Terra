@@ -486,14 +486,29 @@ pub fn thermal_erode_layered_leveled(
     input: &Heightfield,
     p: &ThermalErosionParams,
     hardness: &MaskField,
+    initial: Option<&super::mass_wasting::MassWastingState>,
     levels: &[SimLevel],
 ) -> super::mass_wasting::ThermalResult {
-    use super::mass_wasting::thermal_erode_layered;
+    use super::mass_wasting::{thermal_erode_layered, MassWastingState};
 
     let target = input.metrics;
     if levels.is_empty() {
-        return thermal_erode_layered(input, p, hardness, None);
+        return thermal_erode_layered(input, p, hardness, initial);
     }
+
+    // The material inventory has to survive the level ladder. Dropping it would
+    // make a preview report bare bedrock wherever soft cover entered the layer,
+    // and the sediment/debris channels feed mask sources, EcosystemFeedback and
+    // the next mass-wasting sim - so the divergence would not stay cosmetic.
+    // Seed the coarsest level from the incoming state, then carry each level's
+    // resulting inventory into the next.
+    let mut carry: Option<(MaskField, MaskField, MaskField)> = initial.map(|s| {
+        (
+            MaskField::from_raw(target, &s.bedrock),
+            MaskField::from_raw(target, &s.debris),
+            MaskField::from_raw(target, &s.sediment),
+        )
+    });
 
     let mut current = input.clone();
     let mut last: Option<super::mass_wasting::ThermalResult> = None;
@@ -501,8 +516,34 @@ pub fn thermal_erode_layered_leveled(
         let low = downsample_height(&current, level.resolution);
         let k_low = downsample_mask_field(hardness, level.resolution);
         let params = scale_thermal(p, *level);
-        let result = thermal_erode_layered(&low, &params, &k_low, None);
+        let seed = carry.as_ref().map(|(b, d, sed)| {
+            // `with_optional_layers` ignores fields whose metrics disagree, so
+            // these must be resampled to the level, not merely passed along.
+            let to_level = |m: &MaskField| {
+                if m.metrics.width == low.metrics.width && m.metrics.height == low.metrics.height {
+                    m.clone()
+                } else if m.metrics.width > low.metrics.width {
+                    downsample_mask_field(m, level.resolution)
+                } else {
+                    upsample_mask(m, low.metrics)
+                }
+            };
+            MassWastingState::with_optional_layers(
+                &low,
+                Some(&to_level(b)),
+                Some(&to_level(d)),
+                Some(&to_level(sed)),
+                0.0,
+                0.0,
+            )
+        });
+        let result = thermal_erode_layered(&low, &params, &k_low, seed.as_ref());
         current = apply_height_delta(&current, &low, &result.height, target);
+        carry = Some((
+            result.bedrock.clone(),
+            result.loose_debris.clone(),
+            result.sediment.clone(),
+        ));
         last = Some(result);
     }
 

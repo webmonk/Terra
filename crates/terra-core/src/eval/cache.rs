@@ -1,4 +1,5 @@
 use super::smart_cache::DiskSmartCache;
+use crate::quality::PreviewQuality;
 use crate::heightfield::{Heightfield, HeightfieldMetrics};
 use crate::layer::LayerId;
 use crate::mask::MaskField;
@@ -13,12 +14,29 @@ pub struct CachedOutput {
     pub aux: HashMap<String, MaskField>,
     /// Materials strata (not stored in the aux HashMap).
     pub strata: Option<Vec<crate::layer::Stratum>>,
+    /// Placed props (not a raster, so not in the aux HashMap either).
+    ///
+    /// Carried for the same reason as `strata`: a group cache hit skips its
+    /// children, so anything they published has to come back from here or it
+    /// is silently gone.
+    pub object_instances: Vec<crate::layer::ObjectInstance>,
 }
 
 #[derive(Debug)]
 pub struct LayerCache {
     entries: HashMap<LayerId, CachedOutput>,
     pub generation: u64,
+    /// Quality every current entry was computed at.
+    ///
+    /// Many processors branch on `EvalContext::quality` - iteration counts, sim
+    /// level schedules, whether layered thermal takes the coarse-to-fine path -
+    /// so a result is only valid for the rung that produced it. Entry validity
+    /// used to be checked on grid dimensions alone, and Draft, Medium and Full
+    /// collapse to the same resolution whenever the project preview is at or
+    /// below their caps (Medium and Full always do at the default 1024). The
+    /// refine ladder then found nothing dirty and served the Draft solve back
+    /// while reporting Full.
+    quality: Option<PreviewQuality>,
     /// Optional on-disk spill for baked (`cached`) layer checkpoints.
     disk: Option<DiskSmartCache>,
 }
@@ -34,6 +52,7 @@ impl LayerCache {
         Self {
             entries: HashMap::new(),
             generation: 0,
+            quality: None,
             disk: Some(DiskSmartCache::new(DiskSmartCache::default_location())),
         }
     }
@@ -42,6 +61,7 @@ impl LayerCache {
         Self {
             entries: HashMap::new(),
             generation: 0,
+            quality: None,
             disk: Some(DiskSmartCache::new(root)),
         }
     }
@@ -50,6 +70,7 @@ impl LayerCache {
         Self {
             entries: HashMap::new(),
             generation: 0,
+            quality: None,
             disk: None,
         }
     }
@@ -67,6 +88,30 @@ impl LayerCache {
         self.generation = self.generation.wrapping_add(1);
     }
 
+    /// Drop everything computed at a different quality rung.
+    ///
+    /// Conservative on purpose: rather than maintaining a per-kind
+    /// "is this processor quality-sensitive" contract - the same shape of
+    /// declaration that has repeatedly gone stale in this codebase and left
+    /// consumers holding invalid caches - a rung change invalidates the lot.
+    /// Layers that would have survived are exactly the ones a rung change is
+    /// cheap for.
+    pub fn ensure_quality(&mut self, quality: PreviewQuality) {
+        if self.quality == Some(quality) {
+            return;
+        }
+        if self.quality.is_some() {
+            self.entries.clear();
+            self.generation = self.generation.wrapping_add(1);
+        }
+        self.quality = Some(quality);
+    }
+
+    /// Quality the current entries were computed at, if any.
+    pub fn quality(&self) -> Option<PreviewQuality> {
+        self.quality
+    }
+
     pub fn insert(&mut self, id: LayerId, output: CachedOutput) {
         self.entries.insert(id, output);
     }
@@ -74,7 +119,7 @@ impl LayerCache {
     /// Insert and write a durable disk checkpoint.
     pub fn insert_baked(&mut self, id: LayerId, output: CachedOutput) {
         if let Some(disk) = &self.disk {
-            let _ = disk.spill(id, &output);
+            let _ = disk.spill(id, &output, self.quality);
         }
         self.entries.insert(id, output);
     }
@@ -98,7 +143,7 @@ impl LayerCache {
             // Dirty / missing / wrong size: try disk (dirty entries invalidate disk on mark).
             if self.entries.get(&id).is_none_or(|e| e.dirty) {
                 if let Some(disk) = &self.disk {
-                    if let Ok(Some(loaded)) = disk.load(id, metrics) {
+                    if let Ok(Some(loaded)) = disk.load(id, metrics, self.quality) {
                         self.entries.insert(id, loaded);
                     }
                 }
@@ -127,7 +172,7 @@ impl LayerCache {
             e.dirty = false;
         }
         if let (Some(disk), Some(e)) = (&self.disk, self.entries.get(&id)) {
-            let _ = disk.spill(id, e);
+            let _ = disk.spill(id, e, self.quality);
         }
     }
 

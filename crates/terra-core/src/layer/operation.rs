@@ -383,7 +383,7 @@ impl LayerKind {
             // scatter density channel the renderer / export already consume
             // plus the candidate field the placement was drawn from.
             LayerKind::ScatterObjects(_) => {
-                vec![FieldId::Vegetation, FieldId::ScatterCandidates]
+                vec![FieldId::ScatterDensity, FieldId::ScatterCandidates]
             }
             LayerKind::OverhangStamp(_) | LayerKind::LocalSdf(_) => {
                 vec![
