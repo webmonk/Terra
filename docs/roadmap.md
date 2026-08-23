@@ -17,4 +17,7 @@ Implemented incrementally in this repository. User-facing workflow remains a **l
 | 11 | Done | Clipmap config, buffer pool, memory budget |
 | 12 | Done | Command undo/redo, presets, content browser, export panel |
 
+Phases 1-12 are history. For what is planned next - and the evidence behind each
+priority - see **[next.md](next.md)**.
+
 See [architecture.md](architecture.md) and `docs/algorithms/` for technical notes.
