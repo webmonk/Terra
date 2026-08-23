@@ -4,7 +4,7 @@ Forward-looking backlog. [roadmap.md](roadmap.md) is the historical phase table;
 this is the live one. Ordered by value, with the evidence behind each call so a
 priority can be argued with rather than just inherited.
 
-Last updated after `877e55f`.
+Last updated after adversarial review round 6.
 
 ## Where things stand
 
@@ -23,16 +23,46 @@ Draft over the last few waves. The remaining Draft budget is spread thin:
 There is no single dominant cost left, which changes what is worth doing next —
 see [Performance](#2-performance-read-the-caveat-first).
 
-Adversarial review has found **22 real bugs across 5 rounds**, every one of them
+Adversarial review has found **25 real bugs across 6 rounds**, every one of them
 in code with a green test suite.
 
 ## Recommended next step
 
-**Run adversarial review round 6.** It is the cheapest high-yield thing
-available and the last three waves are unreviewed: the quality-cache rekeying,
-the flat-buffer resampler (which changed a shared code path every levelled sim
-uses), and the whole prop rendering slice. Three of the last five rounds found
-bugs in code I had just written and verified.
+**Build a Channels panel.** With review round 6 done (below), this is the
+highest value-per-effort item left. The engine publishes ~40 named aux channels
+and there is no UI to look at any of them, so "why is my mask empty" is a
+debugger question rather than something the user can answer.
+
+Adversarial review round 6 covered the three slices that were unreviewed --
+the quality-cache rekeying, the flat-buffer resampler and the prop-rendering
+slice -- and found 3 more real bugs, all fixed:
+
+- The prop upload fingerprint hashed only X/Z, scale and class, so a
+  height-only edit (an offset layer, a flatten) re-placed every prop at a new
+  surface height without changing the fingerprint, and the viewport kept
+  drawing them at the old one. `y`, `yaw_rad` and `normal` all reach the GPU
+  and none were hashed.
+- `DiskSmartCache::spill` rewrote `strata.json` when the output had strata but
+  never removed it when it did not, while `load` reads the sidecar whenever the
+  file exists. Since the path is keyed by `LayerId` alone and the store is a
+  stable temp dir shared across documents, a Materials stack from an earlier
+  bake could reattach to a layer that has none. `object_instances` already got
+  this right; strata did not.
+- `invalidate` removed the meta and raster blobs but left both non-raster
+  sidecars behind, which is the same bug through a second door.
+
+Two hypotheses were chased and **disproved**, each now pinned by a test:
+
+- The prop box is wound clockwise-outward in local space, which alone would be
+  culled as back-facing. It survives because the shader's `basis()` is
+  left-handed (det = -1) and the mirror flips the winding back. Two wrongs that
+  must stay wrong together -- "fixing" either half alone turns every prop
+  inside out, and `object_overlay.rs` would still pass, because it only asserts
+  that the frame changed. `box_faces_are_front_facing_after_the_instance_basis`
+  now asserts the composition across several up vectors and yaws.
+- `resample_mask` is bit-equivalent to the `Heightfield` round-trip it replaced
+  in both directions (box-average down, bilinear up) and is deterministic under
+  the row-parallel split. Pinned, since every levelled sim shares it.
 
 Method that works, and should be used verbatim: give each agent a scoped target
 and require it to either **prove a finding with a test that fails against the
@@ -45,7 +75,10 @@ No "possible issues". Disproved hypotheses get a test that pins the invariant.
   about Scatter Objects is done — placement, classes, determinism, export,
   viewport. Boxes are the honest placeholder; real meshes need an asset
   pipeline (import, storage in the document, GPU residency), not a renderer
-  change.
+  change. Note before that lands: the shader's `basis()` is left-handed, so the
+  viewport yaws props the opposite way from the exported `yaw_rad`. A box is
+  four-fold symmetric so nothing shows it today; an asymmetric mesh will. Fix
+  the handedness and the box winding together, or neither (see round 6 above).
 - **Per-instance object authoring.** `README.md` names this as the remaining
   Objects gap: placing, moving and deleting a single prop by hand. Needs a
   selection model for instances and an undo command; the placement list itself
@@ -54,8 +87,8 @@ No "possible issues". Disproved hypotheses get a test that pins the invariant.
   wetness, sediment thickness, flow accumulation, scatter density, hardness…)
   and there is no UI to look at any of them. This plays directly to the
   architecture's strength and would make a whole class of "why is my mask
-  empty" question answerable by the user instead of by a debugger. Probably the
-  highest value-per-effort item on this list after the review.
+  empty" question answerable by the user instead of by a debugger. This is the
+  current recommendation (see above).
 
 ## 2. Performance (read the caveat first)
 

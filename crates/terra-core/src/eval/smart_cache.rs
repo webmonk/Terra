@@ -91,6 +91,11 @@ impl DiskSmartCache {
     pub fn invalidate(&self, id: LayerId) {
         let _ = fs::remove_file(self.meta_path(id));
         let _ = fs::remove_file(self.height_path(id));
+        // The non-raster sidecars go too: `load` reads them whenever the file
+        // exists, so leaving them lets a later bake inherit this one's strata
+        // or props.
+        let _ = fs::remove_file(self.stem(id).with_extension("strata.json"));
+        let _ = fs::remove_file(self.stem(id).with_extension("objects.json"));
         // Best-effort wipe of aux blobs for this layer.
         if let Ok(entries) = fs::read_dir(&self.root) {
             let prefix = format!("{}.aux.", id.0);
@@ -138,11 +143,21 @@ impl DiskSmartCache {
                 write_f32_blob(&self.aux_path(id, name), field.data())?;
             }
         }
-        if let Some(strata) = &output.strata {
-            let path = self.stem(id).with_extension("strata.json");
-            let json =
-                serde_json::to_vec_pretty(strata).map_err(|e| EvalError::Io(e.to_string()))?;
-            fs::write(path, json).map_err(|e| EvalError::Io(e.to_string()))?;
+        // Both sidecars must be rewritten *or removed* on every spill. The path
+        // is keyed by `LayerId` alone, `load` reads whichever file exists, and
+        // the store is a stable temp dir shared across documents and sessions -
+        // so a file left from a previous bake is not dead weight, it is a stale
+        // payload attaching itself to the next one.
+        let strata_path = self.stem(id).with_extension("strata.json");
+        match &output.strata {
+            Some(strata) => {
+                let json =
+                    serde_json::to_vec_pretty(strata).map_err(|e| EvalError::Io(e.to_string()))?;
+                fs::write(&strata_path, json).map_err(|e| EvalError::Io(e.to_string()))?;
+            }
+            None => {
+                let _ = fs::remove_file(&strata_path);
+            }
         }
         // Placed props ride alongside strata: neither is a raster, so neither
         // survives the aux blob round-trip.
@@ -305,6 +320,117 @@ mod tests {
         assert!((loaded.height.get(3, 4) - 12.5).abs() < 1e-5);
         assert!((loaded.aux["flow_acc"].get(1, 1) - 0.75).abs() < 1e-5);
         assert!(!loaded.dirty);
+        cache.clear_all();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    fn granite() -> crate::layer::Stratum {
+        crate::layer::Stratum {
+            name: "granite".into(),
+            id: 3,
+            hardness: 0.8,
+            thickness: 40.0,
+            erodibility: 0.2,
+            material_type: Default::default(),
+        }
+    }
+
+    /// Re-spilling a layer that no longer publishes strata must not leave the
+    /// previous bake's `strata.json` on disk: the path is keyed by `LayerId`
+    /// alone, `load` reads the sidecar whenever the file exists, and the disk
+    /// root is a stable temp dir shared across documents and sessions. So a
+    /// stale file is not a leak, it is a Materials stack from an earlier bake
+    /// reappearing on a layer that has none. `object_instances` already handles
+    /// this by removing its sidecar when empty; strata is the same shape of
+    /// non-raster payload and must do the same.
+    #[test]
+    fn respilling_without_strata_drops_the_previous_strata() {
+        let dir = std::env::temp_dir().join(format!(
+            "terra_smart_cache_strata_test_{}",
+            uuid::Uuid::new_v4()
+        ));
+        let cache = DiskSmartCache::new(&dir);
+        let metrics = HeightfieldMetrics::new(4, 4, 40.0, 40.0);
+        let id = LayerId::new();
+
+        let with_strata = CachedOutput {
+            height: Heightfield::zeros(metrics),
+            generation: 1,
+            dirty: false,
+            aux: HashMap::new(),
+            strata: Some(vec![granite()]),
+            object_instances: Vec::new(),
+        };
+        cache.spill(id, &with_strata, None).unwrap();
+        assert!(cache
+            .load(id, metrics, None)
+            .unwrap()
+            .expect("disk hit")
+            .strata
+            .is_some());
+
+        // The layer is re-baked without a Materials stack.
+        let without_strata = CachedOutput {
+            generation: 2,
+            strata: None,
+            ..with_strata
+        };
+        cache.spill(id, &without_strata, None).unwrap();
+
+        let loaded = cache.load(id, metrics, None).unwrap().expect("disk hit");
+        assert!(
+            loaded.strata.is_none(),
+            "reload resurrected the previous bake's strata: {:?}",
+            loaded.strata
+        );
+
+        cache.clear_all();
+        let _ = fs::remove_dir_all(&dir);
+    }
+
+    /// `invalidate` must take the non-raster sidecars with it, for the same
+    /// reason: `LayerId`s are only unique within a document, and the store is a
+    /// stable path, so anything left behind can be picked up by a later bake.
+    #[test]
+    fn invalidate_removes_the_non_raster_sidecars() {
+        let dir = std::env::temp_dir().join(format!(
+            "terra_smart_cache_invalidate_test_{}",
+            uuid::Uuid::new_v4()
+        ));
+        let cache = DiskSmartCache::new(&dir);
+        let metrics = HeightfieldMetrics::new(4, 4, 40.0, 40.0);
+        let id = LayerId::new();
+
+        let output = CachedOutput {
+            height: Heightfield::zeros(metrics),
+            generation: 1,
+            dirty: false,
+            aux: HashMap::new(),
+            strata: Some(vec![granite()]),
+            object_instances: vec![crate::layer::ObjectInstance {
+                class_index: 0,
+                class: "rock".into(),
+                x: 1.0,
+                y: 2.0,
+                z: 3.0,
+                scale: 1.0,
+                yaw_rad: 0.0,
+                normal: [0.0, 1.0, 0.0],
+            }],
+        };
+        cache.spill(id, &output, None).unwrap();
+        cache.invalidate(id);
+
+        let stem = dir.join(id.0.to_string());
+        assert!(
+            !stem.with_extension("strata.json").exists(),
+            "invalidate left strata.json behind"
+        );
+        assert!(
+            !stem.with_extension("objects.json").exists(),
+            "invalidate left objects.json behind"
+        );
+
         cache.clear_all();
         let _ = fs::remove_dir_all(&dir);
     }

@@ -860,6 +860,56 @@ mod tests {
         assert!((d[0] - 42.0).abs() < 0.01);
     }
 
+    /// `resample_mask` replaced a `Heightfield` round-trip through
+    /// `downsample_height` purely to drop five conversions per call, so it must
+    /// still agree with it sample-for-sample. Every levelled sim shares this
+    /// path, and a drift here would move erosion output on a change that was
+    /// meant to be a pure speedup - both directions, since the two use
+    /// different kernels (box-average down, bilinear up).
+    #[test]
+    fn resample_mask_matches_the_heightfield_path_it_replaced() {
+        let m = HeightfieldMetrics::new(64, 64, 640.0, 640.0);
+        let mut values = Vec::with_capacity(64 * 64);
+        for j in 0..64 {
+            for i in 0..64 {
+                // Ridged and asymmetric, so a transposed index or a swapped
+                // kernel cannot pass by symmetry.
+                values.push(((i * 7 + j * 13) % 11) as f32 / 10.0);
+            }
+        }
+        let src = MaskField::from_raw(m, &values);
+        let hf = Heightfield::from_dense(m, &values);
+
+        for res in [16u32, 32, 64, 128] {
+            let target = HeightfieldMetrics::new(res, res, 640.0, 640.0);
+            let got = resample_mask(&src, target);
+            let want = downsample_height(&hf, res).to_dense();
+            assert_eq!(got.metrics.width, res);
+            assert_eq!(got.data().len(), want.len());
+            for (k, (a, b)) in got.data().iter().zip(want.iter()).enumerate() {
+                assert!(
+                    (a - b).abs() < 1e-6,
+                    "res {res} sample {k}: {a} vs {b} from the old path"
+                );
+            }
+        }
+    }
+
+    /// Row-parallelising the resamplers must not make them order-dependent.
+    #[test]
+    fn resample_mask_is_deterministic_across_runs() {
+        let m = HeightfieldMetrics::new(96, 96, 960.0, 960.0);
+        let values: Vec<f32> = (0..96 * 96).map(|k| (k % 17) as f32 / 16.0).collect();
+        let src = MaskField::from_raw(m, &values);
+        for res in [24u32, 96, 192] {
+            let target = HeightfieldMetrics::new(res, res, 960.0, 960.0);
+            let first = resample_mask(&src, target);
+            for _ in 0..3 {
+                assert_eq!(resample_mask(&src, target).data(), first.data());
+            }
+        }
+    }
+
     #[test]
     fn default_levels_include_coarse() {
         let levels = default_sim_levels(512);

@@ -146,13 +146,16 @@ impl TerraApp {
                     // placements, so the overlay draws solids at them rather
                     // than re-deriving billboards from a density raster.
                     let props = &self.scheduler.last_object_instances;
-                    let obj_fp = object_instances_fingerprint(props);
+                    let base = hf.metrics.world_size_x.max(hf.metrics.world_size_z);
+                    // One unit prop is a small fraction of the world, so
+                    // props stay visible at 1 km and at 16 km without the
+                    // artist retuning every class scale per project.
+                    let base_size_m = (base * 0.0015).clamp(0.5, 12.0);
+                    // `base_size_m` is an upload input too, so it belongs in the
+                    // guard - same reason the vegetation guard folds in metrics.
+                    let obj_fp = object_instances_fingerprint(props)
+                        ^ (base_size_m.to_bits() as u64).rotate_left(13);
                     if obj_fp != self.obj_upload_fp {
-                        let base = hf.metrics.world_size_x.max(hf.metrics.world_size_z);
-                        // One unit prop is a small fraction of the world, so
-                        // props stay visible at 1 km and at 16 km without the
-                        // artist retuning every class scale per project.
-                        let base_size_m = (base * 0.0015).clamp(0.5, 12.0);
                         let (drawn, placed) = r.sync_object_instances(props, base_size_m);
                         self.ui_state.object_instances_drawn = drawn;
                         self.ui_state.object_instances_placed = placed;
@@ -756,16 +759,24 @@ fn terrain_height_stats(
 
 /// Cheap order-sensitive fingerprint of a placement list.
 ///
-/// Placement is deterministic for a given seed and terrain, so re-uploading is
-/// only needed when the list actually changes; hashing position and scale
-/// catches a re-place without walking every field.
+/// This gates the GPU upload, so it must cover every field the overlay reads.
+/// An earlier version hashed only X/Z, scale and class on the reasoning that
+/// placement is deterministic per seed - but `y` and `normal` are read off the
+/// surface, not the seed, so a height-only edit (an offset layer, a flatten)
+/// re-places every prop at a new height without moving a single site. Hashing
+/// the uploaded fields is what makes "the list actually changed" true.
 fn object_instances_fingerprint(instances: &[terra_core::layer::ObjectInstance]) -> u64 {
     let mut hash = 0xcbf2_9ce4_8422_2325u64 ^ instances.len() as u64;
     for inst in instances {
         for bits in [
             inst.x.to_bits(),
+            inst.y.to_bits(),
             inst.z.to_bits(),
             inst.scale.to_bits(),
+            inst.yaw_rad.to_bits(),
+            inst.normal[0].to_bits(),
+            inst.normal[1].to_bits(),
+            inst.normal[2].to_bits(),
             inst.class_index,
         ] {
             hash ^= bits as u64;
@@ -773,4 +784,85 @@ fn object_instances_fingerprint(instances: &[terra_core::layer::ObjectInstance])
         }
     }
     hash
+}
+
+#[cfg(test)]
+mod tests {
+    use super::object_instances_fingerprint;
+    use terra_core::layer::ObjectInstance;
+
+    fn inst() -> ObjectInstance {
+        ObjectInstance {
+            class_index: 0,
+            class: "rock".to_string(),
+            x: 10.0,
+            y: 100.0,
+            z: 20.0,
+            scale: 1.0,
+            yaw_rad: 0.5,
+            normal: [0.0, 1.0, 0.0],
+        }
+    }
+
+    /// A height-only edit (an offset layer, a flatten) moves every prop in Y
+    /// while leaving the X/Z distribution and the class choices untouched: the
+    /// placer's site selection reads density and slope, neither of which a
+    /// constant offset changes. The fingerprint gates the GPU upload, so if it
+    /// ignores `y` the viewport keeps drawing props at the old surface height.
+    #[test]
+    fn fingerprint_tracks_surface_height() {
+        let before = vec![inst()];
+        let mut after = before.clone();
+        after[0].y += 50.0;
+        assert_ne!(
+            object_instances_fingerprint(&before),
+            object_instances_fingerprint(&after),
+            "props moved 50 m in Y but the fingerprint is unchanged, so the \
+             overlay would keep them at the old height"
+        );
+    }
+
+    /// Same argument for the up vector: classes that align to the surface get
+    /// the normal, which tilts when the ground under a prop is resculpted even
+    /// if the site itself survives the re-place.
+    #[test]
+    fn fingerprint_tracks_surface_normal() {
+        let before = vec![inst()];
+        let mut after = before.clone();
+        after[0].normal = [0.6, 0.8, 0.0];
+        assert_ne!(
+            object_instances_fingerprint(&before),
+            object_instances_fingerprint(&after),
+            "props re-aligned to a new surface normal but the fingerprint is \
+             unchanged, so the overlay would keep the old lean"
+        );
+    }
+
+    /// Yaw reaches the GPU too, and a seed change can re-roll yaw while the
+    /// site grid stays put.
+    #[test]
+    fn fingerprint_tracks_yaw() {
+        let before = vec![inst()];
+        let mut after = before.clone();
+        after[0].yaw_rad = 1.25;
+        assert_ne!(
+            object_instances_fingerprint(&before),
+            object_instances_fingerprint(&after),
+            "props re-rolled their yaw but the fingerprint is unchanged"
+        );
+    }
+
+    /// The guard must stay cheap enough to run every redraw, and it must not
+    /// collapse a reordering into the same value.
+    #[test]
+    fn fingerprint_is_order_sensitive() {
+        let mut a = inst();
+        let mut b = inst();
+        a.x = 1.0;
+        b.x = 2.0;
+        assert_ne!(
+            object_instances_fingerprint(&[a.clone(), b.clone()]),
+            object_instances_fingerprint(&[b, a]),
+        );
+    }
 }

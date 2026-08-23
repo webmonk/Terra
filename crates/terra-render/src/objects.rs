@@ -353,3 +353,101 @@ fn class_color(class_index: u32) -> [f32; 4] {
     let c = PALETTE[(class_index as usize) % PALETTE.len()];
     [c[0], c[1], c[2], 1.0]
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use glam::{Mat3, Vec3};
+
+    /// Rust mirror of `basis()` in objects.wgsl. Kept here so the winding
+    /// invariant below is checkable on CPU; it must track the shader.
+    fn basis(up_in: Vec3, yaw: f32) -> Mat3 {
+        let up = if up_in.length() > 1e-4 {
+            up_in.normalize()
+        } else {
+            Vec3::Y
+        };
+        let seed = if up.x.abs() > 0.9 { Vec3::Z } else { Vec3::X };
+        let t0 = seed.cross(up).normalize();
+        let b0 = up.cross(t0);
+        let (s, c) = yaw.sin_cos();
+        Mat3::from_cols(t0 * c + b0 * s, up, b0 * c - t0 * s)
+    }
+
+    /// The unit box is wound clockwise-outward in local space, which on its own
+    /// would be back-facing under wgpu's default `FrontFace::Ccw` and get culled
+    /// by `cull_mode: Back`. It survives because `basis()` is deliberately
+    /// left-handed (`t0 x up = -b0`, so det = -1), and that mirror flips the
+    /// winding back. Two wrongs that must stay wrong together: "fixing" either
+    /// one alone turns every prop inside out, and the frame would still change
+    /// enough for `object_overlay.rs` to pass. So assert the composition.
+    #[test]
+    fn box_faces_are_front_facing_after_the_instance_basis() {
+        let (vertices, indices) = unit_box();
+        // Upright, tilted, and steeply tilted, each at a few yaws: the basis is
+        // rebuilt per instance, so handedness must hold for all of them.
+        let ups = [
+            Vec3::Y,
+            Vec3::new(0.3, 0.9, 0.1).normalize(),
+            Vec3::new(0.95, 0.3, 0.0).normalize(),
+            Vec3::new(-0.4, 0.7, 0.6).normalize(),
+        ];
+        for up in ups {
+            for yaw in [0.0, 0.7, 2.5, 5.9] {
+                let m = basis(up, yaw);
+                assert!(
+                    m.determinant() < 0.0,
+                    "basis must stay left-handed (det {}); the box winding \
+                     depends on the mirror",
+                    m.determinant()
+                );
+                for tri in indices.chunks(3) {
+                    let v: Vec<&PropVertex> =
+                        tri.iter().map(|&i| &vertices[i as usize]).collect();
+                    let p: Vec<Vec3> = v.iter().map(|x| m * Vec3::from(x.local_pos)).collect();
+                    let geometric = (p[1] - p[0]).cross(p[2] - p[0]).normalize();
+                    let declared = (m * Vec3::from(v[0].local_normal)).normalize();
+                    assert!(
+                        geometric.dot(declared) > 0.99,
+                        "face normal {declared:?} disagrees with its winding \
+                         {geometric:?} (up {up:?}, yaw {yaw}); the face would be \
+                         culled and the prop would render inside out"
+                    );
+                }
+            }
+        }
+    }
+
+    /// Every corner of the box must sit on or above the instance origin in
+    /// local Y, so a prop stands on the surface instead of being half-buried.
+    #[test]
+    fn unit_box_sits_on_the_surface() {
+        let (vertices, _) = unit_box();
+        assert!(vertices.iter().all(|v| v.local_pos[1] >= 0.0));
+        assert!(vertices.iter().any(|v| v.local_pos[1] == 0.0));
+        assert!(vertices.iter().any(|v| v.local_pos[1] == 1.0));
+    }
+
+    /// The budget thins by stride and must never exceed `MAX_DRAWN`, including
+    /// at the boundaries where `div_ceil` changes step.
+    #[test]
+    fn thinning_stride_respects_the_budget() {
+        for len in [
+            1,
+            MAX_DRAWN - 1,
+            MAX_DRAWN,
+            MAX_DRAWN + 1,
+            2 * MAX_DRAWN,
+            2 * MAX_DRAWN + 1,
+            120_000,
+        ] {
+            let stride = len.div_ceil(MAX_DRAWN).max(1);
+            let drawn = len.div_ceil(stride);
+            assert!(drawn <= MAX_DRAWN, "len {len} drew {drawn}");
+            assert!(drawn > 0);
+            if len <= MAX_DRAWN {
+                assert_eq!(drawn, len, "len {len} is under budget and must not thin");
+            }
+        }
+    }
+}
