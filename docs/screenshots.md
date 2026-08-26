@@ -38,6 +38,32 @@ size and height range, selected 16-bit aux maps, splat maps with material IDs,
 baked color and normal maps, vegetation instances, a coarse collision mesh and
 a streaming tile manifest.
 
+## Unified history
+
+![History panel](screenshots/05-history-panel.png)
+
+The History panel after a series of sculpt strokes, newest first, with Undo and
+Redo. Every entry is tagged with the stack it belongs to: edits from different
+domains land in one chronological list rather than in separate per-domain undo
+stacks. The Sculpt inspector on the right shows the active brush (radius,
+strength in metres, target layer).
+
+Note: the entry labels read `draft ? full on refine` where an arrow is intended.
+That is a leftover encoding issue in a UI string, not a broken edit.
+
+## Sculpting
+
+![Sculpt stroke](screenshots/06-sculpt-stroke.gif)
+
+Sculpt tool driven live: brush overlay on the terrain, strokes authored into the
+Base layer, each one recorded in the history above. Recorded at 8 fps.
+
+The stroke path is the one that got most of the optimisation work in this fork
+(an interactive stroke on a 512 squared stack went from 6.27 s to 165 ms at
+Draft). The clip does not demonstrate that number, because progressive
+refinement does not converge on this build (see below), so the settled result
+never arrives on screen. Treat it as evidence the tool works, not as a benchmark.
+
 ## Not shown here, and why
 
 - **Scatter Objects** renders instanced boxes rather than real meshes. Placement,
