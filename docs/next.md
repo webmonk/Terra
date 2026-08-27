@@ -126,6 +126,45 @@ The pattern: in this codebase rayon pays on stencil and bilinear passes, not on
 bandwidth-bound elementwise ones. Always measure, and re-measure the baseline
 after reverting.
 
+## 2b. Progressive refinement never converges (two bugs, one symptom)
+
+The preview sits in the 60-70% band, the number drifts backwards, and the
+process uses about 2 CPU-seconds per 10 wall-seconds on 16 cores. Both causes
+reproduce on `8f53eb3`, so neither is from this fork's work.
+
+**Fixed** on `fix/refine-never-converges`: `mask_overlay_dirty` starts `true`
+and is only cleared when a mask overlay is actually shown, but it feeds
+`meaningful_interaction`, so on any project with no mask selected it reset the
+refinement controller's settle timer every frame and the state never left
+`Interactive`.
+
+**Open, and a design call rather than a bug.** With refinement escalating
+again, Full still never lands. The ladder is Draft 512, Medium 1024, Full
+`preview_resolution` - and `preview_resolution` is roughly world metres capped
+at 8192, so any world wider than about 2 km asks Full for 8192 squared, or 67
+million samples. Measured cost (release, Alpine at 12.6 km, from
+`preview_cost_scaling.rs`):
+
+| res | samples | Full eval |
+|---:|---:|---:|
+| 256 | 65k | 2.4 s |
+| 512 | 262k | 10.2 s |
+| 1024 | 1.05M | 45.8 s |
+| 2048 | 4.19M | 201 s |
+
+That is about 4.4x per 4x samples, so near-linear. The same curve puts 8192
+squared at roughly an hour, in release; the editor runs the dev profile and is
+slower again. Full is not slow, it is unreachable, so the preview parks on the
+rung below it forever.
+
+Capping the interactive Full rung and leaving 8192 to Export is the obvious
+lever, but it changes what Full means for every project, so it needs a
+maintainer decision.
+
+Worth fixing regardless: the progress readout is derived from the renderer's
+texture size, not from evaluation progress, which is why it reads a confident
+63% while nothing is converging and why it can move backwards.
+
 ## 3. Known debt (small, specific)
 
 - **Non-square grids.** `resample_mask` uses the target metrics directly, where
