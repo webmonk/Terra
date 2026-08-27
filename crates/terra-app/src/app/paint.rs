@@ -710,6 +710,24 @@ impl TerraApp {
             || self.ui_state.is_mask_view()
     }
 
+    /// True when a mask-overlay upload is genuinely outstanding.
+    ///
+    /// `mask_overlay_dirty` on its own is not that question. It starts `true`
+    /// at construction and is only ever cleared by
+    /// [`Self::sync_mask_overlay_to_renderer`], which the redraw path calls
+    /// solely when [`Self::should_show_mask_overlay`] holds. With no mask
+    /// selected - the default on any freshly opened project - the flag was
+    /// therefore stuck `true` from launch, and because the lifecycle folds it
+    /// into `meaningful_interaction`, every frame re-armed the refinement
+    /// controller's interaction timer. The controller never left `Interactive`,
+    /// so progressive refinement never escalated past the interactive rung and
+    /// the preview never converged.
+    ///
+    /// Nothing is pending when nothing is being shown, so gate on both.
+    pub(crate) fn mask_overlay_upload_pending(&self) -> bool {
+        self.mask_overlay_dirty && self.should_show_mask_overlay()
+    }
+
     /// Upload the active painted mask as a coloured translucent overlay on the terrain.
     pub(crate) fn sync_mask_overlay_to_renderer(&mut self) {
         let Some(r) = self.renderer.as_mut() else {

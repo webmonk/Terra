@@ -58,6 +58,10 @@ impl TerraApp {
                 if self.last_mask_overlay_id.take().is_some() {
                     self.placement_tint_dirty = true;
                 }
+                // No overlay on screen means no overlay upload outstanding. The
+                // flag used to survive here, and since it feeds
+                // `meaningful_interaction` it pinned refinement in Interactive.
+                self.mask_overlay_dirty = false;
                 if self.placement_tint_dirty {
                     self.sync_placement_tint_to_renderer();
                 }
@@ -789,7 +793,40 @@ fn object_instances_fingerprint(instances: &[terra_core::layer::ObjectInstance])
 #[cfg(test)]
 mod tests {
     use super::object_instances_fingerprint;
+    use crate::app::TerraApp;
     use terra_core::layer::ObjectInstance;
+
+    /// Regression: progressive refinement never converged.
+    ///
+    /// `mask_overlay_dirty` starts `true` and is only cleared by the redraw
+    /// path when a mask overlay is actually being shown. On a freshly opened
+    /// project no mask is selected, so it stayed `true` for the life of the
+    /// process. The lifecycle folds it into `meaningful_interaction`, which
+    /// calls `begin_interaction` on the refinement controller every frame it is
+    /// set, so the controller's settle timer was reset ~60 times a second and
+    /// the state never advanced past `Interactive`. The preview sat in the
+    /// 60-70% band burning a couple of CPU-seconds per ten wall-seconds and
+    /// never reached Full.
+    ///
+    /// The flag alone is not the question worth asking - "is an overlay upload
+    /// outstanding" is - and nothing is outstanding when nothing is shown.
+    #[test]
+    fn hidden_mask_overlay_is_not_outstanding_work() {
+        let app = TerraApp::default();
+        assert!(
+            app.mask_overlay_dirty,
+            "the flag still starts dirty; this test is about what that means,              not about removing it"
+        );
+        assert!(
+            !app.should_show_mask_overlay(),
+            "a default app has no mask selected, so no overlay is shown"
+        );
+        assert!(
+            !app.mask_overlay_upload_pending(),
+            "a hidden mask overlay must not read as outstanding work - it pins              the refinement controller in Interactive and refinement never              converges"
+        );
+    }
+
 
     fn inst() -> ObjectInstance {
         ObjectInstance {

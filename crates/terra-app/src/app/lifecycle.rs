@@ -508,7 +508,7 @@ impl ApplicationHandler for TerraApp {
             let terrain_edits = self.pending_eval
                 || self.needs_height_upload
                 || self.placement_tint_dirty
-                || self.mask_overlay_dirty;
+                || self.mask_overlay_upload_pending();
             let meaningful_interaction = scene_meaningful || live_paint || terrain_edits;
             self.terrain_runtime
                 .update_refinement(now_ms, meaningful_interaction);
