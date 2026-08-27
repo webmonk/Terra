@@ -210,6 +210,13 @@ and groups respectively), so they are not gaps so much as different naming.
 - Restoring a file with `mv backup.rs source.rs` preserves the backup's mtime, so
   cargo skips the rebuild and the tests run a **stale binary**. Use `touch`, or
   restore by rewriting the file.
+- A second stale-build trap, different cause: `cargo test --workspace` can fail
+  to **link** with `unresolved external symbol anon.<hash>.llvm.<n>` across
+  `terra-core`, while every targeted `--lib` / `--test` run against the same
+  source passes. That is an incremental-artifact mismatch on MSVC, not a code
+  error. `cargo clean -p terra-core -p terra-app` and rebuild. Do not go looking
+  for a real linker problem first - check whether targeted runs pass, because if
+  they do it is this.
 - `terra-render`'s GPU tests self-skip without an adapter, so the main CI legs
   report them green without running them. The lavapipe leg (`gpu-parity.yml`)
   runs them for real. Locally, `TERRA_TEST_GPU_FORCE_FALLBACK=1` runs them
