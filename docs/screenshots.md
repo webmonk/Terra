@@ -48,8 +48,10 @@ domains land in one chronological list rather than in separate per-domain undo
 stacks. The Sculpt inspector on the right shows the active brush (radius,
 strength in metres, target layer).
 
-Note: the entry labels read `draft ? full on refine` where an arrow is intended.
-That is a leftover encoding issue in a UI string, not a broken edit.
+Note: the entry labels render as `draft ? full on refine` where an arrow is
+intended. The string itself is correct (`\u{2192}` in `lifecycle.rs`), so this
+is the viewport font lacking the glyph rather than a mangled string, and not a
+broken edit either way.
 
 ## Sculpting
 
