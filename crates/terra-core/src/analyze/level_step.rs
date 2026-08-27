@@ -325,75 +325,88 @@ pub fn multi_scale_amplify(
     }
 }
 
-pub fn downsample_height(src: &Heightfield, target_res: u32) -> Heightfield {
-    let tw = target_res.max(1);
-    let th = target_res.max(1);
-    let metrics = HeightfieldMetrics {
-        width: tw,
-        height: th,
-        world_size_x: src.metrics.world_size_x,
-        world_size_z: src.metrics.world_size_z,
-        tile_size: src.metrics.tile_size.min(tw),
-        halo: src.metrics.halo,
-    };
-    if src.metrics.width == tw && src.metrics.height == th {
-        return src.clone();
+/// Resample a dense row-major buffer between arbitrary dimensions.
+///
+/// Box-average when decimating, bilinear when magnifying. Both the height and
+/// mask paths need exactly this rule, and both used to carry their own copy -
+/// which is how `upsample_to_metrics` ended up resampling to a *square* target
+/// via `downsample_height` and silently producing the wrong number of samples
+/// for a non-square world. One kernel, so a target aspect cannot be honoured in
+/// one path and dropped in another.
+///
+/// `out` must be `tw * th` long. Row-parallel: rows are independent and each
+/// element does real work, so unlike a memcpy-speed pass this one pays for the
+/// threads, and chunking by row keeps write order deterministic.
+fn resample_dense(src: &[f32], sw: usize, sh: usize, tw: usize, th: usize, out: &mut [f32]) {
+    use rayon::prelude::*;
+    debug_assert_eq!(out.len(), tw * th);
+    if sw == 0 || sh == 0 || tw == 0 || th == 0 {
+        out.fill(0.0);
+        return;
+    }
+    let shrinking = tw < sw || th < sh;
+    out.par_chunks_mut(tw).enumerate().for_each(|(j, row)| {
+        if shrinking {
+            for (i, slot) in row.iter_mut().enumerate() {
+                *slot = area_sample(src, sw, sh, tw, th, i, j);
+            }
+            return;
+        }
+        let v = (j as f32 + 0.5) / th as f32;
+        let z = (v * sh as f32 - 0.5).clamp(0.0, (sh - 1) as f32);
+        let z0 = z.floor() as usize;
+        let z1 = (z0 + 1).min(sh - 1);
+        let fz = z - z0 as f32;
+        for (i, slot) in row.iter_mut().enumerate() {
+            let u = (i as f32 + 0.5) / tw as f32;
+            let x = (u * sw as f32 - 0.5).clamp(0.0, (sw - 1) as f32);
+            let x0 = x.floor() as usize;
+            let x1 = (x0 + 1).min(sw - 1);
+            let fx = x - x0 as f32;
+            let h00 = src[z0 * sw + x0];
+            let h10 = src[z0 * sw + x1];
+            let h01 = src[z1 * sw + x0];
+            let h11 = src[z1 * sw + x1];
+            *slot = h00 * (1.0 - fx) * (1.0 - fz)
+                + h10 * fx * (1.0 - fz)
+                + h01 * (1.0 - fx) * fz
+                + h11 * fx * fz;
+        }
+    });
+}
+
+/// Resample a heightfield onto arbitrary target metrics, honouring the target
+/// aspect. `downsample_height` is the square special case of this.
+fn resample_height(src: &Heightfield, target: HeightfieldMetrics) -> Heightfield {
+    if src.metrics.width == target.width && src.metrics.height == target.height {
+        let mut h = src.clone();
+        h.metrics = target;
+        return h;
     }
     let dense = src.to_dense();
-    let sw = src.metrics.width as usize;
-    let sh = src.metrics.height as usize;
-    let mut out =
-        DOWNSAMPLE_ARENA.with(|arena| arena.borrow_mut().acquire(tw as usize * th as usize));
-    if tw < src.metrics.width || th < src.metrics.height {
-        // Row-parallel: output rows are independent and each element does real
-        // work, so unlike a memcpy-speed pass this one pays for the threads.
-        // Chunking by row keeps the write order, so results are unchanged.
-        use rayon::prelude::*;
-        let (twu, thu) = (tw as usize, th as usize);
-        out[..twu * thu]
-            .par_chunks_mut(twu)
-            .enumerate()
-            .for_each(|(j, row)| {
-                for (i, slot) in row.iter_mut().enumerate() {
-                    *slot = area_sample(&dense, sw, sh, twu, thu, i, j);
-                }
-            });
-        let result = Heightfield::from_dense(metrics, &out);
-        DOWNSAMPLE_ARENA.with(|arena| arena.borrow_mut().release(out));
-        return result;
-    }
-    {
-        use rayon::prelude::*;
-        let (twu, thu) = (tw as usize, th as usize);
-        out[..twu * thu]
-            .par_chunks_mut(twu)
-            .enumerate()
-            .for_each(|(j, row)| {
-                let v = (j as f32 + 0.5) / th as f32;
-                let z = (v * sh as f32 - 0.5).clamp(0.0, (sh - 1) as f32);
-                let z0 = z.floor() as usize;
-                let z1 = (z0 + 1).min(sh - 1);
-                let fz = z - z0 as f32;
-                for (i, slot) in row.iter_mut().enumerate() {
-                    let u = (i as f32 + 0.5) / tw as f32;
-                    let x = (u * sw as f32 - 0.5).clamp(0.0, (sw - 1) as f32);
-                    let x0 = x.floor() as usize;
-                    let x1 = (x0 + 1).min(sw - 1);
-                    let fx = x - x0 as f32;
-                    let h00 = dense[z0 * sw + x0];
-                    let h10 = dense[z0 * sw + x1];
-                    let h01 = dense[z1 * sw + x0];
-                    let h11 = dense[z1 * sw + x1];
-                    *slot = h00 * (1.0 - fx) * (1.0 - fz)
-                        + h10 * fx * (1.0 - fz)
-                        + h01 * (1.0 - fx) * fz
-                        + h11 * fx * fz;
-                }
-            });
-    }
-    let result = Heightfield::from_dense(metrics, &out);
+    let (sw, sh) = (src.metrics.width as usize, src.metrics.height as usize);
+    let (tw, th) = (target.width as usize, target.height as usize);
+    let mut out = DOWNSAMPLE_ARENA.with(|arena| arena.borrow_mut().acquire(tw * th));
+    resample_dense(&dense, sw, sh, tw, th, &mut out[..tw * th]);
+    let result = Heightfield::from_dense(target, &out[..tw * th]);
     DOWNSAMPLE_ARENA.with(|arena| arena.borrow_mut().release(out));
     result
+}
+
+pub fn downsample_height(src: &Heightfield, target_res: u32) -> Heightfield {
+    let res = target_res.max(1);
+    let metrics = HeightfieldMetrics {
+        width: res,
+        height: res,
+        world_size_x: src.metrics.world_size_x,
+        world_size_z: src.metrics.world_size_z,
+        tile_size: src.metrics.tile_size.min(res),
+        halo: src.metrics.halo,
+    };
+    if src.metrics.width == res && src.metrics.height == res {
+        return src.clone();
+    }
+    resample_height(src, metrics)
 }
 
 fn area_sample(
@@ -744,12 +757,11 @@ fn downsample_mask_field(src: &MaskField, target_res: u32) -> MaskField {
 }
 
 fn upsample_to_metrics(src: &Heightfield, target: HeightfieldMetrics) -> Heightfield {
-    if src.metrics.width == target.width && src.metrics.height == target.height {
-        let mut h = src.clone();
-        h.metrics = target;
-        return h;
-    }
-    downsample_height(src, target.width)
+    // Must honour `target.height` as well as `target.width`. Routing through
+    // `downsample_height` forced a square result, so on a non-square world the
+    // displacement came back the wrong length, `zip` silently truncated it, and
+    // `from_dense` then panicked on the size assertion.
+    resample_height(src, target)
 }
 
 /// Lift only the simulated low-frequency displacement back to the working
@@ -790,46 +802,10 @@ fn resample_mask(src: &MaskField, target: HeightfieldMetrics) -> MaskField {
     if src.metrics.width == target.width && src.metrics.height == target.height {
         return src.clone();
     }
-    use rayon::prelude::*;
     let (sw, sh) = (src.metrics.width as usize, src.metrics.height as usize);
     let (tw, th) = (target.width as usize, target.height as usize);
-    let data = src.data();
-    let shrinking = tw < sw || th < sh;
     let mut out = MaskField::zeros(target);
-    out.data_mut()
-        .par_chunks_mut(tw)
-        .enumerate()
-        .for_each(|(j, row)| {
-            if shrinking {
-                // Match `downsample_height`: box-average when decimating, so a
-                // coarse level sees the mean of the texels it stands in for
-                // rather than a point sample.
-                for (i, slot) in row.iter_mut().enumerate() {
-                    *slot = area_sample(data, sw, sh, tw, th, i, j);
-                }
-                return;
-            }
-            let v = (j as f32 + 0.5) / th as f32;
-            let z = (v * sh as f32 - 0.5).clamp(0.0, (sh - 1) as f32);
-            let z0 = z.floor() as usize;
-            let z1 = (z0 + 1).min(sh - 1);
-            let fz = z - z0 as f32;
-            for (i, slot) in row.iter_mut().enumerate() {
-                let u = (i as f32 + 0.5) / tw as f32;
-                let x = (u * sw as f32 - 0.5).clamp(0.0, (sw - 1) as f32);
-                let x0 = x.floor() as usize;
-                let x1 = (x0 + 1).min(sw - 1);
-                let fx = x - x0 as f32;
-                let h00 = data[z0 * sw + x0];
-                let h10 = data[z0 * sw + x1];
-                let h01 = data[z1 * sw + x0];
-                let h11 = data[z1 * sw + x1];
-                *slot = h00 * (1.0 - fx) * (1.0 - fz)
-                    + h10 * fx * (1.0 - fz)
-                    + h01 * (1.0 - fx) * fz
-                    + h11 * fx * fz;
-            }
-        });
+    resample_dense(src.data(), sw, sh, tw, th, out.data_mut());
     out
 }
 
