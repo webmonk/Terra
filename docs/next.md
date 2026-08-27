@@ -167,12 +167,17 @@ texture size, not from evaluation progress, which is why it reads a confident
 
 ## 3. Known debt (small, specific)
 
-- **Non-square grids.** `resample_mask` uses the target metrics directly, where
-  the old `Heightfield` round-trip forced a square target. The new behaviour is
-  more correct but is untested for non-square grids.
-- **Props sit up to one texel off the surface.** `ObjectInstance.y` samples the
-  nearest texel while `x`/`z` are continuous, so on steep ground an exported
-  prop can float or sink slightly. Bilinear sampling would fix it.
+- ~~**Non-square grids.**~~ Tested, and it turned out to be a crash rather than
+  a gap: `upsample_to_metrics` resampled via `downsample_height(src,
+  target.width)`, which always builds a square result, so on a non-square world
+  the displacement came back the wrong length, `zip` truncated it silently, and
+  `from_dense` panicked on its size assertion. Fixed on
+  `fix/non-square-levelled-sim` by extracting a single `resample_dense` kernel
+  and routing the height and mask paths through it.
+- ~~**Props sit up to one texel off the surface.**~~ Fixed on
+  `fix/prop-surface-height`: `Heightfield::sample_bilinear` samples the surface
+  at the placement's own continuous X/Z. Measured at up to 8 m of error on a
+  20 m texel with a 0.8 gradient before the fix, under a centimetre after.
 - **Inspector seed clamp.** The Scatter Objects seed slider clamps display to
   99999 while `randomize_layer_seed` sets a full 64-bit value, so the UI shows a
   clamped number that does not match the seed in use.
