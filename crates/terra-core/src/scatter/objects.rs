@@ -105,7 +105,10 @@ pub fn scatter_objects(
         if suit <= 0.0 {
             continue;
         }
-        let y = hf.get(i, j);
+        // Continuous X/Z, so the surface height must be sampled continuously
+        // too - nearest-texel Y left props floating or sunk on steep ground by
+        // up to half a texel of offset times the gradient.
+        let y = hf.sample_bilinear(x, z);
         let slope_deg = slope.get(i, j) * 90.0;
         let site = n as u64;
 

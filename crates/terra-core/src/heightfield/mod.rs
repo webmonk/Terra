@@ -181,6 +181,37 @@ impl Heightfield {
             .unwrap_or(0.0)
     }
 
+    /// Bilinear height at a continuous world position, clamped at the edges.
+    ///
+    /// [`HeightfieldMetrics::sample_index`] plus [`Self::get`] snaps to the
+    /// nearest cell centre, which is right for choosing a cell and wrong for a
+    /// value that sits between them: the error is up to half a texel of
+    /// horizontal offset times the local gradient. Anything placed at a
+    /// continuous position - scatter props, for one - needs this instead, or it
+    /// floats above steep ground on one side and sinks into it on the other.
+    pub fn sample_bilinear(&self, x: f32, z: f32) -> f32 {
+        let (w, h) = (self.metrics.width, self.metrics.height);
+        if w == 0 || h == 0 {
+            return 0.0;
+        }
+        let u = (x / self.metrics.dx() - 0.5).clamp(0.0, (w - 1) as f32);
+        let v = (z / self.metrics.dz() - 0.5).clamp(0.0, (h - 1) as f32);
+        let i0 = u.floor() as u32;
+        let j0 = v.floor() as u32;
+        let i1 = (i0 + 1).min(w - 1);
+        let j1 = (j0 + 1).min(h - 1);
+        let fx = u - i0 as f32;
+        let fz = v - j0 as f32;
+        let h00 = self.get(i0, j0);
+        let h10 = self.get(i1, j0);
+        let h01 = self.get(i0, j1);
+        let h11 = self.get(i1, j1);
+        h00 * (1.0 - fx) * (1.0 - fz)
+            + h10 * fx * (1.0 - fz)
+            + h01 * (1.0 - fx) * fz
+            + h11 * fx * fz
+    }
+
     pub fn set(&mut self, i: u32, j: u32, value: f32) {
         let (tx, lx) = self.local_x(i);
         let (tz, lz) = self.local_z(j);
