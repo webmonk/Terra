@@ -530,7 +530,40 @@ fn push_blank_shapes(doc: &mut TerrainDocument) {
     }
 }
 
+/// Extent the archetype macro parameters were authored against.
+///
+/// The numbers below (ridge amplitude, mesa height, dune height, noise
+/// frequency) are absolute metres, tuned by eye on a roughly 10 km world.
+const REFERENCE_WORLD_M: f32 = 10_000.0;
+
+/// How far this world departs from the authored reference.
+///
+/// Vertical parameters multiply by this and spatial frequencies divide by it,
+/// so an archetype is the same landscape at any extent rather than a
+/// fixed-height feature dropped into a variable-size box. Nothing scaled these
+/// before, which broke at both ends: a 2 km Alpine world kept the full 780 m
+/// ridge amplitude and rendered as a needle taller than the world was wide,
+/// while a 40 km one came out effectively flat.
+fn world_scale(doc: &TerrainDocument) -> f32 {
+    (doc.metrics.world_size_x / REFERENCE_WORLD_M).clamp(0.05, 20.0)
+}
+
+/// Amplitude is metres, frequency is cycles per metre: scaling them inversely
+/// keeps both the relief ratio and the feature count fixed across extents.
+fn scale_noise(n: &mut NoiseParams, s: f32) {
+    n.amplitude *= s;
+    n.frequency /= s;
+}
+
+fn scale_uplift(u: &mut crate::layer::UpliftParams, s: f32) {
+    u.amplitude *= s;
+    u.frequency /= s;
+    u.detail_amplitude *= s;
+    u.detail_frequency /= s;
+}
+
 fn push_macro_tropical_island(doc: &mut TerrainDocument) {
+    let s = world_scale(doc);
     doc.stack.push_into_category(Layer::new(
         "Island Landmass",
         LayerKind::Island(IslandParams {
@@ -542,19 +575,19 @@ fn push_macro_tropical_island(doc: &mut TerrainDocument) {
             radius: 0.66,
             aspect: 1.22,
             sea_level: doc.blueprint.sea_level,
-            ocean_floor: -240.0,
-            mountain_height: 540.0,
-            shelf_width: 360.0,
-            shelf_depth: 48.0,
-            beach_width: 85.0,
-            beach_height: 7.0,
-            reef_width: 190.0,
-            reef_depth: 4.0,
+            ocean_floor: -240.0 * s,
+            mountain_height: 540.0 * s,
+            shelf_width: 360.0 * s,
+            shelf_depth: 48.0 * s,
+            beach_width: 85.0 * s,
+            beach_height: 7.0 * s,
+            reef_width: 190.0 * s,
+            reef_depth: 4.0 * s,
             coastline_warp: 0.22,
-            coastline_frequency: 0.00115,
+            coastline_frequency: 0.00115 / s,
             mountain_power: 1.62,
             ridge_strength: 0.52,
-            ridge_frequency: 0.0027,
+            ridge_frequency: 0.0027 / s,
             lagoon_radius: 0.42,
         }),
     ));
@@ -566,26 +599,29 @@ fn push_macro_tropical_island(doc: &mut TerrainDocument) {
 
 fn push_macro_alpine(doc: &mut TerrainDocument) {
     let style = LandscapeStyle::Alpine.params();
+    let s = world_scale(doc);
+    let mut base = NoiseParams {
+        seed: 41,
+        frequency: 0.0012,
+        amplitude: 780.0,
+        octaves: 5,
+        ..NoiseParams::default()
+    };
+    scale_noise(&mut base, s);
+    let mut uplift = style.uplift.clone();
+    scale_uplift(&mut uplift, s);
     doc.stack.push_into_category(Layer::new(
         "Mountain Range",
         LayerKind::Mountains(MountainParams {
-            base: NoiseParams {
-                seed: 41,
-                frequency: 0.0012,
-                amplitude: 780.0,
-                octaves: 5,
-                ..NoiseParams::default()
-            },
+            base,
             ridge_sharpness: 2.1,
             range_angle: 0.55,
             range_width: 0.4,
-            crest_detail: 55.0,
+            crest_detail: 55.0 * s,
         }),
     ));
-    doc.stack.push_into_category(Layer::new(
-        "Uplift Corridors",
-        LayerKind::Uplift(style.uplift.clone()),
-    ));
+    doc.stack
+        .push_into_category(Layer::new("Uplift Corridors", LayerKind::Uplift(uplift)));
     doc.shapes = ShapeObjectStore::alpine_shapes();
     scale_ridge_shapes(doc);
     doc.compile_shapes_into_stack();
@@ -593,14 +629,19 @@ fn push_macro_alpine(doc: &mut TerrainDocument) {
 }
 
 fn push_macro_desert(doc: &mut TerrainDocument) {
-    doc.stack.push_into_category(Layer::new(
-        "Mesa Landmass",
-        LayerKind::Mesa(MesaParams::default()),
-    ));
-    doc.stack.push_into_category(Layer::new(
-        "Canyons",
-        LayerKind::Canyons(CanyonParams::default()),
-    ));
+    let s = world_scale(doc);
+    let mesa = MesaParams {
+        height: MesaParams::default().height * s,
+        ..MesaParams::default()
+    };
+    let canyons = CanyonParams {
+        depth: CanyonParams::default().depth * s,
+        ..CanyonParams::default()
+    };
+    doc.stack
+        .push_into_category(Layer::new("Mesa Landmass", LayerKind::Mesa(mesa)));
+    doc.stack
+        .push_into_category(Layer::new("Canyons", LayerKind::Canyons(canyons)));
     doc.shapes = ShapeObjectStore::desert_shapes();
     doc.compile_shapes_into_stack();
     push_gradient_reconstruct(doc, 48, 6.0);
@@ -608,20 +649,21 @@ fn push_macro_desert(doc: &mut TerrainDocument) {
 
 fn push_macro_river_valley(doc: &mut TerrainDocument) {
     let style = LandscapeStyle::RiverValley.params();
-    doc.stack.push_into_category(Layer::new(
-        "Valley Uplift",
-        LayerKind::Uplift(style.uplift.clone()),
-    ));
+    let mut uplift = style.uplift.clone();
+    scale_uplift(&mut uplift, world_scale(doc));
+    doc.stack
+        .push_into_category(Layer::new("Valley Uplift", LayerKind::Uplift(uplift)));
     doc.shapes = ShapeObjectStore::river_valley_shapes();
     doc.compile_shapes_into_stack();
     push_gradient_reconstruct(doc, 48, 6.0);
 }
 
 fn push_macro_badlands(doc: &mut TerrainDocument) {
+    let s = world_scale(doc);
     doc.stack.push_into_category(Layer::new(
         "Soft Plateau",
         LayerKind::Mesa(MesaParams {
-            height: 180.0,
+            height: 180.0 * s,
             edge_steepness: 2.8,
             soft: 0.18,
             ..MesaParams::default()
@@ -632,73 +674,82 @@ fn push_macro_badlands(doc: &mut TerrainDocument) {
 
 fn push_macro_young_mountains(doc: &mut TerrainDocument) {
     let style = LandscapeStyle::YoungMountains.params();
+    let s = world_scale(doc);
+    let mut base = NoiseParams {
+        seed: 7,
+        frequency: 0.0016,
+        amplitude: 920.0,
+        octaves: 6,
+        ..NoiseParams::default()
+    };
+    scale_noise(&mut base, s);
+    let mut uplift = style.uplift.clone();
+    scale_uplift(&mut uplift, s);
     doc.stack.push_into_category(Layer::new(
         "Sharp Range",
         LayerKind::Mountains(MountainParams {
-            base: NoiseParams {
-                seed: 7,
-                frequency: 0.0016,
-                amplitude: 920.0,
-                octaves: 6,
-                ..NoiseParams::default()
-            },
+            base,
             ridge_sharpness: 3.2,
             range_width: 0.22,
-            crest_detail: 80.0,
+            crest_detail: 80.0 * s,
             ..MountainParams::default()
         }),
     ));
-    doc.stack.push_into_category(Layer::new(
-        "Active Uplift",
-        LayerKind::Uplift(style.uplift.clone()),
-    ));
+    doc.stack
+        .push_into_category(Layer::new("Active Uplift", LayerKind::Uplift(uplift)));
     push_gradient_reconstruct(doc, 40, 7.0);
 }
 
 fn push_macro_old_mountains(doc: &mut TerrainDocument) {
     let style = LandscapeStyle::OldMountains.params();
+    let s = world_scale(doc);
+    let mut base = NoiseParams {
+        seed: 19,
+        frequency: 0.0009,
+        amplitude: 320.0,
+        octaves: 4,
+        ..NoiseParams::default()
+    };
+    scale_noise(&mut base, s);
+    let mut uplift = style.uplift.clone();
+    scale_uplift(&mut uplift, s);
     doc.stack.push_into_category(Layer::new(
         "Worn Massif",
         LayerKind::Mountains(MountainParams {
-            base: NoiseParams {
-                seed: 19,
-                frequency: 0.0009,
-                amplitude: 320.0,
-                octaves: 4,
-                ..NoiseParams::default()
-            },
+            base,
             ridge_sharpness: 0.85,
             range_width: 0.55,
-            crest_detail: 18.0,
+            crest_detail: 18.0 * s,
             ..MountainParams::default()
         }),
     ));
-    doc.stack.push_into_category(Layer::new(
-        "Broad Uplift",
-        LayerKind::Uplift(style.uplift.clone()),
-    ));
+    doc.stack
+        .push_into_category(Layer::new("Broad Uplift", LayerKind::Uplift(uplift)));
     push_gradient_reconstruct(doc, 48, 6.0);
 }
 
 fn push_macro_dune_field(doc: &mut TerrainDocument) {
+    let s = world_scale(doc);
+    let mut base = NoiseParams {
+        seed: 101,
+        frequency: 0.004,
+        amplitude: 28.0,
+        octaves: 3,
+        ..NoiseParams::default()
+    };
+    scale_noise(&mut base, s);
     doc.stack.push_into_category(Layer::new(
         "Desert Floor",
-        LayerKind::Flat(FlatParams { height: 12.0 }),
+        LayerKind::Flat(FlatParams { height: 12.0 * s }),
     ));
     doc.stack.push_into_category(Layer::new(
         "Hard Substrate",
-        LayerKind::Materials(MaterialsParams::soft_over_hard(4.0)),
+        LayerKind::Materials(MaterialsParams::soft_over_hard(4.0 * s)),
     ));
     doc.stack.push_into_category(Layer::new(
         "Aeolian Dunes",
         LayerKind::Dunes(DuneParams {
-            base: NoiseParams {
-                seed: 101,
-                frequency: 0.004,
-                amplitude: 28.0,
-                octaves: 3,
-                ..NoiseParams::default()
-            },
+            base,
             wind_strength: 1.35,
             sand_supply: 1.2,
             ..DuneParams::default()
@@ -713,21 +764,22 @@ fn push_macro_dune_field(doc: &mut TerrainDocument) {
 
 fn push_macro_coastal(doc: &mut TerrainDocument) {
     let style = LandscapeStyle::Coastal.params();
+    let s = world_scale(doc);
+    let mut uplift = style.uplift.clone();
+    scale_uplift(&mut uplift, s);
     doc.stack.push_into_category(Layer::new(
         "Coastal Landmass",
         LayerKind::Island(IslandParams {
             seed: 55,
             archetype: IslandArchetype::VolcanicHighIsland,
             sea_level: doc.blueprint.sea_level,
-            mountain_height: 280.0,
+            mountain_height: 280.0 * s,
             coastline_warp: 0.28,
             ..IslandParams::default()
         }),
     ));
-    doc.stack.push_into_category(Layer::new(
-        "Inland Uplift",
-        LayerKind::Uplift(style.uplift.clone()),
-    ));
+    doc.stack
+        .push_into_category(Layer::new("Inland Uplift", LayerKind::Uplift(uplift)));
     push_gradient_reconstruct(doc, 48, 6.0);
 }
 
