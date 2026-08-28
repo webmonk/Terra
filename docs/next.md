@@ -28,10 +28,13 @@ in code with a green test suite.
 
 ## Recommended next step
 
-**Build a Channels panel.** With review round 6 done (below), this is the
-highest value-per-effort item left. The engine publishes ~40 named aux channels
-and there is no UI to look at any of them, so "why is my mask empty" is a
-debugger question rather than something the user can answer.
+**Get the open branches reviewed and merged.** The Channels panel is built
+(`feat/channels-panel`), and four bug-fix branches are green and waiting:
+`fix/archetype-world-scaling`, `fix/refine-never-converges`,
+`fix/prop-surface-height`, `fix/non-square-levelled-sim`. Two items are parked
+on a maintainer decision rather than effort: extent-aware scaling for the
+process chain, and capping the interactive Full rung so a preview can converge
+on a large world.
 
 Adversarial review round 6 covered the three slices that were unreviewed --
 the quality-cache rekeying, the flat-buffer resampler and the prop-rendering
@@ -83,12 +86,12 @@ No "possible issues". Disproved hypotheses get a test that pins the invariant.
   Objects gap: placing, moving and deleting a single prop by hand. Needs a
   selection model for instances and an undo command; the placement list itself
   is already carried through eval, cache, disk and export.
-- **A Channels panel.** The engine publishes ~40 named aux channels (slope,
-  wetness, sediment thickness, flow accumulation, scatter density, hardness…)
-  and there is no UI to look at any of them. This plays directly to the
-  architecture's strength and would make a whole class of "why is my mask
-  empty" question answerable by the user instead of by a debugger. This is the
-  current recommendation (see above).
+- ~~**A Channels panel.**~~ Built on `feat/channels-panel`. `View > Channels`
+  lists what the last evaluation actually published (32 entries on a 13 km
+  Alpine world) with range, mean, coverage and resolution each, plus a one-line
+  diagnosis separating the faults that all present as "my mask is empty":
+  absent, all zero, constant, or non-finite. The classification lives in
+  `terra-core` so it is testable without a window.
 
 ## 2. Performance (read the caveat first)
 

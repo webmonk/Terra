@@ -26,7 +26,7 @@ networks are visible across the range.
 The viewport switched to the Flow channel. The engine publishes around 40 named
 aux channels (slope, wetness, sediment thickness, flow accumulation, scatter
 density, hardness and others); the toolbar exposes Terrain, Height, Slope, Flow
-and Mask. A panel for browsing the rest of them is the next thing on the list.
+and Mask. The Channels panel below browses the rest.
 
 ## Export package
 
@@ -65,6 +65,20 @@ The stroke path is the one that got most of the optimisation work in this fork
 Draft). The clip does not demonstrate that number, because progressive
 refinement does not converge on this build (see below), so the settled result
 never arrives on screen. Treat it as evidence the tool works, not as a benchmark.
+
+## Channels panel
+
+![Channels panel](screenshots/07-channels-panel.png)
+
+`View > Channels` lists every aux field the last evaluation published - 32 on
+this 13 km Alpine world - with range, mean, coverage and resolution per channel,
+and a one-line diagnosis when a channel is all zero, constant, or contains
+non-finite samples. Clicking a channel shows it in the 2D preview.
+
+The list comes from what the evaluator actually published rather than a
+hand-maintained catalogue, so it cannot drift from the engine. Before this,
+twelve channels had a hardcoded preview mode each and the rest were reachable
+only from a debugger.
 
 ## Not shown here, and why
 
