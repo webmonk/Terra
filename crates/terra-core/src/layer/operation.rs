@@ -57,6 +57,26 @@ impl OperationCategory {
     }
 }
 
+/// Aux field a distribution node reads, if any.
+///
+/// Terrain-feature nodes sample a published channel: `Flow` reads flow
+/// accumulation, `Curvature` and `Cavity` read curvature, and `Slope`,
+/// `Steepness` and `Angle` read slope. Fills, noise and effects are
+/// self-contained, and `MaskAsset` resolves through the document's asset list,
+/// which is not visible from a `LayerKind`.
+///
+/// This lives here rather than on `DistNodeKind` because naming a `FieldId`
+/// from `mask` would close a module cycle - `fields` already depends on `mask`.
+fn dist_node_field(kind: &crate::mask::DistNodeKind) -> Option<FieldId> {
+    use crate::mask::DistNodeKind as K;
+    match kind {
+        K::Slope { .. } | K::Steepness { .. } | K::Angle { .. } => Some(FieldId::Slope),
+        K::Curvature { .. } | K::Cavity { .. } => Some(FieldId::Curvature),
+        K::Flow { .. } => Some(FieldId::FlowAccumulation),
+        _ => None,
+    }
+}
+
 impl LayerKind {
     pub fn category(&self) -> OperationCategory {
         match self {
@@ -188,13 +208,28 @@ impl LayerKind {
                     FieldId::Snow,
                 ]
             }
-            LayerKind::ScatterObjects(_) => {
-                vec![
+            LayerKind::ScatterObjects(p) => {
+                // The static half is what the placer itself consults. The rest
+                // depends on how the artist configured coverage and exclusion,
+                // so derive it rather than guess: a Flow or Curvature node reads
+                // a channel that is not in the static list, and an undeclared
+                // read means the layer is not dirtied when that channel changes.
+                let mut fields = vec![
                     FieldId::Biomes,
                     FieldId::Materials,
                     FieldId::Wetness,
                     FieldId::Slope,
-                ]
+                ];
+                let mut note = |kind: &crate::mask::DistNodeKind| {
+                    if let Some(f) = dist_node_field(kind) {
+                        if !fields.contains(&f) {
+                            fields.push(f);
+                        }
+                    }
+                };
+                p.coverage.visit_node_kinds(&mut note);
+                p.exclusion.visit_node_kinds(&mut note);
+                fields
             }
             LayerKind::Materials(_) => {
                 vec![
@@ -538,6 +573,98 @@ mod tests {
         EffectFilterParams, HydraulicErosionParams, MultiScaleAmplifyParams, ScaleBand,
         UpliftParams,
     };
+
+    /// A Scatter Objects layer whose coverage reads Flow must declare
+    /// FlowAccumulation, or `layer_contract_touches` will not dirty it when the
+    /// flow field changes and it will keep placing props from a stale field.
+    ///
+    /// The static list is `[Biomes, Materials, Wetness, Slope]` - none of which
+    /// is flow - so before this the declaration was simply wrong for any
+    /// artist who reached for a Flow node.
+    #[test]
+    fn scatter_declares_the_fields_its_distribution_actually_reads() {
+        use crate::layer::ScatterObjectsParams;
+        use crate::mask::{DistNode, DistNodeKind, Distribution};
+
+        let mut p = ScatterObjectsParams::default();
+        assert!(
+            !LayerKind::ScatterObjects(p.clone())
+                .optional_fields()
+                .contains(&FieldId::FlowAccumulation),
+            "an unconfigured scatter has no reason to declare flow"
+        );
+
+        p.coverage = Distribution::from_nodes(vec![DistNode {
+            kind: DistNodeKind::Flow { min: 0.0, max: 1.0 },
+            ..DistNode::default()
+        }]);
+        let fields = LayerKind::ScatterObjects(p).optional_fields();
+        assert!(
+            fields.contains(&FieldId::FlowAccumulation),
+            "a Flow coverage node reads flow accumulation, so the layer must              declare it; got {fields:?}"
+        );
+        // The static half must survive the derivation.
+        for f in [
+            FieldId::Biomes,
+            FieldId::Materials,
+            FieldId::Wetness,
+            FieldId::Slope,
+        ] {
+            assert!(fields.contains(&f), "{f:?} dropped out of the declaration");
+        }
+    }
+
+    /// Exclusion is a dependency too - it is subtracted from coverage, so a
+    /// stale exclusion field changes placement just as much.
+    #[test]
+    fn scatter_derives_fields_from_exclusion_and_from_nested_nodes() {
+        use crate::layer::ScatterObjectsParams;
+        use crate::mask::{DistNode, DistNodeKind, Distribution};
+
+        let exclusion = Distribution::from_nodes(vec![DistNode {
+            kind: DistNodeKind::Fill { value: 1.0 },
+            // Nested effect nodes hang off a parent, so the walk has to recurse
+            // or a curvature filter one level down goes undeclared.
+            children: vec![DistNode {
+                kind: DistNodeKind::Curvature {
+                    min: 0.0,
+                    max: 1.0,
+                },
+                ..DistNode::default()
+            }],
+            ..DistNode::default()
+        }]);
+        let p = ScatterObjectsParams {
+            exclusion,
+            ..ScatterObjectsParams::default()
+        };
+        let fields = LayerKind::ScatterObjects(p).optional_fields();
+        assert!(
+            fields.contains(&FieldId::Curvature),
+            "a nested Curvature node under an exclusion node must still be              declared; got {fields:?}"
+        );
+    }
+
+    /// The declaration must not repeat a field the static half already lists.
+    #[test]
+    fn derived_fields_do_not_duplicate_the_static_ones() {
+        use crate::layer::ScatterObjectsParams;
+        use crate::mask::{DistNode, DistNodeKind, Distribution};
+
+        let p = ScatterObjectsParams {
+            coverage: Distribution::from_nodes(vec![DistNode {
+                kind: DistNodeKind::Slope {
+                    min_deg: 0.0,
+                    max_deg: 90.0,
+                },
+                ..DistNode::default()
+            }]),
+            ..ScatterObjectsParams::default()
+        };
+        let fields = LayerKind::ScatterObjects(p).optional_fields();
+        let slopes = fields.iter().filter(|f| **f == FieldId::Slope).count();
+        assert_eq!(slopes, 1, "Slope listed {slopes} times: {fields:?}");
+    }
 
     #[test]
     fn hydraulic_is_simulation() {

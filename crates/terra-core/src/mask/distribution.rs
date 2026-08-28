@@ -1,6 +1,6 @@
 //! Nested distribution stacks (WC-style mask composition).
 
-use super::dist_nodes::{bake_dist_nodes, DistBakeContext, DistNode};
+use super::dist_nodes::{bake_dist_nodes, DistBakeContext, DistNode, DistNodeKind};
 use super::{MaskField, MaskId, MaskRef};
 use crate::heightfield::HeightfieldMetrics;
 use serde::de::{self, Deserializer, MapAccess, SeqAccess, Visitor};
@@ -116,6 +116,17 @@ impl Distribution {
         Self {
             entries: Vec::new(),
             nodes,
+        }
+    }
+
+    /// Visit every node kind in this distribution, nested ones included.
+    ///
+    /// Only the node stack is reachable here. Legacy `entries` point at mask
+    /// assets by id and the asset carries the `MaskSource`, so resolving those
+    /// needs the document's asset list rather than the distribution alone.
+    pub fn visit_node_kinds(&self, visit: &mut impl FnMut(&DistNodeKind)) {
+        for node in &self.nodes {
+            node.visit_kinds(visit);
         }
     }
 

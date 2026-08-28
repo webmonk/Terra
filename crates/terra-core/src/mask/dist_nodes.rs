@@ -48,6 +48,22 @@ fn default_true() -> bool {
     true
 }
 
+impl DistNode {
+    /// Visit this node's kind and every kind nested under it.
+    ///
+    /// Deliberately hands out `DistNodeKind` rather than resolving what each
+    /// one reads. Naming a field would mean `mask` depending on `fields`, and
+    /// `fields` already depends on `mask` - the module-graph ratchet exists to
+    /// stop exactly that. The caller that already sees both layers does the
+    /// mapping; see `LayerKind::optional_fields`.
+    pub fn visit_kinds(&self, visit: &mut impl FnMut(&DistNodeKind)) {
+        visit(&self.kind);
+        for child in &self.children {
+            child.visit_kinds(visit);
+        }
+    }
+}
+
 impl Default for DistNode {
     fn default() -> Self {
         Self::fill(1.0)
