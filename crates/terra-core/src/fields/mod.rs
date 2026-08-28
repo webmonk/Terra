@@ -5,8 +5,10 @@
 
 mod id;
 mod invalidation;
+mod stats;
 
 pub use id::FieldId;
+pub use stats::{summarise_channels, ChannelShape, ChannelStats};
 pub use invalidation::{
     fields_invalidated_by, height_dependents, shared_physical_fields, IterativeFieldGuard,
 };

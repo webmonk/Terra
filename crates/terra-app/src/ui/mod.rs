@@ -12,6 +12,7 @@ mod dist_kinds;
 mod dock_gui;
 mod hierarchy;
 mod hierarchy_view;
+mod channels_gui;
 mod history_gui;
 mod inspector;
 mod inspector_schema;
@@ -198,6 +199,13 @@ pub struct UiState {
     pub command_palette: CommandPaletteState,
     /// History panel open.
     pub show_history: bool,
+    /// Channels panel open.
+    pub show_channels: bool,
+    /// Summary of every aux channel the last evaluation published, sorted by
+    /// name. Rebuilt when the aux set changes; the panel only reads it.
+    pub channel_stats: Vec<terra_core::fields::ChannelStats>,
+    /// Aux channel selected for viewport inspection, by published name.
+    pub selected_channel: Option<String>,
     /// Terrain Recipe view open (execution-order overview).
     pub show_pipeline: bool,
     /// Current camera look target expressed in terrain UV coordinates.
@@ -784,6 +792,7 @@ impl UiState {
             temp_solo: self.temp_solo.clone(),
             show_pipeline: self.show_pipeline,
             show_history: self.show_history,
+            show_channels: self.show_channels,
             build_progress: self.build_progress,
             quality: self.quality,
             draft_displayed: self.draft_displayed,
@@ -825,6 +834,7 @@ impl UiState {
         self.temp_solo = ws.temp_solo.clone();
         self.show_pipeline = ws.show_pipeline;
         self.show_history = ws.show_history;
+        self.show_channels = ws.show_channels;
         self.build_progress = ws.build_progress;
         self.quality = ws.quality;
         self.draft_displayed = ws.draft_displayed;
@@ -1419,6 +1429,10 @@ pub enum Preview2dMode {
     SoilMoisture,
     /// Phase J overhang / cave region mask.
     Overhang,
+    /// Any published aux channel, named by `UiState::selected_channel`. The
+    /// variants above are the hand-picked ones that predate the Channels panel;
+    /// this one reaches the rest without a variant per channel.
+    Channel,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
@@ -1602,6 +1616,7 @@ pub fn draw_editor_gui(
     draw_windows(ui, doc, ui_state, windows, &mut out);
     pipeline_gui::draw_pipeline_gui(ui, doc, ui_state, &mut windows.recipe, &mut out.actions);
     history_gui::draw_history_gui(ui, ui_state, &mut windows.history_scroll, &mut out);
+    channels_gui::draw_channels_gui(ui, ui_state, &mut windows.channels_scroll);
     bookmarks_gui::draw_bookmarks_gui(ui, ui_state, &mut windows.bookmarks_scroll, &mut out);
 
     if ui.draw_layout_splitters() {

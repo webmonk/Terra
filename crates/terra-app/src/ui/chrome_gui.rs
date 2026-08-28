@@ -644,6 +644,7 @@ fn draw_dropdown(
             checkbox(ui, "2D Preview", &mut ui_state.show_2d_preview);
             checkbox(ui, "Profiler", &mut ui_state.show_profiler);
             checkbox(ui, "History", &mut ui_state.show_history);
+            checkbox(ui, "Channels", &mut ui_state.show_channels);
             ui.separator();
             if checkbox(
                 ui,

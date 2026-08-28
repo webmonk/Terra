@@ -32,6 +32,7 @@ pub struct WindowsGuiState {
     pub profiler_scroll: f32,
     pub recipe: crate::ui::pipeline_gui::RecipeViewState,
     pub history_scroll: f32,
+    pub channels_scroll: f32,
     pub bookmarks_scroll: f32,
 }
 

@@ -78,6 +78,9 @@ impl TerraApp {
                         LayerKind::Materials(p) if layer.common.enabled => Some(p.clone()),
                         _ => None,
                     });
+                // Before the renderer borrow: a selection whose channel this
+                // pass stopped publishing must not survive into the draw.
+                self.reconcile_channel_selection();
                 if let Some(r) = self.renderer.as_mut() {
                     r.upload_heightfield(&hf);
                     let ocean_level = if self.ui_state.viewport_overlays.water_level {
@@ -114,6 +117,13 @@ impl TerraApp {
                             self.scheduler.last_aux.get("biomes"),
                             self.scheduler.last_aux.get("flow_accumulation"),
                         );
+                        // The Channels panel reads whatever this pass actually
+                        // published, so refresh it on the same fingerprint the
+                        // GPU upload uses rather than walking every field each
+                        // frame. A drop of a channel is a change too, which is
+                        // why this sits inside the guard and not beside it.
+                        self.ui_state.channel_stats =
+                            terra_core::fields::summarise_channels(self.scheduler.last_aux.iter());
                         self.aux_upload_fp = aux_fp;
                     }
                     r.upload_material_palette(material_palette.as_ref());
@@ -757,6 +767,27 @@ fn terrain_height_stats(
     crate::ui::TerrainHeightStats { min, max, median }
 }
 
+impl TerraApp {
+    /// Drop a Channels-panel selection that the latest pass no longer publishes.
+    ///
+    /// A channel disappears whenever the layer that wrote it is deleted,
+    /// disabled or reconfigured. Keeping the selection would leave the viewport
+    /// in `Preview2dMode::Channel` with nothing behind it, showing the previous
+    /// frame's samples under a name that no longer exists.
+    pub(crate) fn reconcile_channel_selection(&mut self) {
+        let Some(sel) = self.ui_state.selected_channel.clone() else {
+            return;
+        };
+        if self.scheduler.last_aux.contains_key(&sel) {
+            return;
+        }
+        self.ui_state.selected_channel = None;
+        if matches!(self.ui_state.preview_mode, crate::ui::Preview2dMode::Channel) {
+            self.ui_state.preview_mode = crate::ui::Preview2dMode::Lit;
+        }
+    }
+}
+
 /// Cheap order-sensitive fingerprint of a placement list.
 ///
 /// This gates the GPU upload, so it must cover every field the overlay reads.
@@ -789,7 +820,58 @@ fn object_instances_fingerprint(instances: &[terra_core::layer::ObjectInstance])
 #[cfg(test)]
 mod tests {
     use super::object_instances_fingerprint;
+    use crate::app::TerraApp;
     use terra_core::layer::ObjectInstance;
+
+    /// A channel selected in the Channels panel can stop being published when
+    /// the stack changes - delete the Materials layer and `hardness` goes away.
+    /// The selection has to clear with it, or the viewport keeps showing the
+    /// previous frame's samples under a name that no longer exists.
+    #[test]
+    fn a_dropped_channel_clears_the_selection() {
+        use crate::ui::Preview2dMode;
+        use terra_core::heightfield::HeightfieldMetrics;
+        use terra_core::mask::MaskField;
+
+        let mut app = TerraApp::default();
+        let m = HeightfieldMetrics::new(4, 4, 40.0, 40.0);
+        app.scheduler
+            .last_aux
+            .insert("hardness".into(), MaskField::filled(m, 0.5));
+        app.ui_state.selected_channel = Some("hardness".into());
+        app.ui_state.preview_mode = Preview2dMode::Channel;
+
+        // Still published: the selection stands.
+        app.reconcile_channel_selection();
+        assert_eq!(app.ui_state.selected_channel.as_deref(), Some("hardness"));
+
+        // The layer that published it goes away.
+        app.scheduler.last_aux.remove("hardness");
+        app.reconcile_channel_selection();
+
+        assert_eq!(app.ui_state.selected_channel, None);
+        assert!(
+            matches!(app.ui_state.preview_mode, Preview2dMode::Lit),
+            "dropping the viewed channel must fall back to the lit view, not \
+             leave the viewport in Channel mode with nothing behind it"
+        );
+    }
+
+    /// Clearing the selection must not disturb a preview mode the user picked
+    /// for an unrelated reason.
+    #[test]
+    fn a_dropped_channel_leaves_other_preview_modes_alone() {
+        use crate::ui::Preview2dMode;
+
+        let mut app = TerraApp::default();
+        app.ui_state.selected_channel = Some("gone".into());
+        app.ui_state.preview_mode = Preview2dMode::Slope;
+        app.reconcile_channel_selection();
+
+        assert_eq!(app.ui_state.selected_channel, None);
+        assert!(matches!(app.ui_state.preview_mode, Preview2dMode::Slope));
+    }
+
 
     fn inst() -> ObjectInstance {
         ObjectInstance {

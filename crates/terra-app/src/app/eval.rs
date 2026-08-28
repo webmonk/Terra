@@ -1122,6 +1122,25 @@ impl TerraApp {
                     })
                     .unwrap_or_else(|| vec![0.0; (metrics.width * metrics.height) as usize])
             }
+            // Any published channel, chosen in the Channels panel. Normalised by
+            // its own max so a channel with a tiny range is still legible - the
+            // panel reports the true range next to it, so nothing is hidden by
+            // the rescale.
+            Preview2dMode::Channel => self
+                .ui_state
+                .selected_channel
+                .as_ref()
+                .and_then(|key| self.scheduler.last_aux.get(key))
+                .map(|field| {
+                    let data = field.data();
+                    let lo = data.iter().copied().filter(|v| v.is_finite()).fold(f32::INFINITY, f32::min);
+                    let hi = data.iter().copied().filter(|v| v.is_finite()).fold(f32::NEG_INFINITY, f32::max);
+                    let span = (hi - lo).max(1e-6);
+                    data.iter()
+                        .map(|&v| if v.is_finite() { ((v - lo) / span).clamp(0.0, 1.0) } else { 0.0 })
+                        .collect()
+                })
+                .unwrap_or_else(|| vec![0.0; (metrics.width * metrics.height) as usize]),
             // TODO: render colorized 2D previews for these diagnostics. The 3D viewport
             // continues to own their shader presentation; retain a height preview here.
             Preview2dMode::Lit
