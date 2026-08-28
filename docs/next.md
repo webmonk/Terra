@@ -181,14 +181,20 @@ texture size, not from evaluation progress, which is why it reads a confident
   `fix/prop-surface-height`: `Heightfield::sample_bilinear` samples the surface
   at the placement's own continuous X/Z. Measured at up to 8 m of error on a
   20 m texel with a 0.8 gradient before the fix, under a centimetre after.
-- **Inspector seed clamp.** The Scatter Objects seed slider clamps display to
-  99999 while `randomize_layer_seed` sets a full 64-bit value, so the UI shows a
-  clamped number that does not match the seed in use.
-- **`ScatterObjects::optional_fields`** declares `[Biomes, Materials, Wetness,
-  Slope]` but its distributions can read Hardness/Snow/Erosion. Not currently
-  exploitable — every layer producing those also produces something in the
-  declared set, so `layer_contract_touches` dirties it anyway — but it is one
-  refactor away from being a stale-cache bug.
+- ~~**Inspector seed clamp.**~~ Fixed on `fix/seed-clamp`. It was worse than
+  "the UI shows a clamped number": dragging the slider then committed that
+  number, replacing a 64-bit seed the user could not see. Shrinking the seed
+  domain was the wrong fix - the smart cache bumped to VERSION 3 for "64-bit
+  seed canonicalization" - so the row now prints the real seed underneath
+  whenever it falls outside the slider's span.
+- ~~**`ScatterObjects::optional_fields`**~~ Fixed on
+  `fix/scatter-field-contract`. It was reachable after all: coverage and
+  exclusion bake through `composite_distribution`, which wires slope, curvature
+  and flow accumulation from aux, so a Flow or Curvature node read a channel the
+  layer never declared. The declaration now derives the second half from the
+  distributions actually carried. The mapping lives in `layer/operation.rs`
+  rather than on `DistNodeKind`, because naming a `FieldId` from `mask` closes a
+  module cycle - `module_graph_cycles_match_allowlist` caught the first attempt.
 - **Benchmark baselines** were recorded on a busy machine and should not be used
   as a gate until re-recorded on a quiet one.
 - **AO tuning constants** (`AO_TANGENT_RELIEF`, radius in `normals.wgsl`) were
