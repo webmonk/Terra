@@ -1789,19 +1789,51 @@ pub(crate) fn edit_noise(ui: &mut GuiContext<'_>, p: &mut NoiseParams, advanced:
     changed
 }
 
+/// Largest seed the inspector slider can represent.
+///
+/// Seeds are 64-bit on purpose - the smart cache bumped its version for "64-bit
+/// seed canonicalization" - but a slider spanning that range is useless for
+/// picking one by hand, so the control covers a workable span instead.
+pub(crate) const SEED_SLIDER_MAX: u64 = 99_999;
+
+/// True when a seed is outside what the slider can show.
+///
+/// `randomize_layer_seed` derives from the wall clock and routinely lands far
+/// above the slider maximum, so clamping the displayed value silently showed a
+/// number that was not the seed in use. The row shows the real value alongside
+/// whenever this holds, so the two are never confused.
+pub(crate) fn seed_exceeds_slider(seed: u64) -> bool {
+    seed > SEED_SLIDER_MAX
+}
+
 /// Seed field with a refresh button (mockup style).
 pub(crate) fn seed_row(ui: &mut GuiContext<'_>, id_key: &str, seed: &mut u64) -> bool {
-    let mut value = (*seed).min(99999) as i32;
+    let out_of_range = seed_exceeds_slider(*seed);
+    let mut value = (*seed).min(SEED_SLIDER_MAX) as i32;
     let changed = slider_i32_id(
         ui,
         Id::new(id_key).child("seed_slider"),
         "Seed",
         &mut value,
         0,
-        99999,
+        SEED_SLIDER_MAX as i32,
     );
     if changed {
         *seed = value as u64;
+    }
+    // The slider cannot represent this seed, so say what it actually is rather
+    // than letting the clamped number read as the truth. Dragging the slider
+    // still replaces it - that is the point of the control - but now the user
+    // can see what they are replacing.
+    if out_of_range && !changed {
+        let note = ui.allocate(14.0);
+        ui.label_at(
+            note.min_x + 4.0,
+            note.min_y,
+            &format!("actual seed {}", *seed),
+            style::TEXT_MUTED,
+            FONT_SCALE * style::TYPE_CAPTION,
+        );
     }
     // Full-width secondary action - clearer hit target than a lone icon.
     ui.gap(2.0);
@@ -2030,5 +2062,33 @@ pub(crate) fn kind_display_name(kind: &LayerKind) -> &'static str {
         Stamp2d(_) => "2D Stamp",
         Stamp3d(_) => "3D Stamp",
         PolygonHeight(_) => "Polygon",
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::{seed_exceeds_slider, SEED_SLIDER_MAX};
+
+    /// Seeds are 64-bit and `randomize_layer_seed` derives one from the wall
+    /// clock, so the value it produces is far outside the slider's span. The
+    /// inspector used to clamp that for display and show a number that was not
+    /// the seed in use; the row now detects the case and prints the real one.
+    #[test]
+    fn a_randomized_seed_is_recognised_as_unrepresentable() {
+        // What `randomize_layer_seed` actually computes: millis ^ 0xA5A5_1234.
+        let realistic = 1_724_000_000_000u64 ^ 0xA5A5_1234;
+        assert!(
+            seed_exceeds_slider(realistic),
+            "a wall-clock seed must be recognised as outside the slider range, \
+             or the inspector shows {SEED_SLIDER_MAX} and calls it the seed"
+        );
+    }
+
+    #[test]
+    fn seeds_inside_the_slider_span_need_no_note() {
+        assert!(!seed_exceeds_slider(0));
+        assert!(!seed_exceeds_slider(1));
+        assert!(!seed_exceeds_slider(SEED_SLIDER_MAX));
+        assert!(seed_exceeds_slider(SEED_SLIDER_MAX + 1));
     }
 }
